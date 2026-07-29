@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -14,6 +15,7 @@ const {
   calculationHostRequestMock,
   claimSessionControlMock,
   completeAgentTurnMock,
+  consumeCommandExecutionGrantMock,
   denyPendingApprovalsMock,
   ensureDefaultProjectMock,
   failAgentTurnMock,
@@ -23,12 +25,16 @@ const {
   localProcessRequestMock,
   localProcessStartMock,
   localProcessStopMock,
+  materializeCommandInputMock,
   modelGetByKeyMock,
   projectionAppendTurnEventMock,
   projectionBeginTurnMock,
   projectionTerminalizeMock,
   projectionValidateComposerIntentMock,
   recordAgentToolCompletionMock,
+  registerCommandPreflightMock,
+  getCommandPreflightForApprovalMock,
+  resolveCommandPreflightMock,
   requestApprovalMock,
   verifyReportedAgentArtifactMock
 } = vi.hoisted(() => ({
@@ -40,6 +46,7 @@ const {
   calculationHostRequestMock: vi.fn(),
   claimSessionControlMock: vi.fn(),
   completeAgentTurnMock: vi.fn(),
+  consumeCommandExecutionGrantMock: vi.fn(),
   denyPendingApprovalsMock: vi.fn(),
   ensureDefaultProjectMock: vi.fn(),
   failAgentTurnMock: vi.fn(),
@@ -53,12 +60,16 @@ const {
   localProcessRequestMock: vi.fn(),
   localProcessStartMock: vi.fn(),
   localProcessStopMock: vi.fn(),
+  materializeCommandInputMock: vi.fn(),
   modelGetByKeyMock: vi.fn(),
   projectionAppendTurnEventMock: vi.fn(),
   projectionBeginTurnMock: vi.fn(),
   projectionTerminalizeMock: vi.fn(),
   projectionValidateComposerIntentMock: vi.fn(),
   recordAgentToolCompletionMock: vi.fn(),
+  registerCommandPreflightMock: vi.fn(),
+  getCommandPreflightForApprovalMock: vi.fn(),
+  resolveCommandPreflightMock: vi.fn(),
   requestApprovalMock: vi.fn(),
   verifyReportedAgentArtifactMock: vi.fn()
 }))
@@ -96,6 +107,7 @@ vi.mock('../LocalRpcProcess', () => ({
 }))
 
 import { ChemSmartAgentService } from '../ChemSmartAgentService'
+import { moleculeGeometryHash } from '../ControlledCalculationIdentity'
 
 type ServiceInternals = {
   handleSidecarRequest: (method: string, params: unknown) => Promise<unknown>
@@ -154,8 +166,10 @@ const commandSynthesisResult = {
   synthesisId: 'synthesis-1',
   sessionId: 'session-1',
   status: 'ready' as const,
-  command: 'chemsmart run xtb -f water.xyz -c 0 -m 1 opt',
-  commandDigest: '32ad20595f72c605431991921c02936102d878a0a6eae684fa6d636f0122e440',
+  command: 'chemsmart run xtb -f chemsmart-input-1111111111111111.xyz -c 0 -m 1 opt',
+  commandDigest: createHash('sha256')
+    .update('chemsmart run xtb -f chemsmart-input-1111111111111111.xyz -c 0 -m 1 opt')
+    .digest('hex'),
   explanation: 'Prepared a bounded xTB optimization command.',
   projectName: null,
   missingInfo: [],
@@ -189,6 +203,22 @@ const advisoryTurnResult = {
   advisory_only: true,
   assistant_output: 'Inspection complete.'
 }
+const visibleMolecule = {
+  documentId: 'document-1',
+  revision: 0,
+  atoms: [],
+  bonds: [],
+  selections: [],
+  frozenAxes: {},
+  constraints: [],
+  properties: { extensions: {} },
+  extensions: {}
+}
+const visibleGeometryHash = moleculeGeometryHash(visibleMolecule)
+const materializedInput = {
+  basename: 'chemsmart-input-1111111111111111.xyz',
+  sha256: '3'.repeat(64)
+}
 
 vi.mock('@main/features/apiGateway/proxyStream', () => ({
   processMessage: processMessageMock
@@ -210,6 +240,9 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       if (name === 'CalculationRuntimeService') {
         return {
           handleHostRequest: calculationHostRequestMock,
+          getCommandPreflightForApproval: getCommandPreflightForApprovalMock,
+          registerCommandPreflight: registerCommandPreflightMock,
+          resolveCommandPreflight: resolveCommandPreflightMock,
           verifyReportedAgentArtifact: verifyReportedAgentArtifactMock
         }
       }
@@ -226,6 +259,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
           beginAgentTurn: beginAgentTurnMock,
           claimSessionControl: claimSessionControlMock,
           completeAgentTurn: completeAgentTurnMock,
+          consumeCommandExecutionGrant: consumeCommandExecutionGrantMock,
           denyPendingApprovals: denyPendingApprovalsMock,
           failAgentTurn: failAgentTurnMock,
           forwardMoleculeRequest: forwardMoleculeRequestMock,
@@ -236,28 +270,26 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       if (name === 'MoleculeProjectStore') {
         return {
           ensureDefaultProject: ensureDefaultProjectMock,
-          getActiveProjectPath: () => '/projects/Untitled.cmsproj'
+          getActiveProjectPath: () => '/projects/Untitled.cmsproj',
+          materializeCommandInput: materializeCommandInputMock
         }
       }
       if (name === 'MoleculeDocumentService') {
         return {
-          getDocument: () => ({
-            documentId: 'document-1',
-            revision: 0,
-            atoms: [],
-            bonds: [],
-            selections: [],
-            frozenAxes: {},
-            constraints: [],
-            properties: { extensions: {} },
-            extensions: {}
-          })
+          getDocument: () => visibleMolecule
         }
       }
-      if (name === 'MoleculeWorkspaceService') return { applyTransientFocus: vi.fn() }
+      if (name === 'MoleculeWorkspaceService') {
+        return {
+          applyTransientFocus: vi.fn(),
+          getMoleculeDocument: vi.fn().mockResolvedValue(visibleMolecule),
+          getMoleculeDraft: vi.fn().mockReturnValue(null)
+        }
+      }
       throw new Error(`Unexpected application.get(${name})`)
     })
     ensureDefaultProjectMock.mockResolvedValue({ projectPath: '/projects/Untitled.cmsproj' })
+    materializeCommandInputMock.mockResolvedValue(materializedInput)
     projectionBeginTurnMock.mockResolvedValue({ turnId: 'turn-1' })
     projectionTerminalizeMock.mockResolvedValue({ eventId: 'event-terminal' })
     projectionValidateComposerIntentMock.mockResolvedValue(undefined)
@@ -274,7 +306,11 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
   })
 
-  async function invokeBoundAgentCallback(method: string, payload: Record<string, unknown>): Promise<unknown> {
+  async function invokeBoundAgentCallback(
+    method: string,
+    payload: Record<string, unknown>,
+    capability: 'inspect' | 'act' = 'inspect'
+  ): Promise<unknown> {
     let callbackResult: unknown
     localProcessRequestMock.mockImplementation(async (rpcMethod: string, params: unknown) => {
       if (rpcMethod === 'studio_ui.replay') return { replayed: 0, nextSequence: 0 }
@@ -282,7 +318,22 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       callbackResult = await internals.handleSidecarRequest(method, { ...payload, operationId })
       return advisoryTurnResult
     })
-    await service.runTurn('session-1', 'provider::model', 'Exercise the host callback.', 'window-1')
+    await service.runTurn(
+      'session-1',
+      'provider::model',
+      'Exercise the host callback.',
+      capability === 'act'
+        ? {
+            intentId: 'intent-run-1',
+            kind: 'run',
+            capability: 'act',
+            contextRefs: [],
+            requiresExecutionApproval: true,
+            extensions: {}
+          }
+        : null,
+      'window-1'
+    )
     return callbackResult
   }
 
@@ -376,6 +427,51 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(broadcastMock).not.toHaveBeenCalled()
   })
 
+  it('binds command approval and consumption to the active act turn', async () => {
+    const argumentsValue = {
+      command: 'chemsmart run xtb -f water.xyz -c 0 -m 1 -g gfn2 sp',
+      test: false,
+      timeout_s: 3600
+    }
+    const binding = {
+      calculationKind: 'single_point',
+      commandDigest: 'd'.repeat(64),
+      documentId: visibleMolecule.documentId,
+      engine: 'xtb',
+      expectedRevision: visibleMolecule.revision,
+      geometryHash: visibleGeometryHash,
+      method: 'GFN2-xTB',
+      planId: 'synthesis-water-sp'
+    }
+    getCommandPreflightForApprovalMock.mockResolvedValue(binding)
+    requestApprovalMock.mockResolvedValue({ decision: 'allow_once' })
+    consumeCommandExecutionGrantMock.mockResolvedValue(undefined)
+    const payload = {
+      sessionId: 'session-1',
+      requestId: 'request-execute-1',
+      tool: 'execute_chemsmart_command',
+      arguments: argumentsValue
+    }
+
+    await expect(invokeBoundAgentCallback('approval.request', payload, 'act')).resolves.toEqual({
+      decision: 'allow_once'
+    })
+    expect(requestApprovalMock).toHaveBeenCalledWith(payload, binding)
+
+    await expect(
+      invokeBoundAgentCallback(
+        'approval.consume',
+        {
+          sessionId: 'session-1',
+          tool: 'execute_chemsmart_command',
+          arguments: argumentsValue
+        },
+        'act'
+      )
+    ).resolves.toEqual({ accepted: true })
+    expect(consumeCommandExecutionGrantMock).toHaveBeenCalledWith('session-1', argumentsValue)
+  })
+
   it('publishes bounded public agent phases around a successful turn', async () => {
     localProcessRequestMock.mockImplementation(async (method: string) =>
       method === 'studio_ui.replay' ? { replayed: 0, nextSequence: 0 } : advisoryTurnResult
@@ -394,7 +490,8 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         modelId: 'provider::model',
         operationId: expect.any(String),
         request: 'Inspect the molecule.',
-        capability: 'inspect'
+        capability: 'inspect',
+        intentKind: 'inspect'
       },
       15 * 60 * 1000
     )
@@ -469,6 +566,111 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       expect.objectContaining({ kind: 'answer_published', answer: report.answer })
     )
     expect(duplicateError).toMatchObject({ code: -32003 })
+  })
+
+  it('registers a parser-owned preflight only for a planning turn before publication', async () => {
+    const artifact = {
+      artifactId: `preflight-${commandSynthesisResult.synthesisId}`,
+      kind: 'preflight_receipt',
+      heading: 'GFN2-xTB optimization preflight',
+      summary: 'The real ChemSmart parser accepted this command without starting a calculation process.',
+      documentId: 'document-1',
+      revision: 0,
+      geometryHash: visibleGeometryHash,
+      charge: 0,
+      multiplicity: 1,
+      engine: 'xtb',
+      method: 'GFN2-xTB',
+      calculationKind: 'optimization',
+      planId: commandSynthesisResult.synthesisId,
+      ruleIds: [],
+      verdict: 'passed',
+      extensions: {
+        'chemsmart.preflight': {
+          schemaVersion: 'chemsmart.command-preflight.v1',
+          commandDigest: commandSynthesisResult.commandDigest,
+          synthesisId: commandSynthesisResult.synthesisId,
+          executionPerformed: false,
+          approvalRequiredForExecution: true,
+          projectRequired: false,
+          inputBasename: materializedInput.basename,
+          inputDigest: materializedInput.sha256
+        }
+      }
+    }
+    const report = {
+      answer: {
+        answerId: 'answer-preflight-1',
+        heading: 'xTB preflight ready',
+        summary: 'The xTB command passed deterministic preflight without execution.',
+        sections: [
+          {
+            kind: 'evidence',
+            heading: 'Parser evidence',
+            summary: 'Intent and semantic gates passed and no process was started.'
+          }
+        ],
+        extensions: {}
+      },
+      artifactRefs: [commandSynthesisResult.synthesisId],
+      artifacts: []
+    }
+    resolveCommandPreflightMock.mockResolvedValue(artifact)
+    localProcessRequestMock.mockImplementation(async (_method: string, params: unknown) => {
+      const operationId = (params as { operationId: string }).operationId
+      const binding = await internals.handleSidecarRequest('agent.materialize_input', {
+        sessionId: 'session-1',
+        operationId,
+        input: {
+          documentId: visibleMolecule.documentId,
+          revision: visibleMolecule.revision,
+          geometryHash: visibleGeometryHash
+        }
+      })
+      expect(binding).toEqual({
+        ...materializedInput,
+        documentId: visibleMolecule.documentId,
+        revision: visibleMolecule.revision,
+        geometryHash: visibleGeometryHash
+      })
+      await internals.handleSidecarRequest('agent.register_preflight', {
+        sessionId: 'session-1',
+        operationId,
+        synthesis: commandSynthesisResult,
+        artifact
+      })
+      await internals.handleSidecarRequest('agent.report_result', {
+        sessionId: 'session-1',
+        operationId,
+        arguments: report
+      })
+      return { terminal_outcome: 'completed', advisory_only: false }
+    })
+
+    await service.runTurn(
+      'session-1',
+      'provider::model',
+      'Prepare an xTB dry-run.',
+      {
+        intentId: 'intent-dry-run-1',
+        kind: 'dry_run',
+        capability: 'plan',
+        contextRefs: [],
+        requiresExecutionApproval: false,
+        extensions: {}
+      },
+      'window-1'
+    )
+
+    expect(registerCommandPreflightMock).toHaveBeenCalledWith('session-1', commandSynthesisResult, artifact)
+    expect(materializeCommandInputMock).toHaveBeenCalledWith(visibleMolecule, visibleGeometryHash)
+    expect(resolveCommandPreflightMock).toHaveBeenCalledWith('session-1', commandSynthesisResult.synthesisId)
+    expect(verifyReportedAgentArtifactMock).toHaveBeenCalledWith('session-1', artifact)
+    expect(localProcessRequestMock).toHaveBeenCalledWith(
+      'agent.run_turn',
+      expect.objectContaining({ intentKind: 'dry_run' }),
+      expect.any(Number)
+    )
   })
 
   it('rejects a cross-sender turn before starting or contacting the sidecar', async () => {

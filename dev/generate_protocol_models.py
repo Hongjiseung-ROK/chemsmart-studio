@@ -318,8 +318,7 @@ def _self_contained_definition_schema(
         referenced = definitions.get(referenced_name)
         if not isinstance(referenced, dict):
             raise ValueError(
-                "Missing referenced Studio agent tool definition: "
-                f"{referenced_name!r}"
+                f"Missing referenced Studio agent tool definition: {referenced_name!r}"
             )
         required[referenced_name] = deepcopy(referenced)
         pending.extend(_referenced_definition_names(referenced))
@@ -588,8 +587,8 @@ export type StudioAgentTurnOutcome = 'completed' | 'denied' | 'failed' | 'cancel
 export interface StudioAgentTurnEvent {{ eventId: StableId; threadId: StableId; turnId: StableId; sequence: number; timestamp: string; kind: StudioAgentTurnEventKind; status: StudioAgentTurnStatus; summary: string; tool?: StudioAgentToolProjection; approvalRef?: StableId; artifact?: StudioAgentArtifact; answer?: StudioAgentAnswer; outcome?: StudioAgentTurnOutcome; extensions: Extensions }}
 export interface StudioAgentCapability {{ discovery: 'plus' | 'mention' | 'command'; key: string; label: string; description: string; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRef?: StableId }}
 export interface StudioAgentCapabilityManifest {{ projectId: StableId; threadId: StableId; generatedAt: string; items: StudioAgentCapability[]; extensions: Extensions }}
-export interface StudioAgentComposerIntent {{ intentId: StableId; kind: 'inspect' | 'plan' | 'dry_run' | 'review' | 'history' | 'new' | 'context'; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRefs: StableId[]; prompt?: string; requiresExecutionApproval: boolean; extensions: Extensions }}
-export interface StudioAgentReportResultInput {{ answer: StudioAgentAnswer; artifacts: StudioAgentArtifact[] }}
+export interface StudioAgentComposerIntent {{ intentId: StableId; kind: 'inspect' | 'plan' | 'dry_run' | 'run' | 'review' | 'history' | 'new' | 'context'; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRefs: StableId[]; prompt?: string; requiresExecutionApproval: boolean; extensions: Extensions }}
+export interface StudioAgentReportResultInput {{ answer: StudioAgentAnswer; artifactRefs?: StableId[]; artifacts: StudioAgentArtifact[] }}
 export interface StudioAgentTurnPage {{ threadId: StableId; events: StudioAgentTurnEvent[]; nextBeforeSequence: number | null; extensions: Extensions }}
 export interface StudioAgentTurnPageRequest {{ threadId: StableId; beforeSequence: number | null; limit: number }}
 export interface StudioAgentCapabilityManifestRequest {{ sessionId: StableId; threadId: StableId }}
@@ -721,7 +720,7 @@ export interface ControlledCalculationStartApproval {{ kind: 'controlled_calcula
 export type ExecutionToolApproval =
   | {{ kind: 'execution_tool'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; tool: 'run_local'; arguments: {{ job: string }}; allowActionId: StableId; denyActionId: StableId }}
   | {{ kind: 'execution_tool'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; tool: 'submit_hpc'; arguments: {{ job: string; server?: string | null; execute?: boolean }}; allowActionId: StableId; denyActionId: StableId }}
-  | {{ kind: 'execution_tool'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; tool: 'execute_chemsmart_command'; arguments: {{ command: string; test?: boolean; timeout_s?: number }}; allowActionId: StableId; denyActionId: StableId }}
+  | {{ kind: 'execution_tool'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; tool: 'execute_chemsmart_command'; arguments: {{ command: string; test?: boolean; timeout_s?: number }}; documentId: StableId; expectedRevision: number; geometryHash: string; engine: 'xtb' | 'gaussian' | 'orca'; method: string; calculationKind: 'single_point' | 'optimization' | 'frequency' | 'transition_state' | 'scan' | 'other'; planId: StableId; commandDigest: string; allowActionId: StableId; denyActionId: StableId }}
 export type StudioPendingApproval = PreviewCommitApproval | CalculationStartApproval | ControlledCalculationStartApproval | ExecutionToolApproval
 export interface TrustedToolActivity {{ activityId: StableId; sequence: number; timestamp: string; kind: 'intent_gate' | 'semantic_gate' | 'tool_call' | 'tool_result' | 'runtime'; status: 'pending' | 'passed' | 'failed' | 'needs_user' | 'denied' | 'completed'; title: string; summary: string; toolName?: string; extensions: Extensions }}
 export type StudioAgentPhase = 'idle' | 'understanding_request' | 'inspecting_molecule' | 'validating_intent' | 'validating_semantics' | 'preparing_preview' | 'awaiting_preview_decision' | 'preparing_calculation' | 'awaiting_calculation_approval' | 'running_calculation' | 'reviewing_trajectory' | 'awaiting_final_geometry_decision' | 'completed' | 'failed' | 'recovering'
@@ -1371,7 +1370,7 @@ class StudioAgentCapabilityManifest(TypedDict):
 
 class StudioAgentComposerIntent(TypedDict):
     intentId: str
-    kind: Literal["inspect", "plan", "dry_run", "review", "history", "new", "context"]
+    kind: Literal["inspect", "plan", "dry_run", "run", "review", "history", "new", "context"]
     capability: Literal["inspect", "plan", "act", "navigation"]
     contextRefs: list[str]
     prompt: NotRequired[str]
@@ -1380,6 +1379,7 @@ class StudioAgentComposerIntent(TypedDict):
 
 class StudioAgentReportResultInput(TypedDict):
     answer: StudioAgentAnswer
+    artifactRefs: NotRequired[list[str]]
     artifacts: list[StudioAgentArtifact]
 
 class StudioAgentTurnPage(TypedDict):
@@ -2032,6 +2032,21 @@ class ExecuteChemsmartCommandApproval(TypedDict):
     risk: Literal["calculation_execution"]
     tool: Literal["execute_chemsmart_command"]
     arguments: ExecuteChemsmartCommandArguments
+    documentId: str
+    expectedRevision: int
+    geometryHash: str
+    engine: Literal["xtb", "gaussian", "orca"]
+    method: str
+    calculationKind: Literal[
+        "single_point",
+        "optimization",
+        "frequency",
+        "transition_state",
+        "scan",
+        "other",
+    ]
+    planId: str
+    commandDigest: str
     allowActionId: str
     denyActionId: str
 
@@ -2374,9 +2389,7 @@ def main() -> int:
     molecule_patch_schema = json.loads(
         (SCHEMAS / "molecule-patch.schema.json").read_text()
     )
-    studio_draft_schema = json.loads(
-        (SCHEMAS / "studio-draft.schema.json").read_text()
-    )
+    studio_draft_schema = json.loads((SCHEMAS / "studio-draft.schema.json").read_text())
     preview_receipt_schema = json.loads(
         (SCHEMAS / "preview-receipt.schema.json").read_text()
     )
@@ -2524,16 +2537,14 @@ def main() -> int:
         studio_molecule_request_schema,
         schema_documents,
     )
-    studio_agent_molecule_request_runtime_schema = bundle_studio_agent_molecule_request_schema(
-        studio_agent_molecule_request_schema,
-        schema_documents,
+    studio_agent_molecule_request_runtime_schema = (
+        bundle_studio_agent_molecule_request_schema(
+            studio_agent_molecule_request_schema,
+            schema_documents,
+        )
     )
     outputs = {
-        ROOT
-        / "packages"
-        / "studio-protocol"
-        / "src"
-        / "generated.ts": typescript(
+        ROOT / "packages" / "studio-protocol" / "src" / "generated.ts": typescript(
             checksum,
             tool,
             manifest_runtime_schema,

@@ -35,10 +35,43 @@
       "required": ["sessionId", "threadId"],
       "type": "object"
     },
+    "materializeMoleculeInputRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" }
+      },
+      "required": ["documentId", "revision", "geometryHash"],
+      "type": "object"
+    },
+    "materializedMoleculeInput": {
+      "additionalProperties": false,
+      "properties": {
+        "basename": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.xyz$",
+          "type": "string"
+        },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "sha256": { "pattern": "^[0-9a-f]{64}$", "type": "string" }
+      },
+      "required": ["basename", "documentId", "revision", "geometryHash", "sha256"],
+      "type": "object"
+    },
     "reportStudioResultInput": {
       "additionalProperties": false,
       "properties": {
         "answer": { "$ref": "#/$defs/studioAgentAnswer" },
+        "artifactRefs": {
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "maxItems": 8,
+          "type": "array",
+          "uniqueItems": true
+        },
         "artifacts": {
           "items": { "$ref": "#/$defs/studioAgentArtifact" },
           "maxItems": 8,
@@ -189,7 +222,7 @@
         },
         "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
         "intentId": { "$ref": "common.schema.json#/$defs/stableId" },
-        "kind": { "enum": ["inspect", "plan", "dry_run", "review", "history", "new", "context"] },
+        "kind": { "enum": ["inspect", "plan", "dry_run", "run", "review", "history", "new", "context"] },
         "prompt": { "$ref": "#/$defs/safeText" },
         "requiresExecutionApproval": { "type": "boolean" }
       },

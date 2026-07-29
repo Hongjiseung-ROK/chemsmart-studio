@@ -269,6 +269,13 @@ export class StudioAgentProjectionService extends BaseService {
       },
       {
         discovery: 'plus',
+        key: 'run_calculation',
+        label: 'Run calculation',
+        description: 'Validate and request exact approval for the current-molecule calculation.',
+        capability: 'act'
+      },
+      {
+        discovery: 'plus',
         key: 'review_decisions',
         label: 'Review decisions',
         description: 'Review trusted decisions for this project.',
@@ -325,6 +332,7 @@ export class StudioAgentProjectionService extends BaseService {
         ['inspect', 'Inspect', 'Inspect the current scientific context.', 'inspect'],
         ['plan', 'Plan', 'Create a calculation plan.', 'plan'],
         ['dry-run', 'Dry-run', 'Validate without executing.', 'plan'],
+        ['run', 'Run', 'Validate and request exact approval before executing.', 'act'],
         ['review', 'Review', 'Review pending and prior decisions.', 'navigation'],
         ['history', 'History', 'Open project thread history.', 'navigation'],
         ['new', 'New', 'Create an independent project thread.', 'navigation']
@@ -333,7 +341,7 @@ export class StudioAgentProjectionService extends BaseService {
         key,
         label,
         description,
-        capability: capability as 'inspect' | 'plan' | 'navigation'
+        capability: capability as 'inspect' | 'plan' | 'act' | 'navigation'
       }))
     ]
     const manifest: StudioAgentCapabilityManifest = {

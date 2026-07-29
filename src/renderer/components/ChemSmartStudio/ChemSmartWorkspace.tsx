@@ -116,17 +116,19 @@ function composerIntent(request: string, manifest: readonly StudioAgentCapabilit
   const kind =
     command?.key === 'dry-run'
       ? 'dry_run'
-      : command?.key === 'plan'
-        ? 'plan'
-        : command?.key === 'review'
-          ? 'review'
-          : command?.key === 'history'
-            ? 'history'
-            : command?.key === 'new'
-              ? 'new'
-              : contextRefs.length > 0
-                ? 'context'
-                : 'inspect'
+      : command?.key === 'run'
+        ? 'run'
+        : command?.key === 'plan'
+          ? 'plan'
+          : command?.key === 'review'
+            ? 'review'
+            : command?.key === 'history'
+              ? 'history'
+              : command?.key === 'new'
+                ? 'new'
+                : contextRefs.length > 0
+                  ? 'context'
+                  : 'inspect'
   return {
     intentId: `intent-${crypto.randomUUID()}`,
     kind,

@@ -26,6 +26,16 @@ const geometryHash = `sha256:${'a'.repeat(64)}`
 const afterHash = `sha256:${'b'.repeat(64)}`
 const sessionId = 'session-1'
 const senderId = 'window-1'
+const commandBinding = {
+  calculationKind: 'single_point' as const,
+  commandDigest: 'd'.repeat(64),
+  documentId: 'molecule-1',
+  engine: 'xtb' as const,
+  expectedRevision: 7,
+  geometryHash: `sha256:${'a'.repeat(64)}`,
+  method: 'GFN2-xTB',
+  planId: 'synthesis-water-sp'
+}
 
 const document: MoleculeDocument = {
   documentId: 'molecule-1',
@@ -201,6 +211,8 @@ describe('StudioControlService trusted controls', () => {
   }
   const windowManager = { onWindowDestroyed: vi.fn() }
   const calculationRuntime = {
+    assertCommandPreflightApproval: vi.fn(),
+    getCommandPreflightForApproval: vi.fn(),
     getPreparedPlanForApproval: vi.fn(),
     getRecoverableFinalDecisions: vi.fn(),
     recoverFinalDecision: vi.fn(),
@@ -309,6 +321,8 @@ describe('StudioControlService trusted controls', () => {
       state: 'validated',
       extensions: {}
     })
+    calculationRuntime.getCommandPreflightForApproval.mockResolvedValue(commandBinding)
+    calculationRuntime.assertCommandPreflightApproval.mockResolvedValue(undefined)
     calculationRuntime.getRecoverableFinalDecisions.mockReturnValue([])
     calculationRuntime.recoverFinalDecision.mockResolvedValue('awaiting')
     calculationRuntime.cancelCalculation.mockResolvedValue({
@@ -586,7 +600,10 @@ describe('StudioControlService trusted controls', () => {
     ]
 
     for (const entry of cases) {
-      const approval = service.requestApproval(executionApproval(entry.tool, entry.arguments, entry.requestId))
+      const approval = service.requestApproval(
+        executionApproval(entry.tool, entry.arguments, entry.requestId),
+        entry.tool === 'execute_chemsmart_command' ? commandBinding : undefined
+      )
       const card = service.getSnapshot(sessionId, senderId).pendingApprovals.at(-1)
 
       expect(card).toMatchObject({
@@ -597,11 +614,54 @@ describe('StudioControlService trusted controls', () => {
         arguments: entry.arguments
       })
       expect(card && JSON.stringify(card)).not.toContain('allow_session')
+      if (entry.tool === 'execute_chemsmart_command') {
+        expect(card).toMatchObject(commandBinding)
+      }
       const denyActionId = card?.kind === 'execution_tool' ? card.denyActionId : ''
       await service.performAction(sessionId, denyActionId, senderId)
       await expect(approval).resolves.toEqual({ decision: 'deny' })
       expect(service.getSnapshot(sessionId, senderId).pendingApprovals).toHaveLength(0)
     }
+  })
+
+  it('requires and consumes the current-molecule command binding exactly once', async () => {
+    service.getSnapshot(sessionId, senderId)
+    const argumentsValue = {
+      command: 'chemsmart run xtb -f water.xyz -c 0 -m 1 -g gfn2 sp',
+      test: false,
+      timeout_s: 3600
+    }
+    const approval = service.requestApproval(
+      executionApproval('execute_chemsmart_command', argumentsValue, 'request-command-bound'),
+      commandBinding
+    )
+    const card = service.getSnapshot(sessionId, senderId).pendingApprovals.at(-1)
+    const allowActionId = card?.kind === 'execution_tool' ? card.allowActionId : ''
+
+    await service.performAction(sessionId, allowActionId, senderId)
+    await expect(approval).resolves.toEqual({ decision: 'allow_once' })
+    expect(calculationRuntime.assertCommandPreflightApproval).toHaveBeenCalledWith(sessionId, commandBinding)
+
+    await expect(service.consumeCommandExecutionGrant(sessionId, argumentsValue)).resolves.toBeUndefined()
+    await expect(service.consumeCommandExecutionGrant(sessionId, argumentsValue)).rejects.toMatchObject({
+      code: -32602,
+      data: { studioCode: 'APPROVAL_REQUIRED' }
+    })
+  })
+
+  it('fails closed when an execute command has no main-owned preflight binding', async () => {
+    service.getSnapshot(sessionId, senderId)
+
+    await expect(
+      service.requestApproval(
+        executionApproval(
+          'execute_chemsmart_command',
+          { command: 'chemsmart run xtb -f water.xyz sp' },
+          'request-command-unbound'
+        )
+      )
+    ).resolves.toEqual({ decision: 'deny' })
+    expect(service.getSnapshot(sessionId, senderId).pendingApprovals).toHaveLength(0)
   })
 
   it('rejects malformed generic execution arguments before creating a card', () => {

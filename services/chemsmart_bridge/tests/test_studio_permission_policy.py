@@ -98,12 +98,12 @@ class StudioPermissionPolicyTest(unittest.TestCase):
 class StudioToolProfileTest(unittest.TestCase):
     """Studio exposes only the bounded tools assigned to each task phase."""
 
-    def phase_tools(self, capability: StudioCapability = StudioCapability.ACT) -> dict[str, tuple[str, ...]]:
+    def phase_tools(
+        self, capability: StudioCapability = StudioCapability.ACT
+    ) -> dict[str, tuple[str, ...]]:
         profile = _studio_agent_tool_profile(capability)
         return {
-            phase.name: profile.tools_for(
-                phase, ProviderRole.CONTROLLER
-            )
+            phase.name: profile.tools_for(phase, ProviderRole.CONTROLLER)
             for phase in TaskPhase
         }
 
@@ -133,10 +133,45 @@ class StudioToolProfileTest(unittest.TestCase):
         # Routing has to be able to tell whether a project exists before choosing a program.
         self.assertIn("read_project_yaml", plan_tools["ROUTE"])
 
+    def test_dry_run_intent_excludes_molecule_execution_planning(self) -> None:
+        profile = _studio_agent_tool_profile(
+            StudioCapability.PLAN,
+            "dry_run",
+        )
+
+        exposed: set[str] = set()
+        for phase in TaskPhase:
+            tools = profile.tools_for(phase, ProviderRole.CONTROLLER)
+            exposed.update(tools)
+            self.assertNotIn("prepare_molecule_optimization", tools)
+            self.assertNotIn("start_prepared_optimization", tools)
+        self.assertIn("synthesize_command", exposed)
+        self.assertIn("report_studio_result", exposed)
+
+    def test_run_intent_exposes_only_the_receipt_bound_command_path(self) -> None:
+        profile = _studio_agent_tool_profile(
+            StudioCapability.ACT,
+            "run",
+        )
+
+        exposed: set[str] = set()
+        for phase in TaskPhase:
+            tools = profile.tools_for(phase, ProviderRole.CONTROLLER)
+            exposed.update(tools)
+            self.assertLessEqual(len(tools), 10)
+            self.assertNotIn("run_local", tools)
+            self.assertNotIn("submit_hpc", tools)
+            self.assertNotIn("start_prepared_optimization", tools)
+        self.assertIn("execute_chemsmart_command", exposed)
+
     def test_project_yaml_generation_and_writes_are_not_model_reachable(self) -> None:
         tools = self.phase_tools()
 
-        for tool in ("render_project_yaml", "write_project_yaml", "update_project_yaml"):
+        for tool in (
+            "render_project_yaml",
+            "write_project_yaml",
+            "update_project_yaml",
+        ):
             for phase_tools in tools.values():
                 self.assertNotIn(tool, phase_tools)
             self.assertNotIn(tool, SAFE_STUDIO_TOOLS)
@@ -152,7 +187,9 @@ class StudioToolProfileTest(unittest.TestCase):
         self.assertIn("start_prepared_optimization", tools["EXECUTION"])
         self.assertIn("compare_optimization_frames", tools["DIAGNOSTICS"])
 
-    def test_execution_phase_exposes_only_the_three_generic_execution_tools(self) -> None:
+    def test_execution_phase_exposes_only_the_three_generic_execution_tools(
+        self,
+    ) -> None:
         tools = self.phase_tools()["EXECUTION"]
 
         for name in ("run_local", "submit_hpc", "execute_chemsmart_command"):
@@ -176,7 +213,9 @@ def tool_request(name: str, **arguments: object) -> ToolRequest:
 class StudioApprovalSurfaceTest(unittest.TestCase):
     """Which tools Studio can actually decide about, and what happens to the rest."""
 
-    def test_project_yaml_writers_are_refused_without_a_revision_bound_surface(self) -> None:
+    def test_project_yaml_writers_are_refused_without_a_revision_bound_surface(
+        self,
+    ) -> None:
         # Studio does not expose these tools to the model. Defense in depth still rejects a forged request
         # until a revision-bound project preview and trusted approval surface exist.
         for name in ("write_project_yaml", "update_project_yaml"):
@@ -226,6 +265,21 @@ class StudioApprovalSurfaceTest(unittest.TestCase):
                     ),
                     arguments,
                 )
+
+        self.assertEqual(
+            StudioAgentRuntime._normalized_approval_arguments(
+                registry,
+                tool_request(
+                    "execute_chemsmart_command",
+                    command="chemsmart run xtb -f water.xyz sp",
+                ),
+            ),
+            {
+                "command": "chemsmart run xtb -f water.xyz sp",
+                "test": False,
+                "timeout_s": 3600,
+            },
+        )
 
         malformed = (
             ("run_local", {"job": "not-a-handle"}),

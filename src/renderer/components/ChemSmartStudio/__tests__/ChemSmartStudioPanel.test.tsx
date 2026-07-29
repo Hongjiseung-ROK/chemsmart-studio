@@ -306,6 +306,14 @@ function executionControlSnapshot(sessionId = 'topic-a'): StudioControlSnapshot 
           test: true,
           timeout_s: 30
         },
+        calculationKind: 'single_point',
+        commandDigest: 'd'.repeat(64),
+        documentId: 'water',
+        engine: 'gaussian',
+        expectedRevision: 2,
+        geometryHash: `sha256:${'c'.repeat(64)}`,
+        method: 'B3LYP/6-31G(d)',
+        planId: 'synthesis-water-sp',
         allowActionId: 'action-execute-once',
         denyActionId: 'action-deny-execution'
       }

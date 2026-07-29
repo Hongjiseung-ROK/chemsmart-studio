@@ -28,6 +28,7 @@ import {
   type ProjectWorkspaceValidateRequest,
   type ProjectWorkspaceValidateResult,
   type StudioAgentAnswer,
+  type StudioAgentArtifact,
   type StudioAgentComposerIntent,
   type StudioAgentReportResultInput,
   type StudioAgentTraceEvent,
@@ -47,6 +48,7 @@ import type { ChemSmartStudioProcessStatus } from '@shared/ipc/schemas/chemsmart
 import type { WindowId } from '@shared/ipc/types'
 import { app } from 'electron'
 
+import { moleculeGeometryHash } from './ControlledCalculationIdentity'
 import {
   controlledCalculationTestModelId,
   controlledCalculationTestModelResponse,
@@ -124,6 +126,18 @@ const studioAgentReportResultValidator = definitionValidator<StudioAgentReportRe
   studioAgentWorkbenchRuntimeSchema,
   'reportStudioResultInput'
 )
+const studioAgentArtifactValidator = definitionValidator<StudioAgentArtifact>(
+  studioAgentWorkbenchRuntimeSchema,
+  'studioAgentArtifact'
+)
+const materializeMoleculeInputRequestValidator = definitionValidator<Record<string, unknown>>(
+  studioAgentWorkbenchRuntimeSchema,
+  'materializeMoleculeInputRequest'
+)
+const materializedMoleculeInputValidator = definitionValidator<Record<string, unknown>>(
+  studioAgentWorkbenchRuntimeSchema,
+  'materializedMoleculeInput'
+)
 
 /** Project reads are local, but retain the existing bounded sidecar envelope. */
 const PROJECT_WORKSPACE_TIMEOUT_MS = 120_000
@@ -146,11 +160,20 @@ type ActiveModelOperation = {
   cancelled: boolean
   cancellationReason: 'stop' | 'steer' | null
   kind: 'agent_turn' | 'command_synthesis'
+  materializedInput: MaterializedMoleculeInputBinding | null
   modelId: UniqueModelId
   operationId: string
   resultReported: boolean
   terminalized: boolean
   turnId: string | null
+}
+
+type MaterializedMoleculeInputBinding = {
+  basename: string
+  documentId: string
+  geometryHash: string
+  revision: number
+  sha256: string
 }
 
 interface ImportCapability {
@@ -414,6 +437,7 @@ export class ChemSmartAgentService extends BaseService {
       cancelled: false,
       cancellationReason: null,
       kind: 'agent_turn',
+      materializedInput: null,
       modelId,
       operationId: randomUUID(),
       resultReported: false,
@@ -426,7 +450,14 @@ export class ChemSmartAgentService extends BaseService {
       if (!this.process || this.process.getStatus().state !== 'running') await this.startAgent()
       const rawResult = await this.process!.request(
         'agent.run_turn',
-        { sessionId, modelId, operationId: turnToken.operationId, request, capability },
+        {
+          sessionId,
+          modelId,
+          operationId: turnToken.operationId,
+          request,
+          capability,
+          intentKind: intent?.kind ?? 'inspect'
+        },
         15 * 60 * 1000
       )
       if (turnToken.cancelled) {
@@ -589,6 +620,7 @@ export class ChemSmartAgentService extends BaseService {
       cancelled: false,
       cancellationReason: null,
       kind: 'command_synthesis',
+      materializedInput: null,
       modelId: request.modelId as UniqueModelId,
       operationId: randomUUID(),
       resultReported: false,
@@ -696,6 +728,8 @@ export class ChemSmartAgentService extends BaseService {
         return this.generateModel(params)
       case 'approval.request':
         return this.requestApproval(this.authorizedCallbackPayload(params, 'agent_turn'))
+      case 'approval.consume':
+        return this.consumeCommandApproval(params)
       case 'molecule.request':
         return this.forwardMoleculeRequest(this.authorizedCallbackPayload(params, 'agent_turn'))
       case 'calculation.request':
@@ -707,6 +741,10 @@ export class ChemSmartAgentService extends BaseService {
         return { accepted: true }
       case 'agent.report_result':
         return this.reportStudioResult(params)
+      case 'agent.register_preflight':
+        return this.registerCommandPreflight(params)
+      case 'agent.materialize_input':
+        return this.materializeCurrentMoleculeInput(params)
       case 'agent.trace': {
         const value = this.objectParams(params)
         const operation = this.authorizedOperation(value, 'agent_turn')
@@ -742,12 +780,16 @@ export class ChemSmartAgentService extends BaseService {
     const result = value.arguments as StudioAgentReportResultInput
     const sessionId = value.sessionId as string
     const calculation = application.get('CalculationRuntimeService')
-    for (const artifact of result.artifacts) {
+    const artifacts = [...result.artifacts]
+    for (const reference of result.artifactRefs ?? []) {
+      artifacts.push(await calculation.resolveCommandPreflight(sessionId, reference))
+    }
+    for (const artifact of artifacts) {
       await calculation.verifyReportedAgentArtifact(sessionId, artifact)
     }
 
     const projection = application.get('StudioAgentProjectionService')
-    for (const artifact of result.artifacts) {
+    for (const artifact of artifacts) {
       await projection.appendTurnEvent(sessionId, operation.turnId, {
         kind: 'artifact_published',
         status: 'succeeded',
@@ -763,6 +805,91 @@ export class ChemSmartAgentService extends BaseService {
     })
     operation.resultReported = true
     return { accepted: true }
+  }
+
+  private async registerCommandPreflight(params: unknown): Promise<{ accepted: true }> {
+    const value = this.objectParams(params)
+    const operation = this.authorizedOperation(value, 'agent_turn')
+    if (!operation.turnId || (operation.capability !== 'plan' && operation.capability !== 'act')) {
+      throw new JsonRpcFault(-32003, 'Command preflight is not bound to a planning Agent turn')
+    }
+    const synthesisValidation = commandSynthesisResultValidator(value.synthesis)
+    const artifactValidation = studioAgentArtifactValidator(value.artifact)
+    if (
+      !synthesisValidation.valid ||
+      !artifactValidation.valid ||
+      containsAbsoluteFilesystemPath(value.synthesis) ||
+      containsAbsoluteFilesystemPath(value.artifact)
+    ) {
+      throw new JsonRpcFault(-32602, 'Command preflight is schema-invalid or contains a filesystem path')
+    }
+    const synthesis = value.synthesis as CommandSynthesisResult
+    const artifact = value.artifact as StudioAgentArtifact
+    const materialized = operation.materializedInput
+    const extension = artifact.extensions['chemsmart.preflight']
+    if (
+      !materialized ||
+      synthesis.sessionId !== value.sessionId ||
+      synthesis.status !== 'ready' ||
+      synthesis.executionPerformed ||
+      !synthesis.approvalRequiredForExecution ||
+      synthesis.commandDigest === null ||
+      synthesis.commandDigest !== sha256(synthesis.command) ||
+      artifact.kind !== 'preflight_receipt' ||
+      artifact.planId !== synthesis.synthesisId ||
+      artifact.verdict !== 'passed' ||
+      artifact.documentId !== materialized.documentId ||
+      artifact.revision !== materialized.revision ||
+      artifact.geometryHash !== materialized.geometryHash ||
+      extension?.inputBasename !== materialized.basename ||
+      extension?.inputDigest !== materialized.sha256
+    ) {
+      throw new JsonRpcFault(-32602, 'Command preflight does not match a trusted non-executing synthesis')
+    }
+    await application
+      .get('CalculationRuntimeService')
+      .registerCommandPreflight(value.sessionId as string, synthesis, artifact)
+    return { accepted: true }
+  }
+
+  private async materializeCurrentMoleculeInput(params: unknown): Promise<Record<string, unknown>> {
+    const value = this.objectParams(params)
+    const operation = this.authorizedOperation(value, 'agent_turn')
+    if (!operation.turnId || (operation.capability !== 'plan' && operation.capability !== 'act')) {
+      throw new JsonRpcFault(-32003, 'Molecule input materialization requires a planning Agent turn')
+    }
+    const validation = materializeMoleculeInputRequestValidator(value.input)
+    if (!validation.valid || containsAbsoluteFilesystemPath(value.input)) {
+      throw new JsonRpcFault(-32602, 'Molecule input materialization request is schema-invalid')
+    }
+    const input = value.input as { documentId: string; geometryHash: string; revision: number }
+    const workspace = application.get('MoleculeWorkspaceService')
+    const committed = await workspace.getMoleculeDocument()
+    const draft = workspace.getMoleculeDraft()
+    const document = draft?.dirty ? draft.document : committed
+    const revision = draft?.dirty ? draft.baseRevision : committed.revision
+    if (
+      input.documentId !== document.documentId ||
+      input.revision !== revision ||
+      input.geometryHash !== moleculeGeometryHash(document)
+    ) {
+      throw new JsonRpcFault(-32003, 'Molecule input materialization binding is stale')
+    }
+    const materialized = await application
+      .get('MoleculeProjectStore')
+      .materializeCommandInput(document, input.geometryHash)
+    const result: MaterializedMoleculeInputBinding = {
+      basename: materialized.basename,
+      documentId: document.documentId,
+      revision,
+      geometryHash: input.geometryHash,
+      sha256: materialized.sha256
+    }
+    if (!materializedMoleculeInputValidator(result).valid || containsAbsoluteFilesystemPath(result)) {
+      throw new JsonRpcFault(-32603, 'Molecule input materialization returned an invalid public binding')
+    }
+    operation.materializedInput = result
+    return result
   }
 
   private async appendProjectionTrace(
@@ -976,8 +1103,33 @@ export class ChemSmartAgentService extends BaseService {
     })
   }
 
-  private requestApproval(params: unknown): Promise<{ decision: 'allow_once' | 'deny' }> {
-    return application.get('StudioControlService').requestApproval(params)
+  private async requestApproval(params: unknown): Promise<{ decision: 'allow_once' | 'deny' }> {
+    const value = this.objectParams(params)
+    const argumentsValue =
+      value.arguments !== null && typeof value.arguments === 'object'
+        ? (value.arguments as Record<string, unknown>)
+        : null
+    const commandBinding =
+      value.tool === 'execute_chemsmart_command' && typeof argumentsValue?.command === 'string'
+        ? await application
+            .get('CalculationRuntimeService')
+            .getCommandPreflightForApproval(value.sessionId as string, argumentsValue.command)
+        : undefined
+    return commandBinding
+      ? application.get('StudioControlService').requestApproval(params, commandBinding)
+      : application.get('StudioControlService').requestApproval(params)
+  }
+
+  private async consumeCommandApproval(params: unknown): Promise<{ accepted: true }> {
+    const value = this.objectParams(params)
+    const operation = this.authorizedOperation(value, 'agent_turn')
+    if (!operation.turnId || operation.capability !== 'act' || value.tool !== 'execute_chemsmart_command') {
+      throw new JsonRpcFault(-32003, 'Command execution is not bound to an active act turn')
+    }
+    await application
+      .get('StudioControlService')
+      .consumeCommandExecutionGrant(value.sessionId as string, value.arguments)
+    return { accepted: true }
   }
 
   private forwardMoleculeRequest(params: unknown): Promise<unknown> {

@@ -15,6 +15,8 @@ from chemsmart_studio_bridge.rpc import RpcFault
 from chemsmart_studio_bridge.runtime import (
     CherryModelProvider,
     StudioAgentRuntime,
+    _attach_registered_preflight_refs,
+    _studio_preflight_artifact,
 )
 
 OPERATION_ID = "01234567-89ab-4def-8123-456789abcdef"
@@ -31,6 +33,84 @@ class RecordingPeer:
 
 
 class HostProviderBoundaryTest(unittest.TestCase):
+    def test_registered_preflight_is_attached_to_the_matching_turn_result(
+        self,
+    ) -> None:
+        result = _attach_registered_preflight_refs(
+            {
+                "answer": {"heading": "Ready", "summary": "Validated.", "sections": []},
+                "artifacts": [],
+            },
+            [
+                ("operation-old", "synthesis-old"),
+                (OPERATION_ID, "synthesis-water-sp"),
+            ],
+            OPERATION_ID,
+        )
+
+        self.assertEqual(result["artifactRefs"], ["synthesis-water-sp"])
+
+    def test_xtb_preflight_artifact_binds_parser_evidence_without_project_yaml(
+        self,
+    ) -> None:
+        command_digest = "1" * 64
+        synthesis = {
+            "synthesisId": "synthesis-water-sp",
+            "commandDigest": command_digest,
+            "intent": {"failedRuleIds": []},
+            "semantic": {"failedRuleIds": []},
+        }
+        payload = {
+            "preflight": {
+                "schema_version": "chemsmart.command-preflight.v1",
+                "normalized_spec": {
+                    "program": "xtb",
+                    "kind": "xtb.sp",
+                    "chemistry": {"gfn_version": "gfn2"},
+                },
+            }
+        }
+        analysis = {
+            "binding": {
+                "state": "committed",
+                "documentId": "molecule-1",
+                "revision": 2,
+                "geometryHash": f"sha256:{'2' * 64}",
+            },
+            "charge": 0,
+            "multiplicity": 1,
+        }
+        materialized_input = {
+            "basename": "chemsmart-input-2222222222222222.xyz",
+            "documentId": "molecule-1",
+            "revision": 2,
+            "geometryHash": f"sha256:{'2' * 64}",
+            "sha256": "3" * 64,
+        }
+
+        artifact = _studio_preflight_artifact(
+            synthesis,
+            payload,
+            analysis,
+            materialized_input,
+        )
+
+        self.assertEqual(artifact["engine"], "xtb")
+        self.assertEqual(artifact["method"], "GFN2-xTB")
+        self.assertEqual(artifact["calculationKind"], "single_point")
+        self.assertEqual(artifact["planId"], "synthesis-water-sp")
+        self.assertFalse(
+            artifact["extensions"]["chemsmart.preflight"]["projectRequired"]
+        )
+        self.assertEqual(
+            artifact["extensions"]["chemsmart.preflight"]["inputBasename"],
+            materialized_input["basename"],
+        )
+        self.assertEqual(
+            artifact["extensions"]["chemsmart.preflight"]["inputDigest"],
+            materialized_input["sha256"],
+        )
+
     def test_provider_callback_carries_the_authorized_studio_session(self) -> None:
         peer = RecordingPeer()
         provider = CherryModelProvider(

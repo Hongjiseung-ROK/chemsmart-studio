@@ -196,7 +196,11 @@ def _replay_timeline(project_root: Path, params: dict[str, Any]) -> dict[str, An
     run_id = params.get("runId")
     offset = params.get("offset", 0)
     limit = params.get("limit", 100)
-    if not isinstance(run_id, str) or not isinstance(offset, int) or not isinstance(limit, int):
+    if (
+        not isinstance(run_id, str)
+        or not isinstance(offset, int)
+        or not isinstance(limit, int)
+    ):
         raise LedgerError("Optimization replay timeline query is invalid")
     if offset < 0 or not 1 <= limit <= 500:
         raise LedgerError("Optimization replay timeline query is invalid")
@@ -207,8 +211,7 @@ def _replay_timeline(project_root: Path, params: dict[str, Any]) -> dict[str, An
         "limit": limit,
         "totalFrames": ledger.frame_count,
         "frames": [
-            _frame_summary(frame)
-            for frame in ledger.frames[offset : offset + limit]
+            _frame_summary(frame) for frame in ledger.frames[offset : offset + limit]
         ],
         "extensions": {},
     }
@@ -556,14 +559,55 @@ _STUDIO_ACT_DIRECT = (
     "get_optimization_status",
     "report_studio_result",
 )
+_STUDIO_COMPOSER_INTENTS = frozenset(
+    {"inspect", "plan", "dry_run", "run", "review", "history", "new", "context"}
+)
+_STUDIO_DRY_RUN_TOOLS = (
+    "get_studio_context",
+    "analyze_current_molecule",
+    "recommend_method",
+    "synthesize_command",
+    "repair_command",
+    "report_studio_result",
+)
+_STUDIO_RUN_TOOLS = (
+    "get_studio_context",
+    "analyze_current_molecule",
+    "recommend_method",
+    "synthesize_command",
+    "repair_command",
+    "execute_chemsmart_command",
+    "report_studio_result",
+)
 
 
-def _studio_agent_tool_profile(capability: StudioCapability) -> PhaseToolProfile:
+def _studio_agent_tool_profile(
+    capability: StudioCapability,
+    intent_kind: str | None = None,
+) -> PhaseToolProfile:
+    if intent_kind == "dry_run":
+        return PhaseToolProfile(
+            {phase: _STUDIO_DRY_RUN_TOOLS for phase in _STUDIO_PHASE_TOOLS},
+            specialist_tools=(
+                "recommend_method",
+                "synthesize_command",
+                "repair_command",
+                "report_studio_result",
+            ),
+        )
+    if intent_kind == "run":
+        return PhaseToolProfile(
+            {phase: _STUDIO_RUN_TOOLS for phase in _STUDIO_PHASE_TOOLS},
+            specialist_tools=(
+                "recommend_method",
+                "synthesize_command",
+                "repair_command",
+                "execute_chemsmart_command",
+                "report_studio_result",
+            ),
+        )
     if capability is StudioCapability.INSPECT:
-        phase_tools = {
-            phase: _STUDIO_INSPECT_DIRECT
-            for phase in _STUDIO_PHASE_TOOLS
-        }
+        phase_tools = {phase: _STUDIO_INSPECT_DIRECT for phase in _STUDIO_PHASE_TOOLS}
     elif capability is StudioCapability.PLAN:
         phase_tools = {}
         for phase, tools in _STUDIO_PHASE_TOOLS.items():
@@ -586,21 +630,13 @@ def _studio_agent_tool_profile(capability: StudioCapability) -> PhaseToolProfile
     else:
         phase_tools = {}
         for phase, tools in _STUDIO_PHASE_TOOLS.items():
-            actions = tuple(
-                tool
-                for tool in tools
-                if tool not in _STUDIO_ACT_DIRECT
-            )
+            actions = tuple(tool for tool in tools if tool not in _STUDIO_ACT_DIRECT)
             phase_tools[phase] = (
                 *_STUDIO_ACT_DIRECT[:-1],
                 *actions[: 10 - len(_STUDIO_ACT_DIRECT)],
                 _STUDIO_ACT_DIRECT[-1],
             )
-    allowed = frozenset(
-        tool
-        for tools in phase_tools.values()
-        for tool in tools
-    )
+    allowed = frozenset(tool for tools in phase_tools.values() for tool in tools)
     return PhaseToolProfile(
         phase_tools,
         specialist_tools=tuple(
@@ -653,6 +689,14 @@ _COMMAND_SYNTHESIS_REQUEST_VALIDATOR = _definition_validator(
 _COMMAND_SYNTHESIS_RESULT_VALIDATOR = _definition_validator(
     COMMAND_SYNTHESIS_RUNTIME_SCHEMA,
     "result",
+)
+_MATERIALIZE_MOLECULE_INPUT_REQUEST_VALIDATOR = _definition_validator(
+    STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA,
+    "materializeMoleculeInputRequest",
+)
+_MATERIALIZED_MOLECULE_INPUT_VALIDATOR = _definition_validator(
+    STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA,
+    "materializedMoleculeInput",
 )
 _CALCULATION_START_PROPERTIES = STUDIO_CONTROL_RUNTIME_SCHEMA["$defs"][
     "calculationStartApproval"
@@ -712,9 +756,9 @@ _STUDIO_EXECUTION_APPROVAL_DEFINITIONS = {
 }
 _STUDIO_EXECUTION_INPUT_SCHEMAS = {
     tool: deepcopy(
-        STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA["$defs"][definition][
-            "properties"
-        ]["arguments"]
+        STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA["$defs"][definition]["properties"][
+            "arguments"
+        ]
     )
     for tool, definition in _STUDIO_EXECUTION_APPROVAL_DEFINITIONS.items()
 }
@@ -731,14 +775,14 @@ _STUDIO_COMMIT_INPUT_SCHEMA = deepcopy(
     ]["arguments"]
 )
 _STUDIO_COMMIT_INPUT_SCHEMA["properties"]["expected_revision"] = deepcopy(
-    STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA["$defs"][
-        "bundled_common_schema_json"
-    ]["$defs"]["revision"]
+    STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA["$defs"]["bundled_common_schema_json"][
+        "$defs"
+    ]["revision"]
 )
 _STUDIO_COMMIT_INPUT_SCHEMA["properties"]["preview_id"] = deepcopy(
-    STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA["$defs"][
-        "bundled_common_schema_json"
-    ]["$defs"]["stableId"]
+    STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA["$defs"]["bundled_common_schema_json"][
+        "$defs"
+    ]["stableId"]
 )
 _STUDIO_APPROVAL_ARGUMENT_VALIDATORS = {
     tool: Draft202012Validator(schema)
@@ -808,10 +852,14 @@ class _StudioApprovalGrantAdapter:
         tool_name: str,
         arguments: dict[str, Any],
     ) -> None:
+        normalized = dict(arguments)
+        if tool_name == "execute_chemsmart_command":
+            normalized.setdefault("test", False)
+            normalized.setdefault("timeout_s", 3600)
         self._runtime._consume_studio_grant(
             self._session_id,
             tool_name,
-            arguments,
+            normalized,
         )
 
 
@@ -1008,7 +1056,9 @@ def _public_synthesis_result(
         raw_command
         and "/" not in raw_command
         and "\\" not in raw_command
-        and all(ord(character) >= 32 and ord(character) != 127 for character in raw_command)
+        and all(
+            ord(character) >= 32 and ord(character) != 127 for character in raw_command
+        )
     )
     command = raw_command if command_is_public else ""
 
@@ -1093,6 +1143,120 @@ def _public_synthesis_result(
     }
 
 
+def _studio_preflight_artifact(
+    synthesis: dict[str, Any],
+    payload: dict[str, Any],
+    analysis: dict[str, Any],
+    materialized_input: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind one parser-owned command receipt to the visible Studio molecule."""
+
+    preflight = payload.get("preflight")
+    if not isinstance(preflight, dict):
+        raise RpcFault(-32603, "Command synthesis omitted its preflight receipt")
+    normalized_spec = preflight.get("normalized_spec")
+    if not isinstance(normalized_spec, dict):
+        raise RpcFault(-32603, "Command synthesis omitted its normalized SPEC")
+    binding = analysis.get("binding")
+    if not isinstance(binding, dict):
+        raise RpcFault(-32603, "Current molecule analysis omitted its binding")
+
+    engine = normalized_spec.get("program")
+    raw_kind = str(normalized_spec.get("kind") or "")
+    calculation_kind = {
+        "xtb.sp": "single_point",
+        "xtb.opt": "optimization",
+        "xtb.hess": "frequency",
+    }.get(raw_kind, "other")
+    chemistry = normalized_spec.get("chemistry")
+    chemistry = chemistry if isinstance(chemistry, dict) else {}
+    if engine == "xtb":
+        gfn_version = str(chemistry.get("gfn_version") or "gfn2").lower()
+        method = {
+            "gfn0": "GFN0-xTB",
+            "gfn1": "GFN1-xTB",
+            "gfn2": "GFN2-xTB",
+            "gfnff": "GFN-FF",
+        }.get(gfn_version)
+    else:
+        method = chemistry.get("functional") or chemistry.get("ab_initio")
+        basis = chemistry.get("basis")
+        if isinstance(method, str) and isinstance(basis, str):
+            method = f"{method}/{basis}"
+    if engine not in {"xtb", "gaussian", "orca"} or not isinstance(method, str):
+        raise RpcFault(-32603, "Command preflight has no supported scientific method")
+
+    state = binding.get("state")
+    if state == "draft":
+        revision = binding.get("baseRevision")
+    elif state == "committed":
+        revision = binding.get("revision")
+    else:
+        raise RpcFault(-32603, "Command preflight is not bound to an editable molecule")
+    synthesis_id = synthesis["synthesisId"]
+    command_digest = synthesis["commandDigest"]
+    rule_ids = sorted(
+        {
+            *synthesis["intent"]["failedRuleIds"],
+            *synthesis["semantic"]["failedRuleIds"],
+        }
+    )
+    return {
+        "artifactId": f"preflight-{synthesis_id}",
+        "kind": "preflight_receipt",
+        "heading": f"{method} {calculation_kind.replace('_', ' ')} preflight",
+        "summary": (
+            "The real ChemSmart parser accepted this command without starting "
+            "a calculation process."
+        ),
+        "documentId": binding["documentId"],
+        "revision": revision,
+        "geometryHash": binding["geometryHash"],
+        "charge": analysis["charge"],
+        "multiplicity": analysis["multiplicity"],
+        "engine": engine,
+        "method": method,
+        "calculationKind": calculation_kind,
+        "planId": synthesis_id,
+        "ruleIds": rule_ids,
+        "verdict": "passed",
+        "extensions": {
+            "chemsmart.preflight": {
+                "schemaVersion": preflight.get("schema_version"),
+                "commandDigest": command_digest,
+                "synthesisId": synthesis_id,
+                "executionPerformed": False,
+                "approvalRequiredForExecution": True,
+                "projectRequired": engine != "xtb",
+                "inputBasename": materialized_input["basename"],
+                "inputDigest": materialized_input["sha256"],
+            }
+        },
+    }
+
+
+def _attach_registered_preflight_refs(
+    arguments: dict[str, Any],
+    registered_refs: list[tuple[str, str]],
+    operation_id: str,
+) -> dict[str, Any]:
+    """Publish parser-owned receipts even when the model omits their opaque refs."""
+
+    result = dict(arguments)
+    existing = result.get("artifactRefs")
+    refs = list(existing) if isinstance(existing, list) else []
+    for registered_operation_id, reference in registered_refs:
+        if (
+            registered_operation_id == operation_id
+            and reference not in refs
+            and len(refs) < 8
+        ):
+            refs.append(reference)
+    if refs:
+        result["artifactRefs"] = refs
+    return result
+
+
 class StudioAgentRuntime:
     def __init__(self, session_root: Path, project_root: Path | None = None) -> None:
         self._peer: JsonRpcPeer | None = None
@@ -1109,9 +1273,7 @@ class StudioAgentRuntime:
         self._command_sessions: dict[str, CommandSynthesisSession] = {}
         self._studio_ui_emitters: dict[str, StudioUiEventEmitter] = {}
         self._trace_tool_call_ids: dict[tuple[str, str], list[str]] = {}
-        self._studio_approval_grants: set[
-            tuple[str, str | None, str, str]
-        ] = set()
+        self._studio_approval_grants: set[tuple[str, str | None, str, str]] = set()
         self._active_operation_ids: dict[str, str] = {}
         self._command_inspection = CommandInspectionAdapter(session_root)
 
@@ -1130,9 +1292,7 @@ class StudioAgentRuntime:
             session_id = self._required_string(params, "sessionId")
             with self._session_lock(session_id):
                 with self._state_lock:
-                    session_closed = (
-                        self._sessions.pop(session_id, None) is not None
-                    )
+                    session_closed = self._sessions.pop(session_id, None) is not None
                     self._providers.pop(session_id, None)
                     self._command_sessions.pop(session_id, None)
                     self._active_operation_ids.pop(session_id, None)
@@ -1181,9 +1341,13 @@ class StudioAgentRuntime:
                 raise LedgerError(f"{method} response is schema-invalid")
             return result
         except RunNotFound as error:
-            raise RpcFault(-32004, str(error), {"studioCode": error.studio_code}) from error
+            raise RpcFault(
+                -32004, str(error), {"studioCode": error.studio_code}
+            ) from error
         except LedgerError as error:
-            raise RpcFault(-32602, str(error), {"studioCode": error.studio_code}) from error
+            raise RpcFault(
+                -32602, str(error), {"studioCode": error.studio_code}
+            ) from error
 
     @staticmethod
     def _project_request(method: str, params: Any) -> dict[str, Any]:
@@ -1235,7 +1399,11 @@ class StudioAgentRuntime:
         session_id = self._required_string(params, "sessionId")
         model_id = self._required_string(params, "modelId")
         request = self._required_string(params, "request")
-        capability_value = params.get("capability", "inspect") if isinstance(params, dict) else "inspect"
+        capability_value = (
+            params.get("capability", "inspect")
+            if isinstance(params, dict)
+            else "inspect"
+        )
         if not isinstance(capability_value, str) or not capability_value.strip():
             raise RpcFault(-32602, "Agent capability is invalid")
         try:
@@ -1245,7 +1413,13 @@ class StudioAgentRuntime:
                 -32602,
                 "Agent capability is invalid",
             ) from error
-        tool_profile = _studio_agent_tool_profile(capability)
+        intent_kind = params.get("intentKind", "inspect")
+        if (
+            not isinstance(intent_kind, str)
+            or intent_kind not in _STUDIO_COMPOSER_INTENTS
+        ):
+            raise RpcFault(-32602, "Agent composer intent is invalid")
+        tool_profile = _studio_agent_tool_profile(capability, intent_kind)
         with self._session_lock(session_id):
             with self._operation_scope(session_id, operation_id):
                 provider, command_session = self._provider_and_command_session(
@@ -1282,9 +1456,7 @@ class StudioAgentRuntime:
                         "tool_profile": tool_profile,
                         "training_capture": "disabled",
                     }
-                    persisted_session_id = self._read_agent_session_binding(
-                        session_id
-                    )
+                    persisted_session_id = self._read_agent_session_binding(session_id)
                     session = (
                         AgentSession.load(persisted_session_id, **session_options)
                         if persisted_session_id is not None
@@ -1293,10 +1465,20 @@ class StudioAgentRuntime:
                     self._sessions[session_id] = session
                 session.bind_provider(provider)
                 session.bind_tool_profile(tool_profile)
+                turn_request = request
+                if intent_kind == "run":
+                    turn_request = (
+                        f"{request}\n\n"
+                        "Studio act intent: after deterministic command synthesis "
+                        "returns a ready command, call execute_chemsmart_command "
+                        "with that exact command. Do not finish with a preflight-only "
+                        "answer. The trusted host will request one-shot approval and "
+                        "revalidate the current molecule before starting a process."
+                    )
 
                 try:
                     raw_result = session.run_loop(
-                        request,
+                        turn_request,
                         policy=studio_permission_policy(),
                         approver=lambda tool_request: self._approve(
                             session_id,
@@ -1464,9 +1646,7 @@ class StudioAgentRuntime:
         tool = registry.get_tool(request.name)
         if tool is None:
             return None
-        approval_validator = _STUDIO_APPROVAL_ARGUMENT_VALIDATORS.get(
-            request.name
-        )
+        approval_validator = _STUDIO_APPROVAL_ARGUMENT_VALIDATORS.get(request.name)
         if approval_validator is not None:
             if not approval_validator.is_valid(request.arguments):
                 return None
@@ -1489,6 +1669,9 @@ class StudioAgentRuntime:
             arguments = validated.model_dump(mode="json")
         if not isinstance(arguments, dict):
             return None
+        if request.name == "execute_chemsmart_command":
+            arguments.setdefault("test", False)
+            arguments.setdefault("timeout_s", 3600)
         for key in (
             "preview_id",
             "engine",
@@ -1603,12 +1786,20 @@ class StudioAgentRuntime:
         arguments: dict[str, Any],
     ) -> Any:
         assert self._peer is not None
-        if not Draft202012Validator(
-            _REPORT_STUDIO_RESULT_INPUT_SCHEMA
-        ).is_valid(arguments):
+        validator = Draft202012Validator(_REPORT_STUDIO_RESULT_INPUT_SCHEMA)
+        errors = sorted(
+            validator.iter_errors(arguments),
+            key=lambda error: tuple(str(item) for item in error.absolute_path),
+        )
+        if errors:
+            issues = []
+            for error in errors[:8]:
+                location = ".".join(str(item) for item in error.absolute_path) or "$"
+                issues.append(f"{location}:{error.validator}")
             raise RpcFault(
                 -32602,
-                "report_studio_result arguments are schema-invalid",
+                "report_studio_result arguments are schema-invalid at "
+                + ", ".join(issues),
             )
         return self._peer.request(
             "agent.report_result",
@@ -1620,6 +1811,74 @@ class StudioAgentRuntime:
                 },
             ),
         )
+
+    def _register_command_preflight(
+        self,
+        session_id: str,
+        synthesis: dict[str, Any],
+        artifact: dict[str, Any],
+    ) -> Any:
+        assert self._peer is not None
+        return self._peer.request(
+            "agent.register_preflight",
+            self._operation_callback(
+                session_id,
+                {
+                    "sessionId": session_id,
+                    "synthesis": synthesis,
+                    "artifact": artifact,
+                },
+            ),
+        )
+
+    def _materialize_current_molecule_input(
+        self,
+        session_id: str,
+        analysis: dict[str, Any],
+    ) -> dict[str, Any]:
+        assert self._peer is not None
+        binding = analysis.get("binding")
+        if not isinstance(binding, dict):
+            raise RpcFault(-32603, "Current molecule analysis omitted its binding")
+        state = binding.get("state")
+        revision = (
+            binding.get("baseRevision")
+            if state == "draft"
+            else binding.get("revision")
+            if state == "committed"
+            else None
+        )
+        request = {
+            "documentId": binding.get("documentId"),
+            "revision": revision,
+            "geometryHash": binding.get("geometryHash"),
+        }
+        if not _MATERIALIZE_MOLECULE_INPUT_REQUEST_VALIDATOR.is_valid(request):
+            raise RpcFault(
+                -32603,
+                "Current molecule analysis cannot be materialized safely",
+            )
+        result = self._peer.request(
+            "agent.materialize_input",
+            self._operation_callback(
+                session_id,
+                {
+                    "sessionId": session_id,
+                    "input": request,
+                },
+            ),
+        )
+        if (
+            not _MATERIALIZED_MOLECULE_INPUT_VALIDATOR.is_valid(result)
+            or result["documentId"] != request["documentId"]
+            or result["revision"] != request["revision"]
+            or result["geometryHash"] != request["geometryHash"]
+        ):
+            raise RpcFault(
+                -32603,
+                "Materialized molecule input does not match the visible molecule",
+            )
+        return dict(result)
 
     def _studio_ui_emitter(self, session_id: str) -> StudioUiEventEmitter:
         emitter = self._studio_ui_emitters.get(session_id)
@@ -1774,9 +2033,7 @@ class StudioAgentRuntime:
                     follow_symlinks=False,
                 )
             except FileExistsError:
-                competing_binding = self._read_agent_session_binding(
-                    studio_session_id
-                )
+                competing_binding = self._read_agent_session_binding(studio_session_id)
                 if competing_binding != agent_session_id:
                     raise RpcFault(
                         -32603,
@@ -1919,12 +2176,9 @@ class StudioAgentRuntime:
                     )
                     raise
                 wire_result = _agent_wire_value(result)
-                failed = (
-                    isinstance(wire_result, dict)
-                    and (
-                        wire_result.get("ok") is False
-                        or isinstance(wire_result.get("error"), dict)
-                    )
+                failed = isinstance(wire_result, dict) and (
+                    wire_result.get("ok") is False
+                    or isinstance(wire_result.get("error"), dict)
                 )
                 self._publish_agent_trace(
                     session_id,
@@ -2124,6 +2378,59 @@ class StudioAgentRuntime:
                 raise RuntimeError("Calculation inspection returned an invalid result")
             return projected
 
+        registered_preflight_refs: list[tuple[str, str]] = []
+
+        def synthesize_command(request: str) -> dict[str, Any]:
+            """Synthesize and register one parser-owned, non-executing preflight."""
+
+            analysis = self._controlled_calculation_request(
+                session_id,
+                "analyze_current_molecule",
+                {},
+            )
+            materialized_input = self._materialize_current_molecule_input(
+                session_id,
+                analysis,
+            )
+            bound_request = (
+                f"{request}\n"
+                "Use the current Studio molecule input with exact basename "
+                f"{materialized_input['basename']}. "
+                "For xTB, do not require project YAML."
+            )
+            payload = dict(
+                agent_json_safe(command_session.synthesize_command(bound_request))
+            )
+            synthesis = _public_synthesis_result(session_id, payload)
+            if synthesis["status"] != "ready":
+                return payload
+            artifact = _studio_preflight_artifact(
+                synthesis,
+                payload,
+                analysis,
+                materialized_input,
+            )
+            self._register_command_preflight(
+                session_id,
+                synthesis,
+                artifact,
+            )
+            operation_id = self._active_operation_ids.get(session_id)
+            if operation_id is None:
+                raise RpcFault(
+                    -32603, "Command preflight is outside an active Agent turn"
+                )
+            registered_preflight_refs.append((operation_id, synthesis["synthesisId"]))
+            payload["synthesisId"] = synthesis["synthesisId"]
+            payload["commandDigest"] = synthesis["commandDigest"]
+            payload["studio_artifact_ref"] = synthesis["synthesisId"]
+            payload["studio_result_instruction"] = (
+                "Finish with report_studio_result and put the exact "
+                "studio_artifact_ref in artifactRefs. Do not re-author the "
+                "registered preflight artifact."
+            )
+            return payload
+
         studio_specs = []
         studio_specs.append(
             build_tool_spec(
@@ -2156,7 +2463,17 @@ class StudioAgentRuntime:
                     metadata=RuntimeToolMetadata(read_only=True),
                 )
             )
-        studio_specs.extend(command_session.tool_specs())
+        for source in command_session.tool_specs():
+            studio_specs.append(
+                replace(
+                    source,
+                    func=(
+                        synthesize_command
+                        if source.name == "synthesize_command"
+                        else source.func
+                    ),
+                )
+            )
         definitions = [
             (get_molecule_snapshot, True, True, None),
             (preview_molecule_patch, False, True, None),
@@ -2194,24 +2511,55 @@ class StudioAgentRuntime:
                     input_json_schema=(
                         _STUDIO_COMMIT_INPUT_SCHEMA
                         if function.__name__ == "commit_molecule_preview"
-                        else STUDIO_AGENT_TOOL_INPUT_SCHEMAS.get(
-                            function.__name__
-                        )
+                        else STUDIO_AGENT_TOOL_INPUT_SCHEMAS.get(function.__name__)
                     ),
                 )
             )
         rpc_adapter = _StudioRpcAdapter(self, session_id)
-        studio_specs.extend(
-            build_studio_tool_specs(
-                StudioToolAdapters(
-                    host=rpc_adapter,
-                    execution=rpc_adapter,
-                    artifacts=rpc_adapter,
-                    approvals=_StudioApprovalGrantAdapter(self, session_id),
-                ),
-                _STUDIO_TOOL_INPUT_SCHEMAS,
+
+        def report_studio_result(**arguments: Any) -> Any:
+            operation_id = self._active_operation_ids.get(session_id)
+            if operation_id is None:
+                raise RpcFault(-32603, "Studio result is outside an active Agent turn")
+            projected = _attach_registered_preflight_refs(
+                arguments,
+                registered_preflight_refs,
+                operation_id,
             )
-        )
+            result = rpc_adapter.report_studio_result(projected)
+            registered_preflight_refs[:] = [
+                item for item in registered_preflight_refs if item[0] != operation_id
+            ]
+            return result
+
+        for source in build_studio_tool_specs(
+            StudioToolAdapters(
+                host=rpc_adapter,
+                execution=rpc_adapter,
+                artifacts=rpc_adapter,
+                approvals=_StudioApprovalGrantAdapter(self, session_id),
+            ),
+            _STUDIO_TOOL_INPUT_SCHEMAS,
+        ):
+            studio_specs.append(
+                replace(
+                    source,
+                    func=(
+                        report_studio_result
+                        if source.name == "report_studio_result"
+                        else source.func
+                    ),
+                    description=(
+                        "Publish the final bounded Studio answer. When a "
+                        "command tool returns studio_artifact_ref, copy that "
+                        "exact opaque value into artifactRefs and leave "
+                        "artifacts empty; never re-author the registered "
+                        "preflight receipt."
+                        if source.name == "report_studio_result"
+                        else source.description
+                    ),
+                )
+            )
         default_registry = ToolRegistry.default()
         generic_execution_specs = []
         for tool_name, input_schema in _STUDIO_EXECUTION_INPUT_SCHEMAS.items():
@@ -2222,7 +2570,11 @@ class StudioAgentRuntime:
                 )
             generic_execution_specs.append(
                 build_tool_spec(
-                    source.func,
+                    (
+                        command_session.execute_command
+                        if tool_name == "execute_chemsmart_command"
+                        else source.func
+                    ),
                     registered_name=tool_name,
                     description=source.description,
                     metadata=source.metadata,
@@ -2359,9 +2711,48 @@ class StudioAgentRuntime:
                 self._providers[session_id] = provider
             command_session = self._command_sessions.get(session_id)
             if command_session is None:
-                command_session = CommandSynthesisSession(provider)
+                command_session = CommandSynthesisSession(
+                    provider,
+                    before_execute=lambda command, test, timeout_s: (
+                        self._consume_command_execution(
+                            session_id,
+                            command,
+                            test,
+                            timeout_s,
+                        )
+                    ),
+                    working_directory=self._project_root,
+                )
                 self._command_sessions[session_id] = command_session
             return provider, command_session
+
+    def _consume_command_execution(
+        self,
+        session_id: str,
+        command: str,
+        test: bool,
+        timeout_s: int,
+    ) -> None:
+        if self._peer is None:
+            raise RpcFault(-32603, "RPC peer is not bound")
+        result = self._peer.request(
+            "approval.consume",
+            self._operation_callback(
+                session_id,
+                {
+                    "sessionId": session_id,
+                    "tool": "execute_chemsmart_command",
+                    "arguments": {
+                        "command": command,
+                        "test": test,
+                        "timeout_s": timeout_s,
+                    },
+                },
+            ),
+            timeout=30,
+        )
+        if not isinstance(result, dict) or result.get("accepted") is not True:
+            raise RpcFault(-32003, "Trusted Studio approval was not consumed")
 
     @staticmethod
     def _required_string(params: Any, key: str) -> str:

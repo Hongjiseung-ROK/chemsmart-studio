@@ -71,6 +71,46 @@ describe('AgentTraceTimeline', () => {
     expect(screen.getByText('Earlier task completed')).toBeInTheDocument()
   })
 
+  it('settles a running public reasoning row when its turn completes', () => {
+    render(
+      <AgentTraceTimeline
+        events={[
+          event({
+            eventId: 'request',
+            kind: 'user_message',
+            status: 'running',
+            summary: 'Inspect the current molecule',
+            turnId: 'turn-completed'
+          }),
+          event({
+            eventId: 'reasoning',
+            kind: 'reasoning_summary',
+            status: 'running',
+            summary: 'Checking the visible molecule',
+            turnId: 'turn-completed'
+          }),
+          event({
+            eventId: 'terminal',
+            kind: 'turn_terminal',
+            outcome: 'completed',
+            status: 'succeeded',
+            summary: 'Inspection completed',
+            turnId: 'turn-completed'
+          })
+        ]}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /Inspect the current molecule/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    const reasoningCard = screen.getByText('Checking the visible molecule').closest('li')
+    expect(reasoningCard).toHaveAttribute('data-status', 'succeeded')
+    expect(reasoningCard?.querySelector('.border-success')).not.toBeNull()
+    expect(within(reasoningCard as HTMLElement).queryByTestId('agent-trace-running-wave')).toBeNull()
+  })
+
   it('shows one safe tool disclosure with motion-safe progress', () => {
     const tool = {
       argumentKeys: ['engine'],

@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import type {
+  CommandSynthesisResult,
   ControlledCalculationExecutableIdentity,
   ControlledCalculationExternalFrame,
   ControlledCalculationTerminal,
   MoleculeDocument,
   OptimizationFinalDecisionEvent,
-  OptimizationRun
+  OptimizationRun,
+  StudioAgentArtifact
 } from '@chemsmart/studio-protocol'
 import { BaseService, Phase } from '@main/core/lifecycle'
 import { getDependencies, getPhase } from '@main/core/lifecycle/decorators'
@@ -1790,5 +1792,83 @@ describe('CalculationRuntimeService controlled fake execution', () => {
     releaseExecution()
     await expect(first).resolves.toMatchObject({ status: 'cancelled' })
     expect(agent.requestTrajectory.mock.calls.filter(([method]) => method === 'optimization.open_run')).toHaveLength(1)
+  })
+
+  it('publishes a parser-owned xTB preflight once without creating an execution plan', async () => {
+    const inputBasename = 'chemsmart-input-1111111111111111.xyz'
+    const inputDigest = '2'.repeat(64)
+    const command = `chemsmart run xtb -f ${inputBasename} -c 0 -m 1 -g gfn2 sp`
+    const commandDigest = createHash('sha256').update(command).digest('hex')
+    const synthesis: CommandSynthesisResult = {
+      schemaVersion: '1',
+      synthesisId: 'synthesis-water-sp',
+      sessionId: 'session-1',
+      status: 'ready',
+      command,
+      commandDigest,
+      explanation: 'The xTB single-point command passed deterministic preflight.',
+      projectName: null,
+      missingInfo: [],
+      intent: { verdict: 'ok', failedRuleIds: [], message: 'Intent gate passed.', extensions: {} },
+      semantic: { verdict: 'ok', failedRuleIds: [], message: 'Semantic gate passed.', extensions: {} },
+      publicEvidence: [],
+      executionPerformed: false,
+      approvalRequiredForExecution: true,
+      extensions: {}
+    }
+    const artifact: StudioAgentArtifact = {
+      artifactId: 'preflight-synthesis-water-sp',
+      kind: 'preflight_receipt',
+      heading: 'GFN2-xTB single point preflight',
+      summary: 'The real ChemSmart parser accepted this command without starting a calculation process.',
+      documentId: document.documentId,
+      revision: document.revision,
+      geometryHash: documentGeometryHash,
+      charge: 0,
+      multiplicity: 1,
+      engine: 'xtb',
+      method: 'GFN2-xTB',
+      calculationKind: 'single_point',
+      planId: synthesis.synthesisId,
+      ruleIds: [],
+      verdict: 'passed',
+      extensions: {
+        'chemsmart.preflight': {
+          schemaVersion: 'chemsmart.command-preflight.v1',
+          commandDigest,
+          synthesisId: synthesis.synthesisId,
+          executionPerformed: false,
+          approvalRequiredForExecution: true,
+          projectRequired: false,
+          inputBasename,
+          inputDigest
+        }
+      }
+    }
+
+    await service.registerCommandPreflight('session-1', synthesis, artifact)
+    const approvalBinding = {
+      calculationKind: 'single_point' as const,
+      commandDigest,
+      documentId: document.documentId,
+      engine: 'xtb' as const,
+      expectedRevision: document.revision,
+      geometryHash: documentGeometryHash,
+      method: 'GFN2-xTB',
+      planId: synthesis.synthesisId
+    }
+    await expect(service.getCommandPreflightForApproval('session-1', command)).resolves.toEqual(approvalBinding)
+    await expect(service.assertCommandPreflightApproval('session-1', approvalBinding)).resolves.toBeUndefined()
+    await expect(
+      service.assertCommandPreflightApproval('session-1', {
+        ...approvalBinding,
+        commandDigest: 'f'.repeat(64)
+      })
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' })
+    await expect(service.resolveCommandPreflight('session-1', synthesis.synthesisId)).resolves.toEqual(artifact)
+    await expect(service.verifyReportedAgentArtifact('session-1', artifact)).resolves.toBeUndefined()
+    await expect(service.verifyReportedAgentArtifact('session-1', artifact)).rejects.toMatchObject({
+      code: 'SCHEMA_INVALID'
+    })
   })
 })

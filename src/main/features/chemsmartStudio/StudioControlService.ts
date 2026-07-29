@@ -44,6 +44,7 @@ import * as z from 'zod'
 
 import { type AgentMode, approvalReason, defaultAgentMode, isPreAuthorized } from './agentApprovalPolicy'
 import type {
+  CommandPreflightApprovalBinding,
   ControlledCalculationRecoveryCandidate,
   ControlledCalculationRunStarted
 } from './CalculationRuntimeService'
@@ -205,6 +206,7 @@ const controlSnapshotSchema = chemsmartStudioRequestSchemas['chemsmart_studio.co
 
 interface PendingApprovalRecord {
   request: StudioApprovalRequest
+  commandBinding?: CommandPreflightApprovalBinding
   approvalId: string
   expiresAt: string
   actionIds: string[]
@@ -701,6 +703,15 @@ export class StudioControlService extends BaseService {
       )
     }
 
+    if (action.kind === 'approval_allow') {
+      try {
+        await this.assertApprovalCurrent(action)
+      } catch (error) {
+        this.consumeActionGroup(action.siblingGroup)
+        this.resolveApproval(action, 'deny')
+        throw error
+      }
+    }
     this.consumeActionGroup(action.siblingGroup)
     switch (action.kind) {
       case 'approval_allow':
@@ -931,7 +942,7 @@ export class StudioControlService extends BaseService {
     return mode
   }
 
-  requestApproval(params: unknown): Promise<ApprovalResponse> {
+  requestApproval(params: unknown, commandBinding?: CommandPreflightApprovalBinding): Promise<ApprovalResponse> {
     const parsed = approvalRequestSchema.safeParse(params)
     if (!parsed.success) throw this.schemaFault('approval.request is schema-invalid', parsed.error.issues)
     const request = parsed.data
@@ -995,7 +1006,7 @@ export class StudioControlService extends BaseService {
       return Promise.resolve({ decision: 'allow_once' })
     }
 
-    const card = this.buildApprovalCard(request)
+    const card = this.buildApprovalCard(request, commandBinding)
     if (!card) {
       this.setAgentPhase(request.sessionId, 'completed', {
         currentObject: 'calculation_plan',
@@ -1017,7 +1028,15 @@ export class StudioControlService extends BaseService {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => this.expireApproval(approvalId), Math.max(0, expiresAtMs - Date.now()))
       timeout.unref()
-      const record: PendingApprovalRecord = { request, approvalId, expiresAt, actionIds, resolve, timeout }
+      const record: PendingApprovalRecord = {
+        request,
+        commandBinding: request.tool === 'execute_chemsmart_command' ? commandBinding : undefined,
+        approvalId,
+        expiresAt,
+        actionIds,
+        resolve,
+        timeout
+      }
       const capabilities = this.approvalCapabilities(request.sessionId, card, siblingGroup, expiresAtMs)
       this.pendingApprovals.set(approvalId, record)
       for (const capability of capabilities) this.actions.set(capability.actionId, capability)
@@ -1077,6 +1096,22 @@ export class StudioControlService extends BaseService {
         plan_digest: planDigest
       })
     )
+  }
+
+  async consumeCommandExecutionGrant(sessionId: string, params: unknown): Promise<void> {
+    const parsed = executeChemsmartCommandArgumentsSchema.safeParse(params)
+    if (!parsed.success) {
+      throw this.schemaFault('execute_chemsmart_command grant is schema-invalid', parsed.error.issues)
+    }
+    const argumentsValue = parsed.data as Extract<
+      StudioApprovalRequest,
+      { tool: 'execute_chemsmart_command' }
+    >['arguments']
+    const binding = await application
+      .get('CalculationRuntimeService')
+      .getCommandPreflightForApproval(sessionId, argumentsValue.command)
+    this.consumeGrantKey(studioGrantKey(sessionId, 'execute_chemsmart_command', argumentsValue))
+    await application.get('CalculationRuntimeService').assertCommandPreflightApproval(sessionId, binding)
   }
 
   async forwardMoleculeRequest(params: unknown): Promise<unknown> {
@@ -1276,7 +1311,10 @@ export class StudioControlService extends BaseService {
     }
   }
 
-  private buildApprovalCard(request: StudioApprovalRequest): StudioPendingApproval | null {
+  private buildApprovalCard(
+    request: StudioApprovalRequest,
+    commandBinding?: CommandPreflightApprovalBinding
+  ): StudioPendingApproval | null {
     const requestedAt = new Date().toISOString()
     const expiresAt = new Date(Date.now() + APPROVAL_TIMEOUT_MS).toISOString()
     const approvalId = `approval-${randomUUID()}`
@@ -1322,7 +1360,14 @@ export class StudioControlService extends BaseService {
       if (request.tool === 'submit_hpc') {
         return { ...executionCard, tool: request.tool, arguments: request.arguments }
       }
-      return { ...executionCard, tool: request.tool, arguments: request.arguments }
+      if (!commandBinding) {
+        this.addDeniedSemanticActivity(
+          request,
+          t('chemsmart_studio.control_activity.request_rejected_calculation_summary')
+        )
+        return null
+      }
+      return { ...executionCard, tool: request.tool, arguments: request.arguments, ...commandBinding }
     }
     if (request.tool === 'start_molecule_optimization') {
       this.addDeniedSemanticActivity(
@@ -1435,6 +1480,15 @@ export class StudioControlService extends BaseService {
         expiresAtMs
       }
     ]
+  }
+
+  private async assertApprovalCurrent(action: ActionCapability): Promise<void> {
+    if (!action.approvalId) return
+    const record = this.pendingApprovals.get(action.approvalId)
+    if (!record?.commandBinding) return
+    await application
+      .get('CalculationRuntimeService')
+      .assertCommandPreflightApproval(record.request.sessionId, record.commandBinding)
   }
 
   private resolveApproval(action: ActionCapability, decision: ApprovalDecision): void {

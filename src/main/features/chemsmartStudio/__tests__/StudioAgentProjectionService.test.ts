@@ -224,6 +224,7 @@ describe('StudioAgentProjectionService', () => {
       'inspect',
       'plan',
       'dry-run',
+      'run',
       'review',
       'history',
       'new'

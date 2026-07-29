@@ -239,6 +239,22 @@ interface ProjectionTurn {
   turnId: string
 }
 
+const transientStatuses = new Set<StudioAgentTurnStatus>(['queued', 'running', 'waiting'])
+
+function settleReasoningEvents(events: readonly StudioAgentTurnEvent[]) {
+  const terminal = [...events].reverse().find((event) => event.kind === 'turn_terminal')
+  return events
+    .filter((event) => event.kind === 'reasoning_summary')
+    .map((event) =>
+      terminal && transientStatuses.has(event.status)
+        ? {
+            ...event,
+            status: terminal.status
+          }
+        : event
+    )
+}
+
 function groupTurns(events: readonly StudioAgentTurnEvent[]): ProjectionTurn[] {
   const turns = new Map<string, ProjectionTurn>()
   for (const event of events) {
@@ -320,7 +336,7 @@ function AgentProjectionTurn({ current, index, turn }: { current: boolean; index
   const [open, setOpen] = useState(current || turn.failed)
   const contentId = useId()
   const request = turn.events.find((event) => event.kind === 'user_message')
-  const reasoning = turn.events.filter((event) => event.kind === 'reasoning_summary')
+  const reasoning = settleReasoningEvents(turn.events)
   const tools = groupToolEvents(
     turn.events.filter((event) =>
       ['tool_started', 'permission_waiting', 'tool_progress', 'tool_succeeded', 'tool_failed'].includes(event.kind)
@@ -373,7 +389,7 @@ function AgentProjectionTurn({ current, index, turn }: { current: boolean; index
 /** Main-owned, schema-validated projection. Provider payloads and raw reasoning never reach this component. */
 export function AgentTraceTimeline({ events }: AgentTraceTimelineProps) {
   const turns = useMemo(() => groupTurns(events), [events])
-  const currentTurnId = [...turns].reverse().find((turn) => !turn.terminal)?.turnId
+  const currentTurnId = [...turns].reverse().find((turn) => !turn.terminal)?.turnId ?? turns.at(-1)?.turnId
   if (turns.length === 0) return null
   return (
     <ol className="space-y-2" data-testid="agent-trace-timeline">

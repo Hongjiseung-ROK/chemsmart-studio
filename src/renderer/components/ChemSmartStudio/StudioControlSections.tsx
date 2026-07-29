@@ -384,6 +384,36 @@ export function ExecutionApprovalSummary({ approval }: { approval: ExecutionAppr
       {'timeout_s' in approval.arguments && approval.arguments.timeout_s !== undefined ? (
         <SummaryField label={t('chemsmart_studio.approval.execution.timeout')} value={approval.arguments.timeout_s} />
       ) : null}
+      {approval.tool === 'execute_chemsmart_command' ? (
+        <>
+          <SummaryField
+            label={t('chemsmart_studio.approval.execution.molecule')}
+            value={<code className="break-all text-[11px]">{approval.documentId}</code>}
+          />
+          <SummaryField label={t('chemsmart_studio.approval.expected_revision')} value={approval.expectedRevision} />
+          <SummaryField
+            label={t('chemsmart_studio.optimization.engine')}
+            value={<EngineName engine={approval.engine} />}
+          />
+          <SummaryField label={t('chemsmart_studio.optimization.method')} value={approval.method} />
+          <SummaryField
+            label={t('chemsmart_studio.approval.execution.calculation_kind')}
+            value={approval.calculationKind.replaceAll('_', ' ')}
+          />
+          <SummaryField
+            label={t('chemsmart_studio.approval.execution.geometry_hash')}
+            value={<code className="break-all text-[11px]">{approval.geometryHash}</code>}
+          />
+          <SummaryField
+            label={t('chemsmart_studio.approval.execution.plan')}
+            value={<code className="break-all text-[11px]">{approval.planId}</code>}
+          />
+          <SummaryField
+            label={t('chemsmart_studio.approval.execution.command_digest')}
+            value={<code className="break-all text-[11px]">{approval.commandDigest}</code>}
+          />
+        </>
+      ) : null}
     </dl>
   )
 }

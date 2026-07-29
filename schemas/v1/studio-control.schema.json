@@ -260,7 +260,17 @@
               "arguments": {
                 "$ref": "studio-approval-request.schema.json#/$defs/executeChemsmartCommand/properties/arguments"
               }
-            }
+            },
+            "required": [
+              "documentId",
+              "expectedRevision",
+              "geometryHash",
+              "engine",
+              "method",
+              "calculationKind",
+              "planId",
+              "commandDigest"
+            ]
           }
         }
       ],
@@ -271,12 +281,22 @@
         },
         "approvalId": { "$ref": "common.schema.json#/$defs/stableId" },
         "arguments": { "type": "object" },
+        "calculationKind": {
+          "$ref": "studio-agent-workbench.schema.json#/$defs/studioAgentArtifact/properties/calculationKind"
+        },
+        "commandDigest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
         "denyActionId": {
           "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
           "description": "Opaque one-shot action identifier issued by the trusted runtime."
         },
         "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "engine": { "$ref": "studio-agent-workbench.schema.json#/$defs/studioAgentArtifact/properties/engine" },
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
         "kind": { "const": "execution_tool" },
+        "method": { "$ref": "studio-agent-workbench.schema.json#/$defs/studioAgentArtifact/properties/method" },
+        "planId": { "$ref": "common.schema.json#/$defs/stableId" },
         "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
         "requestedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
         "risk": { "const": "calculation_execution" },

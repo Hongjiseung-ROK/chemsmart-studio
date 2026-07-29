@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import { application } from '@application'
 import {
+  type CommandSynthesisResult,
   type ControlledCalculationAgentToolRequest,
   type ControlledCalculationArtifact,
   type ControlledCalculationArtifactChunk,
@@ -79,6 +80,26 @@ interface PrepareCalculationInput {
   engine: PreparedControlledCalculation['engine']
   method: string
   settings: ControlledCalculationSettings
+}
+
+interface TrustedCommandPreflight {
+  artifact: StudioAgentArtifact
+  commandDigest: string
+  expiresAt: number
+  inputBasename: string
+  inputDigest: string
+  sessionId: string
+}
+
+export interface CommandPreflightApprovalBinding {
+  calculationKind: NonNullable<StudioAgentArtifact['calculationKind']>
+  commandDigest: string
+  documentId: string
+  engine: NonNullable<StudioAgentArtifact['engine']>
+  expectedRevision: number
+  geometryHash: string
+  method: string
+  planId: string
 }
 
 interface ControlledRunState {
@@ -262,6 +283,7 @@ export class CalculationRuntimeService extends BaseService {
     ControlledCalculationExecutableIdentity
   >()
   private readonly plans = new Map<string, PreparedControlledCalculation>()
+  private readonly commandPreflights = new Map<string, TrustedCommandPreflight>()
   private readonly runs = new Map<string, ControlledRunState>()
   private readonly artifacts = new Map<string, RegisteredArtifact>()
   private readonly workspaceViewStates = new Map<string, StudioWorkspaceViewState>()
@@ -1071,7 +1093,149 @@ export class CalculationRuntimeService extends BaseService {
     }
   }
 
-  async verifyReportedAgentArtifact(sessionId: string, artifact: StudioAgentArtifact): Promise<void> {
+  async registerCommandPreflight(
+    sessionId: string,
+    synthesis: CommandSynthesisResult,
+    artifact: StudioAgentArtifact
+  ): Promise<void> {
+    await this.assertVisibleAgentArtifact(artifact)
+    const extension = artifact.extensions['chemsmart.preflight']
+    if (
+      artifact.kind !== 'preflight_receipt' ||
+      !artifact.planId ||
+      artifact.planId !== synthesis.synthesisId ||
+      artifact.artifactId !== `preflight-${synthesis.synthesisId}` ||
+      artifact.verdict !== 'passed' ||
+      synthesis.commandDigest === null ||
+      extension?.commandDigest !== synthesis.commandDigest ||
+      extension?.synthesisId !== synthesis.synthesisId ||
+      extension?.executionPerformed !== false ||
+      extension?.approvalRequiredForExecution !== true
+    ) {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.SCHEMA_INVALID,
+        'Command preflight does not match its parser-owned receipt'
+      )
+    }
+    if (artifact.engine === 'xtb') {
+      const tokens = synthesis.command.trim().split(/\s+/)
+      const leaf = tokens.find((token) => token === 'sp' || token === 'opt' || token === 'hess')
+      const inputIndex = tokens.findIndex((token) => token === '-f' || token === '--file')
+      const inputBasename = extension.inputBasename
+      const inputDigest = extension.inputDigest
+      const expectedKind =
+        leaf === 'sp' ? 'single_point' : leaf === 'opt' ? 'optimization' : leaf === 'hess' ? 'frequency' : null
+      const gfnIndex = tokens.findIndex((token) => token === '-g' || token === '--gfn-version')
+      const gfnVersion = gfnIndex >= 0 ? tokens[gfnIndex + 1]?.toLowerCase() : 'gfn2'
+      const expectedMethod =
+        gfnVersion === 'gfn0'
+          ? 'GFN0-xTB'
+          : gfnVersion === 'gfn1'
+            ? 'GFN1-xTB'
+            : gfnVersion === 'gfnff'
+              ? 'GFN-FF'
+              : gfnVersion === 'gfn2'
+                ? 'GFN2-xTB'
+                : null
+      if (
+        tokens[0] !== 'chemsmart' ||
+        tokens[1] !== 'run' ||
+        tokens[2] !== 'xtb' ||
+        inputIndex < 0 ||
+        typeof inputBasename !== 'string' ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]*\.xyz$/.test(inputBasename) ||
+        tokens[inputIndex + 1] !== inputBasename ||
+        typeof inputDigest !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(inputDigest) ||
+        artifact.calculationKind !== expectedKind ||
+        artifact.method !== expectedMethod ||
+        extension.projectRequired !== false
+      ) {
+        throw new IpcError(
+          chemsmartStudioErrorCodes.SCHEMA_INVALID,
+          'xTB preflight does not match the real CLI parser projection'
+        )
+      }
+    }
+    this.commandPreflights.set(artifact.planId, {
+      artifact: structuredClone(artifact),
+      commandDigest: synthesis.commandDigest,
+      expiresAt: Date.now() + PLAN_LIFETIME_MS,
+      inputBasename: extension.inputBasename as string,
+      inputDigest: extension.inputDigest as string,
+      sessionId
+    })
+  }
+
+  async resolveCommandPreflight(sessionId: string, planId: string): Promise<StudioAgentArtifact> {
+    const trusted = this.commandPreflights.get(planId)
+    if (!trusted || trusted.expiresAt < Date.now() || trusted.sessionId !== sessionId) {
+      this.commandPreflights.delete(planId)
+      throw new IpcError(
+        chemsmartStudioErrorCodes.SCHEMA_INVALID,
+        'Agent preflight reference does not match a live trusted command receipt'
+      )
+    }
+    await this.assertVisibleAgentArtifact(trusted.artifact)
+    return structuredClone(trusted.artifact)
+  }
+
+  async getCommandPreflightForApproval(sessionId: string, command: string): Promise<CommandPreflightApprovalBinding> {
+    const commandDigest = createHash('sha256').update(command).digest('hex')
+    const matches = [...this.commandPreflights.entries()].filter(
+      ([, trusted]) =>
+        trusted.sessionId === sessionId && trusted.expiresAt >= Date.now() && trusted.commandDigest === commandDigest
+    )
+    if (matches.length !== 1) {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.SCHEMA_INVALID,
+        'Execution request does not match one live trusted command receipt'
+      )
+    }
+    const [planId, trusted] = matches[0]
+    await this.assertVisibleAgentArtifact(trusted.artifact)
+    const { artifact } = trusted
+    if (!artifact.engine || !artifact.method || !artifact.calculationKind) {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.SCHEMA_INVALID,
+        'Trusted command receipt is missing its scientific identity'
+      )
+    }
+    return {
+      calculationKind: artifact.calculationKind,
+      commandDigest,
+      documentId: artifact.documentId,
+      engine: artifact.engine,
+      expectedRevision: artifact.revision,
+      geometryHash: artifact.geometryHash,
+      method: artifact.method,
+      planId
+    }
+  }
+
+  async assertCommandPreflightApproval(sessionId: string, binding: CommandPreflightApprovalBinding): Promise<void> {
+    const trusted = this.commandPreflights.get(binding.planId)
+    if (
+      !trusted ||
+      trusted.sessionId !== sessionId ||
+      trusted.expiresAt < Date.now() ||
+      trusted.commandDigest !== binding.commandDigest ||
+      trusted.artifact.documentId !== binding.documentId ||
+      trusted.artifact.revision !== binding.expectedRevision ||
+      trusted.artifact.geometryHash !== binding.geometryHash ||
+      trusted.artifact.engine !== binding.engine ||
+      trusted.artifact.method !== binding.method ||
+      trusted.artifact.calculationKind !== binding.calculationKind
+    ) {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.REVISION_CONFLICT,
+        'The approved command receipt no longer matches trusted Studio state'
+      )
+    }
+    await this.assertVisibleAgentArtifact(trusted.artifact)
+  }
+
+  private async assertVisibleAgentArtifact(artifact: StudioAgentArtifact): Promise<void> {
     const workspace = application.get('MoleculeWorkspaceService')
     const committed = await workspace.getMoleculeDocument()
     const draft = workspace.getMoleculeDraft()
@@ -1088,6 +1252,27 @@ export class CalculationRuntimeService extends BaseService {
         chemsmartStudioErrorCodes.REVISION_CONFLICT,
         'Agent artifact does not match the visible molecule'
       )
+    }
+  }
+
+  async verifyReportedAgentArtifact(sessionId: string, artifact: StudioAgentArtifact): Promise<void> {
+    await this.assertVisibleAgentArtifact(artifact)
+
+    if (artifact.kind === 'preflight_receipt' && artifact.planId) {
+      const trusted = this.commandPreflights.get(artifact.planId)
+      this.commandPreflights.delete(artifact.planId)
+      if (
+        !trusted ||
+        trusted.expiresAt < Date.now() ||
+        trusted.sessionId !== sessionId ||
+        digestJson(trusted.artifact) !== digestJson(artifact)
+      ) {
+        throw new IpcError(
+          chemsmartStudioErrorCodes.SCHEMA_INVALID,
+          'Agent preflight artifact does not match a trusted command receipt'
+        )
+      }
+      return
     }
 
     const planId =
