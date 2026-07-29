@@ -960,6 +960,65 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(appGetMock).not.toHaveBeenCalledWith('ApiGatewayService')
   })
 
+  it('stops only the active turn, denies its approval, and terminalizes it once as cancelled', async () => {
+    let rejectTurn!: (error: Error) => void
+    localProcessRequestMock.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectTurn = reject
+        })
+    )
+
+    const turn = service.runTurn('session-1', 'provider::model', 'Inspect.', 'window-1')
+    await vi.waitFor(() => expect(localProcessRequestMock).toHaveBeenCalledOnce())
+
+    await expect(service.controlTurn({ sessionId: 'session-1', action: 'stop' }, 'window-1')).resolves.toEqual({
+      accepted: true,
+      action: 'stop',
+      queueDepth: 0
+    })
+    rejectTurn(new Error('provider aborted'))
+
+    await expect(turn).rejects.toThrow('provider aborted')
+    expect(denyPendingApprovalsMock).toHaveBeenCalledWith('session-1')
+    expect(projectionTerminalizeMock).toHaveBeenCalledOnce()
+    expect(projectionTerminalizeMock).toHaveBeenCalledWith('session-1', 'turn-1', 'cancelled', 'Agent turn cancelled')
+  })
+
+  it('applies steering at the next model boundary and starts it before queued turns', async () => {
+    process.env.CHEMSMART_STUDIO_TEST_HARNESS = 'controlled-calculation'
+    let releaseBoundary!: () => void
+    const boundary = new Promise<void>((resolve) => {
+      releaseBoundary = resolve
+    })
+    const requests: string[] = []
+    localProcessRequestMock.mockImplementation(async (_method: string, params: unknown) => {
+      const request = (params as { request: string }).request
+      requests.push(request)
+      if (requests.length === 1) {
+        await boundary
+        await internals.handleSidecarRequest('model.generate', {
+          sessionId: 'session-1',
+          modelId: 'deterministic::controlled-calculation',
+          operationId: (params as { operationId: string }).operationId,
+          messages: [{ role: 'user', content: request }],
+          tools: []
+        })
+      }
+      return advisoryTurnResult
+    })
+
+    const first = service.runTurn('session-1', 'deterministic::controlled-calculation', 'First request.', 'window-1')
+    await vi.waitFor(() => expect(requests).toEqual(['First request.']))
+    await service.controlTurn({ sessionId: 'session-1', action: 'queue', request: 'Queued request.' }, 'window-1')
+    await service.controlTurn({ sessionId: 'session-1', action: 'steer', request: 'Steered request.' }, 'window-1')
+    releaseBoundary()
+
+    await expect(first).rejects.toMatchObject({ code: -32003 })
+    await vi.waitFor(() => expect(requests).toEqual(['First request.', 'Steered request.', 'Queued request.']))
+    expect(projectionTerminalizeMock.mock.calls.map((call) => call[2])).toEqual(['cancelled', 'completed', 'completed'])
+  })
+
   it.each([
     'approval.request',
     'molecule.request',

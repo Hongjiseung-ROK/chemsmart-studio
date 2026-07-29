@@ -24,6 +24,7 @@ const agent = {
   synthesizeCommand: vi.fn(),
   inspectCommand: vi.fn(),
   runTurn: vi.fn(),
+  controlTurn: vi.fn(),
   replayStudioUi: vi.fn()
 }
 const control = {
@@ -213,6 +214,22 @@ describe('chemsmartStudioHandlers', () => {
       null,
       'main-window'
     )
+  })
+
+  it('binds Stop, Steer, and Queue controls to the managed Studio window', async () => {
+    agent.controlTurn.mockResolvedValue({ accepted: true, action: 'stop', queueDepth: 0 })
+
+    await expect(
+      chemsmartStudioHandlers['chemsmart_studio.agent.control_turn']({ sessionId: 'session-1', action: 'stop' }, ctx)
+    ).resolves.toEqual({ accepted: true, action: 'stop', queueDepth: 0 })
+    expect(agent.controlTurn).toHaveBeenCalledWith({ sessionId: 'session-1', action: 'stop' }, 'main-window')
+
+    await expect(
+      chemsmartStudioHandlers['chemsmart_studio.agent.control_turn'](
+        { sessionId: 'session-1', action: 'queue', request: 'Inspect the next frame.' },
+        { senderId: null }
+      )
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_SENDER' })
   })
 
   it('binds turns and activity replay to a managed sender without exposing process lifecycle routes', async () => {

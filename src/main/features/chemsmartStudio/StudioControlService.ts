@@ -1263,9 +1263,17 @@ export class StudioControlService extends BaseService {
     }
   }
 
-  denyPendingApprovals(): void {
-    for (const approvalId of [...this.pendingApprovals.keys()]) this.settleApproval(approvalId, 'deny')
-    this.approvedGrants.clear()
+  denyPendingApprovals(sessionId?: string): void {
+    for (const [approvalId, record] of [...this.pendingApprovals]) {
+      if (sessionId === undefined || record.request.sessionId === sessionId) this.settleApproval(approvalId, 'deny')
+    }
+    if (sessionId === undefined) {
+      this.approvedGrants.clear()
+      return
+    }
+    for (const [key, grant] of this.approvedGrants) {
+      if (grant.request.sessionId === sessionId) this.approvedGrants.delete(key)
+    }
   }
 
   private buildApprovalCard(request: StudioApprovalRequest): StudioPendingApproval | null {

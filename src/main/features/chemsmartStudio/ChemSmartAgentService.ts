@@ -144,6 +144,7 @@ type ActiveModelOperation = {
   abortController: AbortController
   capability: StudioAgentCapability | null
   cancelled: boolean
+  cancellationReason: 'stop' | 'steer' | null
   kind: 'agent_turn' | 'command_synthesis'
   modelId: UniqueModelId
   operationId: string
@@ -160,6 +161,22 @@ interface ImportCapability {
 }
 
 type StudioAgentCapability = 'inspect' | 'plan' | 'act'
+
+type PendingAgentTurn = {
+  intent: StudioAgentComposerIntent | null
+  modelId: UniqueModelId
+  request: string
+  senderId: WindowId
+}
+
+export type StudioAgentTurnControl =
+  | { sessionId: string; action: 'stop' }
+  | {
+      sessionId: string
+      action: 'steer' | 'queue'
+      request: string
+      intent?: StudioAgentComposerIntent | null
+    }
 
 const FILE_URI = /(?:^|[^A-Za-z0-9+.-])file:(?:\/\/)?(?:\/|[A-Za-z]:[\\/])/i
 const POSIX_ABSOLUTE_PATH = /(?:^|[^A-Za-z0-9._~/-])\/(?!\/)[^/\s"'`]+(?:\/[^/\s"'`]+)*/
@@ -215,6 +232,8 @@ export class ChemSmartAgentService extends BaseService {
   private boundProjectPath: string | null = null
   private readonly importCapabilities = new Map<string, ImportCapability>()
   private readonly activeModelOperations = new Map<string, ActiveModelOperation>()
+  private readonly queuedTurns = new Map<string, PendingAgentTurn[]>()
+  private readonly pendingSteers = new Map<string, PendingAgentTurn>()
   private readonly agentTrace = new StudioAgentTraceChannel((event) =>
     application.get('IpcApiService').broadcast('chemsmart_studio.agent.trace', event)
   )
@@ -393,6 +412,7 @@ export class ChemSmartAgentService extends BaseService {
       abortController: new AbortController(),
       capability,
       cancelled: false,
+      cancellationReason: null,
       kind: 'agent_turn',
       modelId,
       operationId: randomUUID(),
@@ -450,6 +470,61 @@ export class ChemSmartAgentService extends BaseService {
         turnToken.abortController.abort()
         this.activeModelOperations.delete(sessionId)
       }
+      this.scheduleNextTurn(sessionId)
+    }
+  }
+
+  async controlTurn(
+    control: StudioAgentTurnControl,
+    senderId: WindowId
+  ): Promise<{ accepted: true; action: 'stop' | 'steer' | 'queue'; queueDepth: number }> {
+    const controls = application.get('StudioControlService')
+    controls.claimSessionControl(control.sessionId, senderId)
+    const operation = this.activeModelOperations.get(control.sessionId)
+    if (!operation || operation.kind !== 'agent_turn') {
+      throw new IpcError(chemsmartStudioErrorCodes.AGENT_UNAVAILABLE, 'No ChemSmart Agent turn is active')
+    }
+
+    if (control.action === 'stop') {
+      operation.cancelled = true
+      operation.cancellationReason = 'stop'
+      operation.abortController.abort()
+      controls.denyPendingApprovals(control.sessionId)
+      return {
+        accepted: true,
+        action: control.action,
+        queueDepth: this.queuedTurns.get(control.sessionId)?.length ?? 0
+      }
+    }
+
+    const intent = control.intent ?? null
+    await application
+      .get('StudioAgentProjectionService')
+      .validateComposerIntent(control.sessionId, control.sessionId, intent ?? this.inspectIntent())
+    const pending: PendingAgentTurn = {
+      intent,
+      modelId: operation.modelId,
+      request: control.request,
+      senderId
+    }
+    if (control.action === 'steer') {
+      if (this.pendingSteers.has(control.sessionId)) {
+        throw new IpcError(chemsmartStudioErrorCodes.RUN_ACTIVE, 'A steering request is already pending')
+      }
+      this.pendingSteers.set(control.sessionId, pending)
+    } else {
+      const queue = this.queuedTurns.get(control.sessionId) ?? []
+      if (queue.length >= 32) {
+        throw new IpcError(chemsmartStudioErrorCodes.RUN_ACTIVE, 'The ChemSmart Agent queue is full')
+      }
+      queue.push(pending)
+      this.queuedTurns.set(control.sessionId, queue)
+    }
+    return {
+      accepted: true,
+      action: control.action,
+      queueDepth:
+        (this.queuedTurns.get(control.sessionId)?.length ?? 0) + (this.pendingSteers.has(control.sessionId) ? 1 : 0)
     }
   }
 
@@ -512,6 +587,7 @@ export class ChemSmartAgentService extends BaseService {
       abortController: new AbortController(),
       capability: null,
       cancelled: false,
+      cancellationReason: null,
       kind: 'command_synthesis',
       modelId: request.modelId as UniqueModelId,
       operationId: randomUUID(),
@@ -638,6 +714,9 @@ export class ChemSmartAgentService extends BaseService {
         delete payload.operationId
         const event = this.agentTrace.emit(operation.turnId ?? operation.operationId, payload)
         await this.appendProjectionTrace(value.sessionId as string, operation, event)
+        if (event.kind === 'tool_succeeded' || event.kind === 'tool_failed') {
+          this.cancelAtSteeringBoundary(value.sessionId as string, operation)
+        }
         return event
       }
       case 'studio_ui.event':
@@ -819,44 +898,82 @@ export class ChemSmartAgentService extends BaseService {
     if (value.tools !== undefined && (!Array.isArray(value.tools) || value.tools.length > 64)) {
       throw new JsonRpcFault(-32602, 'tools must be a bounded array')
     }
+    let body: unknown
     if (
       uniqueModelId === controlledCalculationTestModelId &&
       isControlledCalculationTestHarnessEnabled(app.isPackaged)
     ) {
-      return controlledCalculationTestModelResponse(
+      body = controlledCalculationTestModelResponse(
         Array.isArray(value.messages) ? value.messages : [],
         Array.isArray(value.tools) ? value.tools : []
       )
-    }
-    if (uniqueModelId === e7XtbTestModelId && isE7XtbTestHarnessEnabled(app.isPackaged)) {
-      return e7XtbTestModelResponse(
+    } else if (uniqueModelId === e7XtbTestModelId && isE7XtbTestHarnessEnabled(app.isPackaged)) {
+      body = e7XtbTestModelResponse(
         Array.isArray(value.messages) ? value.messages : [],
         Array.isArray(value.tools) ? value.tools : []
       )
-    }
-    if (uniqueModelId === moleculePreviewTestModelId && isMoleculePreviewTestHarnessEnabled(app.isPackaged)) {
-      return moleculePreviewTestModelResponse(
+    } else if (uniqueModelId === moleculePreviewTestModelId && isMoleculePreviewTestHarnessEnabled(app.isPackaged)) {
+      body = moleculePreviewTestModelResponse(
         Array.isArray(value.messages) ? value.messages : [],
         Array.isArray(value.tools) ? value.tools : []
       )
+    } else {
+      const { providerId, modelId } = parseUniqueModelId(uniqueModelId)
+      const model = modelService.getByKey(providerId, modelId)
+      // The provider already lives in this process. Resolving here rather than over a loopback socket
+      // means there is no server to start, no key to mint, and no OpenAI round trip to a route that
+      // would have called the very same code.
+      body = await generateStudioModelResponse({
+        providerId,
+        apiModelId: model.apiModelId ?? modelId,
+        messages: Array.isArray(value.messages) ? value.messages : [],
+        tools: Array.isArray(value.tools) ? value.tools : undefined,
+        timeoutMs: typeof value.timeoutMs === 'number' ? value.timeoutMs : undefined,
+        signal: operation.abortController.signal
+      })
     }
-    const { providerId, modelId } = parseUniqueModelId(uniqueModelId)
-    const model = modelService.getByKey(providerId, modelId)
-    // The provider already lives in this process. Resolving here rather than over a loopback socket
-    // means there is no server to start, no key to mint, and no OpenAI round trip to a route that
-    // would have called the very same code.
-    const body = await generateStudioModelResponse({
-      providerId,
-      apiModelId: model.apiModelId ?? modelId,
-      messages: Array.isArray(value.messages) ? value.messages : [],
-      tools: Array.isArray(value.tools) ? value.tools : undefined,
-      timeoutMs: typeof value.timeoutMs === 'number' ? value.timeoutMs : undefined,
-      signal: operation.abortController.signal
-    })
+    this.cancelAtSteeringBoundary(sessionId, operation)
     if (operation.cancelled || this.activeModelOperations.get(sessionId) !== operation) {
       throw new JsonRpcFault(-32003, 'Host model request was cancelled')
     }
     return body
+  }
+
+  private inspectIntent(): StudioAgentComposerIntent {
+    return {
+      intentId: `intent-${randomUUID()}`,
+      kind: 'inspect',
+      capability: 'inspect',
+      contextRefs: [],
+      requiresExecutionApproval: false,
+      extensions: {}
+    }
+  }
+
+  private cancelAtSteeringBoundary(sessionId: string, operation: ActiveModelOperation): void {
+    if (operation.kind !== 'agent_turn' || !this.pendingSteers.has(sessionId)) return
+    operation.cancelled = true
+    operation.cancellationReason = 'steer'
+    operation.abortController.abort()
+  }
+
+  private scheduleNextTurn(sessionId: string): void {
+    if (this.activeModelOperations.has(sessionId)) return
+    const steer = this.pendingSteers.get(sessionId)
+    if (steer) this.pendingSteers.delete(sessionId)
+    const queue = this.queuedTurns.get(sessionId) ?? []
+    const next = steer ?? queue.shift()
+    if (!next) {
+      this.queuedTurns.delete(sessionId)
+      return
+    }
+    if (queue.length === 0) this.queuedTurns.delete(sessionId)
+    else this.queuedTurns.set(sessionId, queue)
+    queueMicrotask(() => {
+      void this.runTurn(sessionId, next.modelId, next.request, next.intent, next.senderId).catch((error) => {
+        logger.error('Queued ChemSmart Agent turn failed', { sessionId, error })
+      })
+    })
   }
 
   private requestApproval(params: unknown): Promise<{ decision: 'allow_once' | 'deny' }> {
@@ -947,9 +1064,12 @@ export class ChemSmartAgentService extends BaseService {
     const activeOperations = [...this.activeModelOperations]
     for (const [, operation] of activeOperations) {
       operation.cancelled = true
+      operation.cancellationReason = 'stop'
       operation.abortController.abort()
     }
     this.activeModelOperations.clear()
+    this.pendingSteers.clear()
+    this.queuedTurns.clear()
 
     const controls = application.get('StudioControlService')
     for (const [sessionId, operation] of activeOperations) {

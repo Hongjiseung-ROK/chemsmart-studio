@@ -337,6 +337,25 @@ export const chemsmartStudioRequestSchemas = {
     }),
     output: z.object({ completed: z.literal(true) })
   }),
+  'chemsmart_studio.agent.control_turn': defineRoute({
+    input: z.discriminatedUnion('action', [
+      z.strictObject({
+        sessionId: stableIdSchema,
+        action: z.literal('stop')
+      }),
+      z.strictObject({
+        sessionId: stableIdSchema,
+        action: z.enum(['steer', 'queue']),
+        request: z.string().min(1).max(100_000),
+        intent: studioAgentComposerIntentSchema.nullable().optional()
+      })
+    ]),
+    output: z.strictObject({
+      accepted: z.literal(true),
+      action: z.enum(['stop', 'steer', 'queue']),
+      queueDepth: z.number().int().nonnegative()
+    })
+  }),
   'chemsmart_studio.agent.turns': defineRoute({
     input: studioAgentTurnPageRequestSchema,
     output: studioAgentTurnPageSchema
