@@ -33,9 +33,10 @@ import {
   type ResearchRenameThreadRequest,
   type ResearchSelectThreadRequest,
   type StageGestureIntent,
-  type StudioAgentTraceEvent,
   type StudioAgentCapabilityManifest,
   type StudioAgentCapabilityManifestRequest,
+  type StudioAgentComposerIntent,
+  type StudioAgentTraceEvent,
   type StudioAgentTurnEvent,
   type StudioAgentTurnPage,
   type StudioAgentTurnPageRequest,
@@ -182,6 +183,10 @@ const studioAgentCapabilityManifestSchema = runtimeDefinitionSchema<StudioAgentC
   studioAgentWorkbenchRuntimeSchema,
   'studioAgentCapabilityManifest'
 )
+const studioAgentComposerIntentSchema = runtimeDefinitionSchema<StudioAgentComposerIntent>(
+  studioAgentWorkbenchRuntimeSchema,
+  'studioAgentComposerIntent'
+)
 const replayCatalogQuerySchema = runtimeDefinitionSchema<OptimizationReplayCatalogQuery>(
   optimizationReplayRuntimeSchema,
   'catalogQuery'
@@ -327,7 +332,8 @@ export const chemsmartStudioRequestSchemas = {
     input: z.object({
       sessionId: stableIdSchema,
       modelId: UniqueModelIdSchema,
-      request: z.string().min(1).max(100_000)
+      request: z.string().min(1).max(100_000),
+      intent: studioAgentComposerIntentSchema.nullable().optional()
     }),
     output: z.object({ completed: z.literal(true) })
   }),

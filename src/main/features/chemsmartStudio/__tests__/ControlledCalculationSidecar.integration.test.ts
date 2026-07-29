@@ -195,6 +195,7 @@ describe('controlled calculation sidecar integration', () => {
     const calculationRequests: unknown[] = []
     const calculationResponses: unknown[] = []
     const agentTraceEvents: unknown[] = []
+    const modelMessages: unknown[][] = []
     sidecar = new LocalRpcProcess({
       name: 'controlled-sidecar-test',
       command: 'uv',
@@ -223,6 +224,7 @@ describe('controlled calculation sidecar integration', () => {
             params !== null && typeof params === 'object' && 'tools' in params && Array.isArray(params.tools)
               ? params.tools
               : []
+          modelMessages.push(structuredClone(messages))
           return e7XtbTestModelResponse(messages, tools)
         }
         if (method === 'approval.request') {
@@ -255,7 +257,8 @@ describe('controlled calculation sidecar integration', () => {
       {
         sessionId: 'session-sidecar-integration',
         modelId: e7XtbTestModelId,
-        request: 'Prepare and validate the bounded GFN2-xTB plan.'
+        request: 'Prepare and validate the bounded GFN2-xTB plan.',
+        capability: 'plan'
       },
       30_000
     )) as {
@@ -309,7 +312,8 @@ describe('controlled calculation sidecar integration', () => {
       {
         sessionId: 'session-sidecar-integration',
         modelId: e7XtbTestModelId,
-        request: `Start the validated controlled plan ${xTBPlan.planId} ${xTBPlan.planDigest}.`
+        request: `Start the validated controlled plan ${xTBPlan.planId} ${xTBPlan.planDigest}.`,
+        capability: 'act'
       },
       30_000
     )) as {
@@ -317,6 +321,14 @@ describe('controlled calculation sidecar integration', () => {
       tool_outcomes: Array<{ status: string }>
     }
 
+    expect(modelMessages.at(-1)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: `Start the validated controlled plan ${xTBPlan.planId} ${xTBPlan.planDigest}.`
+        })
+      ])
+    )
     expect(started.assistant_output).toBe('The bounded GFN2-xTB validation calculation was approved and started.')
     expect(started.tool_outcomes.map((outcome) => outcome.status)).toEqual(['ok'])
     expect(calculationRequests).toHaveLength(4)

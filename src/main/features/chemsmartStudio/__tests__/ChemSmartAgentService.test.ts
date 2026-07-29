@@ -24,8 +24,13 @@ const {
   localProcessStartMock,
   localProcessStopMock,
   modelGetByKeyMock,
+  projectionAppendTurnEventMock,
+  projectionBeginTurnMock,
+  projectionTerminalizeMock,
+  projectionValidateComposerIntentMock,
   recordAgentToolCompletionMock,
-  requestApprovalMock
+  requestApprovalMock,
+  verifyReportedAgentArtifactMock
 } = vi.hoisted(() => ({
   appGetMock: vi.fn(),
   processMessageMock: vi.fn(),
@@ -49,8 +54,13 @@ const {
   localProcessStartMock: vi.fn(),
   localProcessStopMock: vi.fn(),
   modelGetByKeyMock: vi.fn(),
+  projectionAppendTurnEventMock: vi.fn(),
+  projectionBeginTurnMock: vi.fn(),
+  projectionTerminalizeMock: vi.fn(),
+  projectionValidateComposerIntentMock: vi.fn(),
   recordAgentToolCompletionMock: vi.fn(),
-  requestApprovalMock: vi.fn()
+  requestApprovalMock: vi.fn(),
+  verifyReportedAgentArtifactMock: vi.fn()
 }))
 
 vi.mock('@application', () => ({
@@ -174,6 +184,11 @@ const projectListResult = {
   ],
   extensions: {}
 }
+const advisoryTurnResult = {
+  terminal_outcome: 'completed',
+  advisory_only: true,
+  assistant_output: 'Inspection complete.'
+}
 
 vi.mock('@main/features/apiGateway/proxyStream', () => ({
   processMessage: processMessageMock
@@ -192,7 +207,20 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     appGetPathMock.mockImplementation((name: string) => `/mock/${name}`)
     appGetMock.mockImplementation((name: string) => {
       if (name === 'IpcApiService') return { broadcast: broadcastMock }
-      if (name === 'CalculationRuntimeService') return { handleHostRequest: calculationHostRequestMock }
+      if (name === 'CalculationRuntimeService') {
+        return {
+          handleHostRequest: calculationHostRequestMock,
+          verifyReportedAgentArtifact: verifyReportedAgentArtifactMock
+        }
+      }
+      if (name === 'StudioAgentProjectionService') {
+        return {
+          appendTurnEvent: projectionAppendTurnEventMock,
+          beginTurn: projectionBeginTurnMock,
+          terminalize: projectionTerminalizeMock,
+          validateComposerIntent: projectionValidateComposerIntentMock
+        }
+      }
       if (name === 'StudioControlService') {
         return {
           beginAgentTurn: beginAgentTurnMock,
@@ -230,6 +258,9 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       throw new Error(`Unexpected application.get(${name})`)
     })
     ensureDefaultProjectMock.mockResolvedValue({ projectPath: '/projects/Untitled.cmsproj' })
+    projectionBeginTurnMock.mockResolvedValue({ turnId: 'turn-1' })
+    projectionTerminalizeMock.mockResolvedValue({ eventId: 'event-terminal' })
+    projectionValidateComposerIntentMock.mockResolvedValue(undefined)
     localProcessGetStatusMock.mockReturnValue({ state: 'running', pid: 42, lastError: null })
     localProcessStartMock.mockResolvedValue({ state: 'running', pid: 42, lastError: null })
     localProcessStopMock.mockResolvedValue({ state: 'stopped', pid: null, lastError: null })
@@ -249,7 +280,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       if (rpcMethod === 'studio_ui.replay') return { replayed: 0, nextSequence: 0 }
       const operationId = (params as { operationId: string }).operationId
       callbackResult = await internals.handleSidecarRequest(method, { ...payload, operationId })
-      return { accepted: true }
+      return advisoryTurnResult
     })
     await service.runTurn('session-1', 'provider::model', 'Exercise the host callback.', 'window-1')
     return callbackResult
@@ -347,7 +378,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
 
   it('publishes bounded public agent phases around a successful turn', async () => {
     localProcessRequestMock.mockImplementation(async (method: string) =>
-      method === 'studio_ui.replay' ? { replayed: 0, nextSequence: 0 } : { accepted: true }
+      method === 'studio_ui.replay' ? { replayed: 0, nextSequence: 0 } : advisoryTurnResult
     )
 
     await expect(
@@ -362,12 +393,82 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         sessionId: 'session-1',
         modelId: 'provider::model',
         operationId: expect.any(String),
-        request: 'Inspect the molecule.'
+        request: 'Inspect the molecule.',
+        capability: 'inspect'
       },
       15 * 60 * 1000
     )
     expect(completeAgentTurnMock).toHaveBeenCalledWith('session-1')
     expect(failAgentTurnMock).not.toHaveBeenCalled()
+  })
+
+  it('publishes one schema-validated scientific result and rejects duplicate publication', async () => {
+    const report = {
+      answer: {
+        answerId: 'answer-1',
+        heading: 'Molecule inspection',
+        summary: 'The visible molecule passed the requested inspection.',
+        sections: [
+          {
+            kind: 'finding',
+            heading: 'Finding',
+            summary: 'The visible molecule has a valid closed-shell identity.'
+          }
+        ],
+        extensions: {}
+      },
+      artifacts: [
+        {
+          artifactId: 'artifact-1',
+          kind: 'verification',
+          heading: 'Identity verification',
+          summary: 'The visible molecule identity was verified.',
+          documentId: 'document-1',
+          revision: 0,
+          geometryHash: `sha256:${'1'.repeat(64)}`,
+          charge: 0,
+          multiplicity: 1,
+          verdict: 'passed',
+          extensions: {}
+        }
+      ]
+    }
+    let duplicateError: unknown
+    localProcessRequestMock.mockImplementation(async (_method: string, params: unknown) => {
+      const operationId = (params as { operationId: string }).operationId
+      await internals.handleSidecarRequest('agent.report_result', {
+        sessionId: 'session-1',
+        operationId,
+        arguments: report
+      })
+      try {
+        await internals.handleSidecarRequest('agent.report_result', {
+          sessionId: 'session-1',
+          operationId,
+          arguments: report
+        })
+      } catch (error) {
+        duplicateError = error
+      }
+      return { terminal_outcome: 'completed', advisory_only: false }
+    })
+
+    await service.runTurn('session-1', 'provider::model', 'Inspect the molecule.', 'window-1')
+
+    expect(verifyReportedAgentArtifactMock).toHaveBeenCalledWith('session-1', report.artifacts[0])
+    expect(projectionAppendTurnEventMock).toHaveBeenNthCalledWith(
+      1,
+      'session-1',
+      'turn-1',
+      expect.objectContaining({ kind: 'artifact_published', artifact: report.artifacts[0] })
+    )
+    expect(projectionAppendTurnEventMock).toHaveBeenNthCalledWith(
+      2,
+      'session-1',
+      'turn-1',
+      expect.objectContaining({ kind: 'answer_published', answer: report.answer })
+    )
+    expect(duplicateError).toMatchObject({ code: -32003 })
   })
 
   it('rejects a cross-sender turn before starting or contacting the sidecar', async () => {
@@ -409,10 +510,10 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       agentTurnCount += 1
       if (agentTurnCount === 1) {
         return new Promise((resolve) => {
-          releaseFirstTurn = () => resolve({ accepted: true })
+          releaseFirstTurn = () => resolve(advisoryTurnResult)
         })
       }
-      return Promise.resolve({ accepted: true })
+      return Promise.resolve(advisoryTurnResult)
     })
 
     const firstTurn = service.runTurn('session-1', 'provider::model', 'First request.', 'window-1')
@@ -581,7 +682,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
           tools: []
         })
       }
-      return { accepted: true }
+      return advisoryTurnResult
     })
 
     await service.runTurn('session-1', 'deepseek::deepseek-v4-pro', 'Inspect the visible molecule.', 'window-1')
@@ -751,7 +852,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(failAgentTurnMock).toHaveBeenCalledWith('session-1')
     expect(completeAgentTurnMock).not.toHaveBeenCalled()
 
-    localProcessRequestMock.mockResolvedValue({ accepted: true })
+    localProcessRequestMock.mockResolvedValue(advisoryTurnResult)
     await expect(
       service.runTurn('session-1', 'provider::model', 'Retry after failure.', 'window-1')
     ).resolves.toBeUndefined()
@@ -766,10 +867,10 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       agentTurnCount += 1
       if (agentTurnCount === 1) {
         return new Promise((resolve) => {
-          releaseStoppedTurn = () => resolve({ accepted: true })
+          releaseStoppedTurn = () => resolve(advisoryTurnResult)
         })
       }
-      return Promise.resolve({ accepted: true })
+      return Promise.resolve(advisoryTurnResult)
     })
 
     const stoppedTurn = service.runTurn('session-1', 'provider::model', 'Long request.', 'window-1')
@@ -800,7 +901,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         messages: [{ role: 'user', content: 'Run the controlled test.' }],
         tools: []
       })) as typeof response
-      return { accepted: true }
+      return advisoryTurnResult
     })
 
     await service.runTurn('session-1', 'deterministic::controlled-calculation', 'Run the controlled test.', 'window-1')
@@ -849,7 +950,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         code: -32003,
         message: 'Host model request is not bound to an active Studio operation'
       })
-      return { accepted: true }
+      return advisoryTurnResult
     })
 
     await expect(service.runTurn('session-1', 'provider::model', 'First.', 'window-1')).rejects.toThrow(
@@ -921,7 +1022,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         code: -32003,
         message: 'Host model request changed the authorized model'
       })
-      return { accepted: true }
+      return advisoryTurnResult
     })
 
     await service.runTurn('session-1', 'provider::model', 'Inspect.', 'window-1')
@@ -945,7 +1046,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         messages: [{ role: 'user', content: 'Run the bounded validation.' }],
         tools: []
       })) as typeof response
-      return { accepted: true }
+      return advisoryTurnResult
     })
 
     await service.runTurn('session-1', modelId as `${string}::${string}`, 'Run the bounded validation.', 'window-1')

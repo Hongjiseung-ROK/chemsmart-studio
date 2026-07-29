@@ -1,4 +1,4 @@
-import type { StudioAgentTraceEvent } from '@chemsmart/studio-protocol'
+import type { ResearchThreadSummary, StudioAgentCapability, StudioAgentTurnEvent } from '@chemsmart/studio-protocol'
 import {
   Badge,
   Button,
@@ -12,6 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Input,
   Scrollbar,
   Textarea,
   Tooltip
@@ -43,7 +44,7 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { AgentTraceTimeline, type AgentConversationRequest } from './AgentTraceTimeline'
+import { AgentTraceTimeline } from './AgentTraceTimeline'
 
 export interface AgentComposerSnapshot {
   selectionEnd: number
@@ -63,47 +64,13 @@ export interface AgentWorkbenchArtifact {
 type DiscoveryTrigger = '+' | '/' | '@'
 
 interface AgentComposerCapability {
-  descriptionKey: string
+  capability: StudioAgentCapability
+  description: string
   id: string
   insertText: string
-  labelKey: string
+  label: string
   trigger: DiscoveryTrigger
 }
-
-/**
- * Renderer-only discovery metadata shaped like the future capability manifest.
- * Selecting an item edits the request text; it never invokes a tool, commits a molecule, or starts a run.
- */
-const composerCapabilities: readonly AgentComposerCapability[] = [
-  {
-    descriptionKey: 'chemsmart_studio.agent_workbench.discovery.current_molecule_description',
-    id: 'reference.current-molecule',
-    insertText: '@current-molecule',
-    labelKey: 'chemsmart_studio.agent_workbench.discovery.current_molecule',
-    trigger: '@'
-  },
-  {
-    descriptionKey: 'chemsmart_studio.agent_workbench.discovery.draft_snapshot_description',
-    id: 'attach.draft-snapshot',
-    insertText: '+draft-snapshot',
-    labelKey: 'chemsmart_studio.agent_workbench.discovery.draft_snapshot',
-    trigger: '+'
-  },
-  {
-    descriptionKey: 'chemsmart_studio.agent_workbench.discovery.inspect_description',
-    id: 'command.inspect',
-    insertText: '/inspect',
-    labelKey: 'chemsmart_studio.agent_workbench.discovery.inspect',
-    trigger: '/'
-  },
-  {
-    descriptionKey: 'chemsmart_studio.agent_workbench.discovery.preflight_description',
-    id: 'command.xtb-preflight',
-    insertText: '/xtb-preflight',
-    labelKey: 'chemsmart_studio.agent_workbench.discovery.preflight',
-    trigger: '/'
-  }
-] as const
 
 const triggerIcons = {
   '+': Plus,
@@ -124,20 +91,25 @@ const artifactStatusClasses = {
 } as const
 
 interface ChemSmartAgentPaneProps {
+  activeThreadId: string
   artifacts: readonly AgentWorkbenchArtifact[]
   available: boolean
   busy: boolean
+  capabilities: readonly StudioAgentCapability[]
   composer: AgentComposerSnapshot
   failed: boolean
   pendingDecisionCount: number
   reviewRequestId: number
-  requests: readonly AgentConversationRequest[]
   reviewContent: ReactNode
   threadTitle: string
-  traceEvents: readonly StudioAgentTraceEvent[]
+  threads: readonly ResearchThreadSummary[]
+  turnEvents: readonly StudioAgentTurnEvent[]
   onClose: () => void
   onComposerChange: (snapshot: AgentComposerSnapshot) => void
+  onCreateThread: () => void
   onOpenProperties: () => void
+  onRenameThread: (threadId: string, title: string) => void
+  onSelectThread: (threadId: string) => void
   onSubmit: () => void
 }
 
@@ -164,20 +136,25 @@ function findDiscovery(value: string, cursor: number) {
  * The pane never renders provider payloads, raw arguments, filesystem paths, or model chain-of-thought.
  */
 export function ChemSmartAgentPane({
+  activeThreadId,
   artifacts,
   available,
   busy,
+  capabilities,
   composer,
   failed,
   pendingDecisionCount,
   reviewRequestId,
-  requests,
   reviewContent,
   threadTitle,
-  traceEvents,
+  threads,
+  turnEvents,
   onClose,
   onComposerChange,
+  onCreateThread,
   onOpenProperties,
+  onRenameThread,
+  onSelectThread,
   onSubmit
 }: ChemSmartAgentPaneProps) {
   const { t } = useTranslation()
@@ -187,9 +164,25 @@ export function ChemSmartAgentPane({
   const [reviewArtifactId, setReviewArtifactId] = useState<string | null>(null)
   const [reviewMode, setReviewMode] = useState<'artifact' | 'decisions' | 'history' | null>(null)
   const [activeSuggestion, setActiveSuggestion] = useState(0)
+  const [renameTitle, setRenameTitle] = useState(threadTitle)
   const discovery = useMemo(
     () => findDiscovery(composer.value, composer.selectionStart),
     [composer.selectionStart, composer.value]
+  )
+  const composerCapabilities = useMemo<AgentComposerCapability[]>(
+    () =>
+      capabilities.map((capability) => {
+        const trigger = capability.discovery === 'plus' ? '+' : capability.discovery === 'mention' ? '@' : '/'
+        return {
+          capability,
+          description: capability.description,
+          id: `${capability.discovery}.${capability.key}`,
+          insertText: `${trigger}${capability.key}`,
+          label: capability.label,
+          trigger
+        }
+      }),
+    [capabilities]
   )
   const suggestions = useMemo(() => {
     if (!discovery) return []
@@ -197,11 +190,13 @@ export function ChemSmartAgentPane({
       (capability) =>
         capability.trigger === discovery.trigger &&
         (capability.insertText.toLocaleLowerCase().includes(discovery.query) ||
-          t(capability.labelKey).toLocaleLowerCase().includes(discovery.query))
+          capability.label.toLocaleLowerCase().includes(discovery.query))
     )
-  }, [discovery, t])
+  }, [composerCapabilities, discovery])
   const selectedArtifact = artifacts.find((artifact) => artifact.id === reviewArtifactId) ?? null
   const reviewOpen = reviewMode !== null
+
+  useEffect(() => setRenameTitle(threadTitle), [threadTitle])
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current
@@ -271,17 +266,15 @@ export function ChemSmartAgentPane({
           </h2>
           <p className="truncate text-foreground-muted text-xs">{threadTitle}</p>
         </div>
-        <Tooltip content={t('chemsmart_studio.agent_workbench.new_unavailable')}>
-          <span>
-            <Button
-              aria-label={t('chemsmart_studio.agent_workbench.new')}
-              className="size-8"
-              disabled
-              size="icon-sm"
-              variant="ghost">
-              <FilePlus2 aria-hidden className="size-4" />
-            </Button>
-          </span>
+        <Tooltip content={t('chemsmart_studio.agent_workbench.new')}>
+          <Button
+            aria-label={t('chemsmart_studio.agent_workbench.new')}
+            className="size-8"
+            size="icon-sm"
+            variant="ghost"
+            onClick={onCreateThread}>
+            <FilePlus2 aria-hidden className="size-4" />
+          </Button>
         </Tooltip>
         <Tooltip content={t('chemsmart_studio.agent_workbench.history')}>
           <Button
@@ -325,7 +318,7 @@ export function ChemSmartAgentPane({
 
       <Scrollbar className="min-h-0 flex-1" data-testid="agent-conversation">
         <div className="space-y-3 p-3">
-          {requests.length === 0 && traceEvents.length === 0 ? (
+          {turnEvents.length === 0 ? (
             <div className="rounded-lg border border-border border-dashed px-3 py-8 text-center">
               <Bot aria-hidden className="mx-auto size-5 text-foreground-muted" />
               <p className="mt-2 font-medium text-foreground text-sm">
@@ -336,7 +329,7 @@ export function ChemSmartAgentPane({
               </p>
             </div>
           ) : (
-            <AgentTraceTimeline events={traceEvents} requests={requests} />
+            <AgentTraceTimeline events={turnEvents} />
           )}
 
           {artifacts.length > 0 ? (
@@ -438,8 +431,8 @@ export function ChemSmartAgentPane({
                   onClick={() => selectSuggestion(capability)}>
                   <Icon aria-hidden className="size-4 shrink-0 text-foreground-secondary" />
                   <span className="min-w-0 flex-1">
-                    <span className="block font-medium text-foreground text-sm">{t(capability.labelKey)}</span>
-                    <span className="block truncate text-foreground-muted text-xs">{t(capability.descriptionKey)}</span>
+                    <span className="block font-medium text-foreground text-sm">{capability.label}</span>
+                    <span className="block truncate text-foreground-muted text-xs">{capability.description}</span>
                   </span>
                   <code className="shrink-0 text-foreground-muted text-xs">{capability.insertText}</code>
                 </button>
@@ -546,10 +539,53 @@ export function ChemSmartAgentPane({
           <Scrollbar className="min-h-0 flex-1">
             <div className="space-y-3 p-4">
               {reviewMode === 'history' ? (
-                requests.length === 0 && traceEvents.length === 0 ? (
+                threads.length === 0 ? (
                   <p className="text-foreground-muted text-sm">{t('chemsmart_studio.agent_workbench.history_empty')}</p>
                 ) : (
-                  <AgentTraceTimeline events={traceEvents} requests={requests} />
+                  <>
+                    <form
+                      className="flex items-center gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        const title = renameTitle.trim()
+                        if (title) onRenameThread(activeThreadId, title)
+                      }}>
+                      <Input
+                        aria-label={t('chemsmart_studio.agent_workbench.rename')}
+                        maxLength={120}
+                        value={renameTitle}
+                        onChange={(event) => setRenameTitle(event.currentTarget.value)}
+                      />
+                      <Button className="h-8 shrink-0" size="sm" type="submit" variant="outline">
+                        {t('common.save')}
+                      </Button>
+                    </form>
+                    <ol className="space-y-2">
+                      {threads.map((thread) => (
+                        <li key={thread.threadId}>
+                          <Button
+                            aria-current={thread.threadId === activeThreadId ? 'page' : undefined}
+                            className="h-auto min-h-10 w-full justify-start px-3 py-2 text-left"
+                            variant={thread.threadId === activeThreadId ? 'secondary' : 'ghost'}
+                            onClick={() => {
+                              onSelectThread(thread.threadId)
+                              closeReview()
+                            }}>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium text-sm">{thread.title}</span>
+                              <span className="block text-foreground-muted text-xs">
+                                {thread.imported
+                                  ? t('chemsmart_studio.agent_workbench.imported')
+                                  : t('chemsmart_studio.agent_workbench.turn_count', {
+                                      count: thread.activityCount
+                                    })}
+                              </span>
+                            </span>
+                          </Button>
+                        </li>
+                      ))}
+                    </ol>
+                  </>
                 )
               ) : reviewMode === 'decisions' ? (
                 reviewContent

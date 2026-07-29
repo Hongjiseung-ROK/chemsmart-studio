@@ -1889,17 +1889,6 @@
     }
   },
   "chemsmart_studio": {
-    "activity": {
-      "empty": "[to be translated]:Activity for this conversation will appear here.",
-      "title": "[to be translated]:Studio UI activity"
-    },
-    "agent_mode": {
-      "allow": "[to be translated]:Allow",
-      "allow_description": "[to be translated]:Every agent action asks first.",
-      "execute": "[to be translated]:Execute",
-      "execute_description": "[to be translated]:Reversible actions run without asking for this session. Calculations always ask.",
-      "label": "[to be translated]:Agent mode"
-    },
     "agent_trace": {
       "current": "[to be translated]:Current",
       "elapsed": "[to be translated]:{{duration}} ms",
@@ -1908,6 +1897,62 @@
       "rules": "[to be translated]:Gate rules",
       "turn": "[to be translated]:Agent turn {{index}}",
       "verdict": "[to be translated]:Verdict"
+    },
+    "agent_workbench": {
+      "approval_description": "[to be translated]:Review the validated request before deciding. A choice applies only to the exact request shown.",
+      "approval_title": "[to be translated]:Your decision is required",
+      "artifact": {
+        "draft": "[to be translated]:Draft",
+        "ready": "[to be translated]:Ready",
+        "waiting": "[to be translated]:Waiting"
+      },
+      "artifacts": "[to be translated]:Artifacts and results",
+      "current_session": "[to be translated]:Current research session",
+      "discovery": {
+        "current_molecule": "[to be translated]:Current molecule",
+        "current_molecule_description": "[to be translated]:Reference the molecule visible in the Stage",
+        "draft_snapshot": "[to be translated]:Draft snapshot",
+        "draft_snapshot_description": "[to be translated]:Attach the current immutable draft context",
+        "hint": "[to be translated]:Type + to attach, @ to reference, or / for a command",
+        "inspect": "[to be translated]:Inspect molecule",
+        "inspect_description": "[to be translated]:Compose an inspection request",
+        "label": "[to be translated]:Agent composer suggestions",
+        "preflight": "[to be translated]:Prepare xTB preflight",
+        "preflight_description": "[to be translated]:Compose a safe preflight request without executing"
+      },
+      "empty_description": "[to be translated]:Ask about the visible molecule, prepare a calculation, or inspect a result.",
+      "empty_title": "[to be translated]:Ready for a scientific task",
+      "hide": "[to be translated]:Hide ChemSmart Agent",
+      "history": "[to be translated]:Conversation history",
+      "history_description": "[to be translated]:Public reasoning summaries and host-reported tool activity for this session.",
+      "history_empty": "[to be translated]:No Agent turns have been recorded in this session.",
+      "imported": "[to be translated]:Imported legacy conversation",
+      "more": "[to be translated]:More Agent actions",
+      "new": "[to be translated]:New conversation",
+      "new_title": "[to be translated]:New research thread",
+      "new_title_numbered": "[to be translated]:Research thread {{index}}",
+      "new_unavailable": "[to be translated]:New Agent sessions will be enabled by the capability manifest.",
+      "reasoning": "[to be translated]:Public reasoning",
+      "rename": "[to be translated]:Rename the active conversation",
+      "request": "[to be translated]:Researcher request",
+      "result": "[to be translated]:Result",
+      "review": "[to be translated]:Review",
+      "review_description": "[to be translated]:Review the structured artifact without exposing local paths or provider data.",
+      "science": {
+        "energy": "[to be translated]:Energy",
+        "method": "[to be translated]:Method",
+        "molecule": "[to be translated]:Molecule",
+        "state": "[to be translated]:Charge · multiplicity"
+      },
+      "show": "[to be translated]:Show ChemSmart Agent",
+      "status": {
+        "cancelled": "[to be translated]:Cancelled"
+      },
+      "title": "[to be translated]:ChemSmart Agent",
+      "tools": "[to be translated]:Tool activity",
+      "turn_count_one": "[to be translated]:{{count}} Agent turn",
+      "turn_count_other": "[to be translated]:{{count}} Agent turns",
+      "waiting_for_agent": "[to be translated]:Waiting for the Agent"
     },
     "approval": {
       "affected_atoms": "[to be translated]:Affected atoms",
@@ -2226,17 +2271,6 @@
       "status": {
         "ready": "[to be translated]:Ready"
       }
-    },
-    "inspector": {
-      "hide": "[to be translated]:Hide inspector",
-      "show": "[to be translated]:Show inspector",
-      "tab": {
-        "agent": "[to be translated]:Agent",
-        "coordinates": "[to be translated]:Coordinates",
-        "decisions": "[to be translated]:Decisions",
-        "properties": "[to be translated]:Properties"
-      },
-      "tabs": "[to be translated]:Inspector sections"
     },
     "measure": {
       "angstrom": "[to be translated]:Å",

@@ -96,6 +96,22 @@
             "required": ["kind"]
           },
           "then": { "required": ["engine", "method", "calculationKind"] }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": { "enum": ["calculation_plan", "preflight_receipt"] }
+            },
+            "required": ["kind"]
+          },
+          "then": { "required": ["planId"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "trajectory_result" } },
+            "required": ["kind"]
+          },
+          "then": { "required": ["runId", "energy"] }
         }
       ],
       "properties": {
@@ -119,7 +135,9 @@
         "kind": { "$ref": "#/$defs/artifactKind" },
         "method": { "maxLength": 128, "minLength": 1, "pattern": "^\\S(?:.*\\S)?$", "type": "string" },
         "multiplicity": { "maximum": 100, "minimum": 1, "type": "integer" },
+        "planId": { "$ref": "common.schema.json#/$defs/stableId" },
         "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
         "ruleIds": {
           "items": { "$ref": "#/$defs/safeKey" },
           "maxItems": 128,

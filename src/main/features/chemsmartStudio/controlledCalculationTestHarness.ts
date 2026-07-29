@@ -95,8 +95,15 @@ function exposedToolNames(tools: unknown[]): Set<string> {
 function preparedStartBinding(messages: unknown[]): { plan_id: string; plan_digest: string } | null {
   for (const value of messages.toReversed()) {
     const message = objectValue(value)
-    if (message?.role !== 'user' || typeof message.content !== 'string') continue
-    const match = message.content.match(/\b(plan-[A-Za-z0-9-]+)\s+(sha256:[0-9a-f]{64})\b/)
+    if (message?.role !== 'user') continue
+    const content = Array.isArray(message.content)
+      ? message.content
+          .map((part) => objectValue(part)?.text)
+          .filter((part): part is string => typeof part === 'string')
+          .join('\n')
+      : message.content
+    if (typeof content !== 'string') continue
+    const match = content.match(/\b(plan-[A-Za-z0-9-]+)\s+(sha256:[0-9a-f]{64})\b/)
     if (match) return { plan_id: match[1], plan_digest: match[2] }
   }
   return null

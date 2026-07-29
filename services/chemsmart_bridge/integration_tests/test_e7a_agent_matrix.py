@@ -42,7 +42,6 @@ _VARIANT_DIMENSIONS = ("english", "korean", "mixed", "stress")
 _CLI_PROFILE = PhaseToolProfile(
     {
         TaskPhase.EXECUTION: (
-            "emit_studio_ui_update",
             "execute_chemsmart_command",
         )
     }
@@ -81,6 +80,8 @@ class MatrixPeer:
     ) -> Any:
         del timeout
         self.requests.append((method, params))
+        if method == "agent.trace":
+            return {"accepted": True}
         if method == "studio_ui.event":
             return {
                 "accepted": True,
@@ -149,6 +150,12 @@ class MatrixPeer:
                         "extensions": {},
                     },
                     "geometryHash": "sha256:bbc8d0f0f7818866f9ac9c9b9c77aeb1b7cf58cf806703b8839c53b50c0cab87",
+                    "binding": {
+                        "state": "committed",
+                        "documentId": "mol-water",
+                        "revision": 3,
+                        "geometryHash": "sha256:bbc8d0f0f7818866f9ac9c9b9c77aeb1b7cf58cf806703b8839c53b50c0cab87",
+                    },
                     "atomCount": 3,
                     "bondCount": 2,
                     "elementCounts": [
@@ -309,14 +316,13 @@ def test_e7a_deterministic_matrix_uses_real_agent_and_fake_runners(
 
     assert len(results) == len(cases)
     assert len(results) >= 60
-    assert all(result["passed"] for result in results), [
-        result for result in results if not result["passed"]
-    ]
+    failures = [result for result in results if not result["passed"]]
+    assert not failures, json.dumps(failures, indent=2, sort_keys=True)
     assert all(result["runtimeMode"] == "active" for result in results)
     assert all(result["phaseProfileBound"] for result in results)
     assert all(result["evidenceReceipt"] for result in results)
     assert sum(result["fakeRunnerSelected"] for result in results) >= 24
-    assert sum(result["trustedUiEvents"] for result in results) >= 28
+    assert all(result["trustedUiEvents"] == 0 for result in results)
     assert sum(result["approvalDenied"] for result in results) >= 8
     assert sum(result["semanticRejected"] for result in results) >= 8
 
@@ -491,15 +497,6 @@ def _run_cli_case(
         [
             _tool_response(
                 _tool_call(
-                    f"ui-{case['caseId']}",
-                    "emit_studio_ui_update",
-                    {
-                        "kind": "status",
-                        "message": f"Validating {case['id']} in fake mode.",
-                        "extensions": {},
-                    },
-                ),
-                _tool_call(
                     f"execute-{case['caseId']}",
                     "execute_chemsmart_command",
                     {"command": command, "test": True, "timeout_s": 30},
@@ -520,12 +517,12 @@ def _run_cli_case(
         policy=PermissionPolicy(
             mode=PermissionMode.PERMISSION,
             prompt_risky=True,
-            session_allow={"emit_studio_ui_update"},
+            session_allow=set(),
             xtb_real_runs="ask",
         ),
         approver=lambda _request: ApprovalDecision.ALLOW_ONCE,
     )
-    ui_outcome, command_outcome = result["tool_outcomes"]
+    command_outcome = result["tool_outcomes"][0]
     raw = command_outcome.raw_result or {}
     semantic = raw.get("semantic") or {}
     semantic_rules = semantic.get("failed_rule_ids") or []
@@ -548,8 +545,7 @@ def _run_cli_case(
     )
     if case["lane"] == "cli-fake":
         passed = (
-            ui_outcome.status == "ok"
-            and command_outcome.status == "ok"
+            command_outcome.status == "ok"
             and raw.get("test") is True
             and raw.get("returncode") == 0
             and "--fake" in executed_argv
@@ -561,8 +557,7 @@ def _run_cli_case(
     elif case["lane"] == "cli-reject":
         expected_rule = case["expectedRule"]
         passed = (
-            ui_outcome.status == "ok"
-            and command_outcome.status == "error"
+            command_outcome.status == "error"
             and semantic.get("verdict") == "reject"
             and any(
                 str(rule).startswith(expected_rule) for rule in semantic_rules
@@ -577,8 +572,7 @@ def _run_cli_case(
             if path.suffix in {".sh", ".pbs", ".slurm"}
         ]
         passed = (
-            ui_outcome.status == "ok"
-            and command_outcome.status == "ok"
+            command_outcome.status == "ok"
             and raw.get("test") is True
             and raw.get("returncode") == 0
             and "--fake" in executed_argv
@@ -619,6 +613,12 @@ def _receipt(
         "toolRequests": [request.name for request in result["tool_requests"]],
         "toolStatuses": [
             outcome.status for outcome in result["tool_outcomes"]
+        ],
+        "toolErrorTypes": [
+            outcome.error_type for outcome in result["tool_outcomes"]
+        ],
+        "toolErrors": [
+            outcome.error_message for outcome in result["tool_outcomes"]
         ],
         "fakeRunnerSelected": fake_runner_selected,
         "semanticRejected": semantic_rejected,

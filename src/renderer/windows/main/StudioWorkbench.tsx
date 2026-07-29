@@ -11,10 +11,17 @@ interface StudioWorkbenchProps {
 
 function ActiveStudioWorkspace() {
   const { t } = useTranslation()
-  const { activeThreadId, failed } = useResearchProjectSession()
+  const { activeThreadId, context, createThread, failed, renameThread, selectThread } = useResearchProjectSession()
 
   return activeThreadId ? (
-    <ChemSmartWorkspace active sessionId={activeThreadId} />
+    <ChemSmartWorkspace
+      active
+      researchContext={context}
+      sessionId={activeThreadId}
+      onCreateThread={createThread}
+      onRenameThread={renameThread}
+      onSelectThread={selectThread}
+    />
   ) : (
     <div className="flex h-full items-center justify-center p-6 text-foreground-secondary text-sm" role="status">
       {failed ? t('chemsmart_studio.research_session.unavailable') : t('chemsmart_studio.research_session.loading')}

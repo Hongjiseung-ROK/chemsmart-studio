@@ -9,6 +9,7 @@ from unittest import mock
 from chemsmart.agent.behavior_rules import load_behavior_rules
 from chemsmart.agent.permissions import ResolvedDecision
 from chemsmart.agent.runtime.contracts import ProviderRole, TaskPhase
+from chemsmart.agent.studio import StudioCapability
 from chemsmart.agent.provider_adapter import ToolRequest
 from chemsmart.agent.registry import ToolRegistry
 from chemsmart_studio_bridge.runtime import (
@@ -17,6 +18,7 @@ from chemsmart_studio_bridge.runtime import (
     STUDIO_AGENT_TOOL_PROFILE,
     STUDIO_WITHHELD_TOOLS,
     StudioAgentRuntime,
+    _studio_agent_tool_profile,
     studio_permission_policy,
 )
 
@@ -96,9 +98,10 @@ class StudioPermissionPolicyTest(unittest.TestCase):
 class StudioToolProfileTest(unittest.TestCase):
     """Studio exposes only the bounded tools assigned to each task phase."""
 
-    def phase_tools(self) -> dict[str, tuple[str, ...]]:
+    def phase_tools(self, capability: StudioCapability = StudioCapability.ACT) -> dict[str, tuple[str, ...]]:
+        profile = _studio_agent_tool_profile(capability)
         return {
-            phase.name: STUDIO_AGENT_TOOL_PROFILE.tools_for(
+            phase.name: profile.tools_for(
                 phase, ProviderRole.CONTROLLER
             )
             for phase in TaskPhase
@@ -118,16 +121,17 @@ class StudioToolProfileTest(unittest.TestCase):
             self.assertLessEqual(len(tools), 10, f"{phase} exposes {len(tools)} tools")
 
     def test_synthesis_and_read_only_project_checks_are_reachable(self) -> None:
-        tools = self.phase_tools()
+        plan_tools = self.phase_tools(StudioCapability.PLAN)
+        inspect_tools = self.phase_tools(StudioCapability.INSPECT)
 
-        self.assertIn("synthesize_command", tools["SYNTHESIS"])
-        self.assertIn("repair_command", tools["REPAIR"])
-        self.assertIn("critic_project_yaml", tools["PROJECT"])
-        self.assertIn("validate_project_yaml", tools["VALIDATION"])
-        self.assertIn("recommend_method", tools["SYNTHESIS"])
-        self.assertIn("inspect_calculation", tools["DIAGNOSTICS"])
+        self.assertIn("synthesize_command", plan_tools["SYNTHESIS"])
+        self.assertIn("repair_command", plan_tools["REPAIR"])
+        self.assertIn("critic_project_yaml", plan_tools["PROJECT"])
+        self.assertIn("validate_project_yaml", plan_tools["VALIDATION"])
+        self.assertIn("recommend_method", inspect_tools["SYNTHESIS"])
+        self.assertIn("inspect_calculation", inspect_tools["DIAGNOSTICS"])
         # Routing has to be able to tell whether a project exists before choosing a program.
-        self.assertIn("read_project_yaml", tools["ROUTE"])
+        self.assertIn("read_project_yaml", plan_tools["ROUTE"])
 
     def test_project_yaml_generation_and_writes_are_not_model_reachable(self) -> None:
         tools = self.phase_tools()

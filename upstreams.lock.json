@@ -13,7 +13,7 @@
   "productLicense": "AGPL-3.0-only",
   "upstreams": {
     "chemSmart": {
-      "commit": "a93c6e62b897fd3b122c1edcb3ba4b8f81eacd81",
+      "commit": "76fc136b105912e3096723d65ea8484cff91004e",
       "integration": "git-submodule:vendor/chemsmart",
       "license": "GPL-3.0-only",
       "patchState": "patched",

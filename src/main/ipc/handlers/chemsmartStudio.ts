@@ -193,9 +193,11 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
   'chemsmart_studio.agent.runtime_context': async () => ({
     deterministicModelId: application.get('ChemSmartAgentService').getDeterministicModelId()
   }),
-  'chemsmart_studio.agent.run_turn': async ({ sessionId, modelId, request }, { senderId }) => {
+  'chemsmart_studio.agent.run_turn': async ({ sessionId, modelId, request, intent }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
-    await agentRequest(() => application.get('ChemSmartAgentService').runTurn(sessionId, modelId, request, senderId))
+    await agentRequest(() =>
+      application.get('ChemSmartAgentService').runTurn(sessionId, modelId, request, intent ?? null, senderId)
+    )
     return { completed: true }
   },
   'chemsmart_studio.agent.turns': async ({ threadId, beforeSequence, limit }, { senderId }) => {

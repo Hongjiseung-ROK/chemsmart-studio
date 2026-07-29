@@ -39,6 +39,7 @@ import {
   type OptimizationTrajectoryRunStateRequest,
   optimizationTrajectoryRuntimeSchema,
   type PreparedControlledCalculation,
+  type StudioAgentArtifact,
   type StudioControlledCalculationContext,
   type StudioWorkspacePane
 } from '@chemsmart/studio-protocol'
@@ -1067,6 +1068,63 @@ export class CalculationRuntimeService extends BaseService {
           }
         : null,
       extensions: {}
+    }
+  }
+
+  async verifyReportedAgentArtifact(sessionId: string, artifact: StudioAgentArtifact): Promise<void> {
+    const workspace = application.get('MoleculeWorkspaceService')
+    const committed = await workspace.getMoleculeDocument()
+    const draft = workspace.getMoleculeDraft()
+    const visible = draft?.dirty ? draft.document : committed
+    const revision = draft?.dirty ? draft.baseRevision : committed.revision
+    if (
+      artifact.documentId !== visible.documentId ||
+      artifact.revision !== revision ||
+      artifact.geometryHash !== moleculeGeometryHash(visible) ||
+      artifact.charge !== (visible.properties.charge ?? 0) ||
+      artifact.multiplicity !== (visible.properties.multiplicity ?? 1)
+    ) {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.REVISION_CONFLICT,
+        'Agent artifact does not match the visible molecule'
+      )
+    }
+
+    const planId =
+      artifact.kind === 'trajectory_result' ? this.runs.get(artifact.runId!)?.reservation.planId : artifact.planId
+    const plan = planId ? this.plans.get(planId) : undefined
+    if (artifact.engine !== undefined) {
+      if (
+        !plan ||
+        plan.binding.sessionId !== sessionId ||
+        artifact.engine !== plan.engine ||
+        artifact.method !== plan.method ||
+        artifact.charge !== plan.settings.charge ||
+        artifact.multiplicity !== plan.settings.multiplicity
+      ) {
+        throw new IpcError(
+          chemsmartStudioErrorCodes.SCHEMA_INVALID,
+          'Agent artifact does not match a trusted calculation plan'
+        )
+      }
+    }
+
+    if (artifact.kind === 'trajectory_result') {
+      const run = this.runs.get(artifact.runId!)
+      const latest = run?.frames.at(-1)
+      if (
+        !run ||
+        run.reservation.binding.sessionId !== sessionId ||
+        run.terminal?.status !== 'completed' ||
+        !latest ||
+        artifact.energy?.unit !== latest.energy.unit ||
+        artifact.energy.value !== latest.energy.value
+      ) {
+        throw new IpcError(
+          chemsmartStudioErrorCodes.SCHEMA_INVALID,
+          'Agent result energy does not match the trusted run ledger'
+        )
+      }
     }
   }
 

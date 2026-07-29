@@ -1926,17 +1926,32 @@
       "history": "对话历史",
       "history_description": "本会话中的公开推理摘要与宿主报告的工具活动。",
       "history_empty": "本会话尚未记录智能体回合。",
+      "imported": "导入的旧版对话",
       "more": "更多智能体操作",
       "new": "新建对话",
+      "new_title": "新研究对话",
+      "new_title_numbered": "研究对话 {{index}}",
       "new_unavailable": "新智能体会话将在能力清单接入后启用。",
       "reasoning": "公开推理",
+      "rename": "重命名当前对话",
       "request": "研究者请求",
       "result": "结果",
       "review": "检查",
       "review_description": "检查结构化产物，不暴露本地路径或提供商数据。",
+      "science": {
+        "energy": "能量",
+        "method": "方法",
+        "molecule": "分子",
+        "state": "电荷 · 多重度"
+      },
       "show": "显示 ChemSmart 智能体",
+      "status": {
+        "cancelled": "已取消"
+      },
       "title": "ChemSmart 智能体",
       "tools": "工具活动",
+      "turn_count_one": "{{count}} 个智能体回合",
+      "turn_count_other": "{{count}} 个智能体回合",
       "waiting_for_agent": "正在等待智能体"
     },
     "approval": {

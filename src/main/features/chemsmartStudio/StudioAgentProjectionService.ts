@@ -7,12 +7,13 @@ import {
   type StudioAgentAnswer,
   type StudioAgentArtifact,
   type StudioAgentCapabilityManifest,
+  type StudioAgentComposerIntent,
+  type StudioAgentToolProjection,
   type StudioAgentTurnEvent,
   type StudioAgentTurnEventKind,
   type StudioAgentTurnOutcome,
   type StudioAgentTurnPage,
   type StudioAgentTurnStatus,
-  type StudioAgentToolProjection,
   studioAgentWorkbenchRuntimeSchema
 } from '@chemsmart/studio-protocol'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
@@ -131,7 +132,7 @@ export class StudioAgentProjectionService extends BaseService {
       })
       transcript.events.push(event)
       await this.persist(binding.projectId, threadId, transcript)
-      await application.get('ResearchProjectSessionService').recordActivity(threadId)
+      await application.get('ResearchProjectSessionService').recordActivity(threadId, userMessage)
       this.broadcast(event)
       return event
     })
@@ -344,6 +345,30 @@ export class StudioAgentProjectionService extends BaseService {
     }
     assertSafeProjection(manifest)
     return manifest
+  }
+
+  async validateComposerIntent(threadId: string, sessionId: string, intent: StudioAgentComposerIntent): Promise<void> {
+    const manifest = await this.getCapabilityManifest(threadId, sessionId)
+    const contextRefs = new Set(
+      manifest.items.flatMap((item) => (item.contextRef === undefined ? [] : [item.contextRef]))
+    )
+    if (intent.contextRefs.some((contextRef) => !contextRefs.has(contextRef))) {
+      throw invalid('The Agent composer referenced an unavailable context')
+    }
+    const commandKey = intent.kind === 'dry_run' ? 'dry-run' : intent.kind === 'context' ? null : intent.kind
+    const command =
+      commandKey === null
+        ? null
+        : manifest.items.find((item) => item.discovery === 'command' && item.key === commandKey)
+    if (commandKey !== null && (!command || command.capability !== intent.capability)) {
+      throw invalid('The Agent composer intent is not available in the current workspace')
+    }
+    if (intent.kind === 'context' && intent.contextRefs.length === 0) {
+      throw invalid('A context intent requires a main-issued context reference')
+    }
+    if (intent.requiresExecutionApproval !== (intent.capability === 'act')) {
+      throw invalid('The Agent composer approval declaration is inconsistent')
+    }
   }
 
   resolveContextReference(contextRef: string): unknown | null {

@@ -27,6 +27,12 @@ import {
   projectWorkspaceRuntimeSchema,
   type ProjectWorkspaceValidateRequest,
   type ProjectWorkspaceValidateResult,
+  type StudioAgentAnswer,
+  type StudioAgentComposerIntent,
+  type StudioAgentReportResultInput,
+  type StudioAgentTraceEvent,
+  type StudioAgentTurnOutcome,
+  studioAgentWorkbenchRuntimeSchema,
   type StudioUiEvent
 } from '@chemsmart/studio-protocol'
 import { modelService } from '@data/services/ModelService'
@@ -114,6 +120,10 @@ const moleculeImportResultValidator = definitionValidator<MoleculeImportResult>(
   moleculeImportRuntimeSchema,
   'importResult'
 )
+const studioAgentReportResultValidator = definitionValidator<StudioAgentReportResultInput>(
+  studioAgentWorkbenchRuntimeSchema,
+  'reportStudioResultInput'
+)
 
 /** Project reads are local, but retain the existing bounded sidecar envelope. */
 const PROJECT_WORKSPACE_TIMEOUT_MS = 120_000
@@ -132,10 +142,14 @@ export type ProjectWorkspaceMethod =
 
 type ActiveModelOperation = {
   abortController: AbortController
+  capability: StudioAgentCapability | null
   cancelled: boolean
   kind: 'agent_turn' | 'command_synthesis'
   modelId: UniqueModelId
   operationId: string
+  resultReported: boolean
+  terminalized: boolean
+  turnId: string | null
 }
 
 interface ImportCapability {
@@ -144,6 +158,8 @@ interface ImportCapability {
   inode: bigint
   sizeBytes: number
 }
+
+type StudioAgentCapability = 'inspect' | 'plan' | 'act'
 
 const FILE_URI = /(?:^|[^A-Za-z0-9+.-])file:(?:\/\/)?(?:\/|[A-Za-z]:[\\/])/i
 const POSIX_ABSOLUTE_PATH = /(?:^|[^A-Za-z0-9._~/-])\/(?!\/)[^/\s"'`]+(?:\/[^/\s"'`]+)*/
@@ -170,6 +186,27 @@ function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex')
 }
 
+function capabilityFromIntent(intent: StudioAgentComposerIntent | null): StudioAgentCapability {
+  if (intent === null) return 'inspect'
+  if (intent.capability === 'navigation') {
+    throw new IpcError(chemsmartStudioErrorCodes.SCHEMA_INVALID, 'Navigation commands do not start an Agent turn')
+  }
+  return intent.capability
+}
+
+function terminalOutcome(value: unknown): StudioAgentTurnOutcome {
+  if (
+    value === 'completed' ||
+    value === 'denied' ||
+    value === 'failed' ||
+    value === 'cancelled' ||
+    value === 'needs_user'
+  ) {
+    return value
+  }
+  throw new JsonRpcFault(-32603, 'AgentSession returned an invalid terminal outcome')
+}
+
 @Injectable('ChemSmartAgentService')
 @DependsOn(['MoleculeProjectStore', 'StudioControlService', 'CalculationRuntimeService'])
 @ServicePhase(Phase.WhenReady)
@@ -178,7 +215,6 @@ export class ChemSmartAgentService extends BaseService {
   private boundProjectPath: string | null = null
   private readonly importCapabilities = new Map<string, ImportCapability>()
   private readonly activeModelOperations = new Map<string, ActiveModelOperation>()
-  private readonly studioUiRestores = new Map<string, Promise<void>>()
   private readonly agentTrace = new StudioAgentTraceChannel((event) =>
     application.get('IpcApiService').broadcast('chemsmart_studio.agent.trace', event)
   )
@@ -330,36 +366,83 @@ export class ChemSmartAgentService extends BaseService {
     }
   }
 
-  async runTurn(sessionId: string, modelId: UniqueModelId, request: string, senderId: WindowId): Promise<void> {
+  async runTurn(
+    sessionId: string,
+    modelId: UniqueModelId,
+    request: string,
+    intentOrSender: StudioAgentComposerIntent | WindowId | null,
+    senderId?: WindowId
+  ): Promise<void> {
+    const intent = typeof intentOrSender === 'string' ? null : intentOrSender
+    const resolvedSenderId = typeof intentOrSender === 'string' ? intentOrSender : senderId
+    if (!resolvedSenderId) {
+      throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    }
     const controls = application.get('StudioControlService')
-    controls.claimSessionControl(sessionId, senderId)
+    controls.claimSessionControl(sessionId, resolvedSenderId)
     if (this.activeModelOperations.has(sessionId)) {
       logger.warn('Rejected concurrent ChemSmart agent turn', { sessionId })
       throw new IpcError(chemsmartStudioErrorCodes.RUN_ACTIVE, 'A ChemSmart agent turn is already active')
     }
 
+    const projection = application.get('StudioAgentProjectionService')
+    if (intent) await projection.validateComposerIntent(sessionId, sessionId, intent)
+    const started = await projection.beginTurn(sessionId, request)
+    const capability = capabilityFromIntent(intent)
     const turnToken: ActiveModelOperation = {
       abortController: new AbortController(),
+      capability,
       cancelled: false,
       kind: 'agent_turn',
       modelId,
-      operationId: randomUUID()
+      operationId: randomUUID(),
+      resultReported: false,
+      terminalized: false,
+      turnId: started.turnId
     }
     this.activeModelOperations.set(sessionId, turnToken)
     try {
       controls.beginAgentTurn(sessionId)
       if (!this.process || this.process.getStatus().state !== 'running') await this.startAgent()
-      await this.ensureStudioUiSession(sessionId)
-      await this.process!.request(
+      const rawResult = await this.process!.request(
         'agent.run_turn',
-        { sessionId, modelId, operationId: turnToken.operationId, request },
+        { sessionId, modelId, operationId: turnToken.operationId, request, capability },
         15 * 60 * 1000
       )
       if (turnToken.cancelled) {
         throw new IpcError(chemsmartStudioErrorCodes.AGENT_UNAVAILABLE, 'The ChemSmart agent turn was stopped')
       }
+      const result = this.objectParams(rawResult)
+      const outcome = terminalOutcome(result.terminal_outcome)
+      if (outcome === 'completed' && !turnToken.resultReported) {
+        if (result.advisory_only !== true) {
+          throw new JsonRpcFault(-32603, 'Agent turn completed without a structured Studio result')
+        }
+        const answer = this.advisoryAnswer(result.assistant_output)
+        await projection.appendTurnEvent(sessionId, started.turnId, {
+          kind: 'answer_published',
+          status: 'succeeded',
+          summary: answer.summary,
+          answer
+        })
+      }
+      await projection.terminalize(sessionId, started.turnId, outcome, this.terminalSummary(outcome))
+      turnToken.terminalized = true
       if (this.activeModelOperations.get(sessionId) === turnToken) controls.completeAgentTurn(sessionId)
     } catch (error) {
+      if (!turnToken.terminalized) {
+        const outcome: StudioAgentTurnOutcome = turnToken.cancelled ? 'cancelled' : 'failed'
+        try {
+          await projection.terminalize(sessionId, started.turnId, outcome, this.terminalSummary(outcome))
+          turnToken.terminalized = true
+        } catch (terminalError) {
+          logger.error('Failed to terminalize a ChemSmart Agent turn', {
+            sessionId,
+            turnId: started.turnId,
+            error: terminalError
+          })
+        }
+      }
       if (this.activeModelOperations.get(sessionId) === turnToken) controls.failAgentTurn(sessionId)
       throw error
     } finally {
@@ -427,10 +510,14 @@ export class ChemSmartAgentService extends BaseService {
 
     const token: ActiveModelOperation = {
       abortController: new AbortController(),
+      capability: null,
       cancelled: false,
       kind: 'command_synthesis',
       modelId: request.modelId as UniqueModelId,
-      operationId: randomUUID()
+      operationId: randomUUID(),
+      resultReported: false,
+      terminalized: false,
+      turnId: null
     }
     this.activeModelOperations.set(request.sessionId, token)
     try {
@@ -542,12 +629,16 @@ export class ChemSmartAgentService extends BaseService {
       case 'agent.event':
         this.authorizedCallbackPayload(params, 'agent_turn')
         return { accepted: true }
+      case 'agent.report_result':
+        return this.reportStudioResult(params)
       case 'agent.trace': {
         const value = this.objectParams(params)
         const operation = this.authorizedOperation(value, 'agent_turn')
         const payload = { ...value }
         delete payload.operationId
-        return this.agentTrace.emit(operation.operationId, payload)
+        const event = this.agentTrace.emit(operation.turnId ?? operation.operationId, payload)
+        await this.appendProjectionTrace(value.sessionId as string, operation, event)
+        return event
       }
       case 'studio_ui.event':
         return this.studioUiEvents.enqueueLive(this.authorizedCallbackPayload(params, 'agent_turn'))
@@ -555,6 +646,120 @@ export class ChemSmartAgentService extends BaseService {
         return this.studioUiEvents.enqueueReplay(params)
       default:
         throw new JsonRpcFault(-32601, `Method not found: ${method}`)
+    }
+  }
+
+  private async reportStudioResult(params: unknown): Promise<{ accepted: true }> {
+    const value = this.objectParams(params)
+    const operation = this.authorizedOperation(value, 'agent_turn')
+    if (!operation.turnId || operation.resultReported) {
+      throw new JsonRpcFault(-32003, 'The Studio result is not bound to an active unpublished turn')
+    }
+    const validation = studioAgentReportResultValidator(value.arguments)
+    if (!validation.valid || containsAbsoluteFilesystemPath(value.arguments)) {
+      throw new JsonRpcFault(-32602, 'The Studio result is schema-invalid or contains a filesystem path')
+    }
+
+    const result = value.arguments as StudioAgentReportResultInput
+    const sessionId = value.sessionId as string
+    const calculation = application.get('CalculationRuntimeService')
+    for (const artifact of result.artifacts) {
+      await calculation.verifyReportedAgentArtifact(sessionId, artifact)
+    }
+
+    const projection = application.get('StudioAgentProjectionService')
+    for (const artifact of result.artifacts) {
+      await projection.appendTurnEvent(sessionId, operation.turnId, {
+        kind: 'artifact_published',
+        status: 'succeeded',
+        summary: artifact.summary,
+        artifact
+      })
+    }
+    await projection.appendTurnEvent(sessionId, operation.turnId, {
+      kind: 'answer_published',
+      status: 'succeeded',
+      summary: result.answer.summary,
+      answer: result.answer
+    })
+    operation.resultReported = true
+    return { accepted: true }
+  }
+
+  private async appendProjectionTrace(
+    sessionId: string,
+    operation: ActiveModelOperation,
+    event: StudioAgentTraceEvent
+  ): Promise<void> {
+    if (
+      !operation.turnId ||
+      event.toolName === 'report_studio_result' ||
+      event.kind === 'turn_started' ||
+      event.kind === 'turn_completed' ||
+      event.kind === 'turn_blocked'
+    ) {
+      return
+    }
+    const projection = application.get('StudioAgentProjectionService')
+    if (event.kind === 'reasoning_summary') {
+      await projection.appendTurnEvent(sessionId, operation.turnId, {
+        kind: 'reasoning_summary',
+        status: 'running',
+        summary: event.summary
+      })
+      return
+    }
+    if (!event.toolCallId || !event.toolName) {
+      throw new JsonRpcFault(-32603, 'Agent tool trace identity is missing')
+    }
+    const kind = event.kind
+    await projection.appendTurnEvent(sessionId, operation.turnId, {
+      kind,
+      status: event.status,
+      summary: event.summary,
+      ...(kind === 'permission_waiting' ? { approvalRef: event.toolCallId } : {}),
+      tool: {
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        purpose: event.title,
+        ...(event.detail?.argumentKeys ? { argumentKeys: event.detail.argumentKeys } : {}),
+        ...(event.detail?.resultKeys ? { resultKeys: event.detail.resultKeys } : {}),
+        ...(event.detail?.ruleIds ? { ruleIds: event.detail.ruleIds } : {}),
+        ...(event.detail?.verdict ? { verdict: event.detail.verdict } : {}),
+        ...(event.detail?.durationMs !== undefined ? { durationMs: event.detail.durationMs } : {})
+      }
+    })
+  }
+
+  private advisoryAnswer(value: unknown): StudioAgentAnswer {
+    if (typeof value !== 'string') {
+      throw new JsonRpcFault(-32603, 'Advisory Agent output must be bounded plain text')
+    }
+    const summary = value.replace(/\s+/g, ' ').trim()
+    if (summary.length === 0 || summary.length > 2_048 || containsAbsoluteFilesystemPath(summary)) {
+      throw new JsonRpcFault(-32603, 'Advisory Agent output must be bounded path-free plain text')
+    }
+    return {
+      answerId: `answer-${randomUUID()}`,
+      heading: 'ChemSmart Agent',
+      summary,
+      sections: [{ kind: 'finding', heading: 'Finding', summary }],
+      extensions: {}
+    }
+  }
+
+  private terminalSummary(outcome: StudioAgentTurnOutcome): string {
+    switch (outcome) {
+      case 'completed':
+        return 'Agent turn completed'
+      case 'denied':
+        return 'Agent tool permission was denied'
+      case 'failed':
+        return 'Agent turn failed'
+      case 'cancelled':
+        return 'Agent turn cancelled'
+      case 'needs_user':
+        return 'Agent needs more information'
     }
   }
 
@@ -667,18 +872,6 @@ export class ChemSmartAgentService extends BaseService {
     const request = params as ControlledCalculationHostRequest
     application.get('StudioControlService').recordAgentToolCompletion(request.sessionId, request.request.tool)
     return result
-  }
-
-  private async ensureStudioUiSession(sessionId: string): Promise<void> {
-    if (this.studioUiEvents.hasLiveSequence(sessionId)) return
-    let restore = this.studioUiRestores.get(sessionId)
-    if (!restore) {
-      restore = this.replayStudioUiInternal(sessionId, -1, true)
-        .then(() => undefined)
-        .finally(() => this.studioUiRestores.delete(sessionId))
-      this.studioUiRestores.set(sessionId, restore)
-    }
-    await restore
   }
 
   private async applyTransientFocus(event: StudioUiEvent): Promise<StudioUiDelivery> {

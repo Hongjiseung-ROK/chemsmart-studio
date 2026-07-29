@@ -33,6 +33,7 @@ from chemsmart_studio_bridge.generated_protocol import (  # noqa: E402
     STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA,
     STUDIO_APPROVAL_REQUEST_SCHEMA,
     STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
+    STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA,
     STUDIO_COMMON_SCHEMA,
     STUDIO_CONTROL_RUNTIME_SCHEMA,
     STUDIO_CONTROL_SCHEMA,
@@ -351,6 +352,7 @@ class ProtocolCodegenTest(unittest.TestCase):
         expected_names = {
             "get_studio_context",
             "analyze_current_molecule",
+            "report_studio_result",
             "prepare_molecule_optimization",
             "validate_prepared_optimization",
             "start_prepared_optimization",
@@ -364,7 +366,10 @@ class ProtocolCodegenTest(unittest.TestCase):
         self.assertEqual(set(STUDIO_AGENT_TOOL_INPUT_SCHEMAS), expected_names)
         self.assertEqual(
             STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
-            studio_agent_tool_input_schemas(CONTROLLED_CALCULATION_RUNTIME_SCHEMA),
+            studio_agent_tool_input_schemas(
+                CONTROLLED_CALCULATION_RUNTIME_SCHEMA,
+                STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA,
+            ),
         )
         self.assertEqual(
             set(STUDIO_AGENT_TOOL_INPUT_SCHEMAS["get_studio_context"]),
@@ -379,6 +384,22 @@ class ProtocolCodegenTest(unittest.TestCase):
             "analyze_current_molecule": {
                 "expected_revision": 3,
                 "geometry_hash": "sha256:" + "1" * 64,
+            },
+            "report_studio_result": {
+                "answer": {
+                    "answerId": "answer-1",
+                    "heading": "Inspection result",
+                    "summary": "The visible molecule passed inspection.",
+                    "sections": [
+                        {
+                            "kind": "finding",
+                            "heading": "Finding",
+                            "summary": "The molecule identity is internally consistent.",
+                        }
+                    ],
+                    "extensions": {},
+                },
+                "artifacts": [],
             },
             "prepare_molecule_optimization": {
                 "document_id": "ethanol",

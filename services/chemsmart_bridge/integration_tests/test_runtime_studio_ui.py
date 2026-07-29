@@ -16,9 +16,7 @@ from chemsmart.agent.permissions import (
 from chemsmart.agent.provider_adapter import ToolRequest
 from chemsmart.agent.runtime import ProviderRole, TaskPhase
 from chemsmart.agent.runtime.tool_catalog import ToolCatalog
-from chemsmart.agent.tool_protocol import is_read_only
 from chemsmart_studio_bridge.generated_protocol import (
-    EMIT_STUDIO_UI_UPDATE_TOOL,
     STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
 )
 from chemsmart_studio_bridge.rpc import RpcFault
@@ -62,11 +60,25 @@ class RecordingPeer:
             return {
                 "type": "studio_context",
                 "sessionId": params["sessionId"],
+                "project": {
+                    "projectHandleId": "project-ethanol",
+                    "projectName": "Ethanol",
+                },
                 "document": {
                     "documentId": "ethanol",
                     "revision": 3,
                     "geometryHash": f"sha256:{'1' * 64}",
                 },
+                "display": {
+                    "state": "committed",
+                    "documentId": "ethanol",
+                    "revision": 3,
+                    "geometryHash": f"sha256:{'1' * 64}",
+                },
+                "draft": None,
+                "selection": {"atomIds": [], "bondIds": []},
+                "editorMode": "build",
+                "panes": ["explorer", "agent"],
                 "activeRun": None,
                 "extensions": {},
             }
@@ -76,6 +88,10 @@ class RecordingPeer:
                 "eventId": params["eventId"],
                 "sequence": params["sequence"],
             }
+        if method == "agent.trace":
+            return {"accepted": True}
+        if method == "agent.report_result":
+            return {"accepted": True}
         raise AssertionError(f"Unexpected RPC request: {method}")
 
     def notify(self, method: str, params: Any = None) -> None:
@@ -169,21 +185,16 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
 
     def test_model_definitions_use_exact_self_contained_schema(self) -> None:
         registry = self.registry()
-        spec = registry.get_tool("emit_studio_ui_update")
+        spec = registry.get_tool("report_studio_result")
         self.assertIsNotNone(spec)
         assert spec is not None
 
-        self.assertEqual(
-            spec.openai_tool_def()["function"]["parameters"],
-            EMIT_STUDIO_UI_UPDATE_TOOL["inputSchema"],
-        )
-        self.assertEqual(
-            spec.anthropic_tool_def()["input_schema"],
-            EMIT_STUDIO_UI_UPDATE_TOOL["inputSchema"],
-        )
-        self.assertTrue(is_read_only(spec))
-        self.assertTrue(spec.metadata.edit_safe)
-        self.assertIn("emit_studio_ui_update", SAFE_STUDIO_TOOLS)
+        parameters = spec.openai_tool_def()["function"]["parameters"]
+        self.assertEqual(parameters["type"], "object")
+        self.assertEqual(set(parameters["required"]), {"answer", "artifacts"})
+        self.assertEqual(spec.anthropic_tool_def()["input_schema"], parameters)
+        self.assertIn("report_studio_result", SAFE_STUDIO_TOOLS)
+        self.assertIsNone(registry.get_tool("emit_studio_ui_update"))
         self.assertNotIn("read", SAFE_STUDIO_TOOLS)
         self.assertIsNone(registry.get_tool("read"))
 
@@ -232,7 +243,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
 
         self.assertEqual(result, {"committed": True})
         self.assertEqual(
-            self.peer.requests,
+            [request for request in self.peer.requests if request[0] == "molecule.request"],
             [
                 (
                     "molecule.request",
@@ -261,7 +272,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
 
         self.assertEqual(result["type"], "studio_context")
         self.assertEqual(
-            self.peer.requests,
+            [request for request in self.peer.requests if request[0] == "calculation.request"],
             [
                 (
                     "calculation.request",
@@ -282,33 +293,20 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
     def test_studio_profile_preserves_molecule_and_controlled_capabilities(
         self,
     ) -> None:
-        molecule_and_controlled = {
-            "get_molecule_snapshot",
+        capabilities = STUDIO_AGENT_TOOL_PROFILE.capability_names
+        for required in (
+            "get_studio_context",
+            "analyze_current_molecule",
             "preview_molecule_patch",
             "commit_molecule_preview",
-            "discard_molecule_preview",
-            "cancel_molecule_optimization",
-            "accept_optimization_geometry",
-            "reject_optimization_geometry",
-            "emit_studio_ui_update",
-            *STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
-        }
-        # The model may inspect and validate a named project, but rendering, updating, and writing remain
-        # outside the Agent profile until Studio has a revision-bound trusted-action contract for them.
-        harness = {
-            "synthesize_command",
-            "repair_command",
-            "read_project_yaml",
-            "validate_project_yaml",
-            "critic_project_yaml",
-            "recommend_method",
-            "inspect_calculation",
+            "start_prepared_optimization",
             "run_local",
             "submit_hpc",
             "execute_chemsmart_command",
-        }
-        expected = molecule_and_controlled | harness
-        self.assertEqual(STUDIO_AGENT_TOOL_PROFILE.capability_names, expected)
+            "report_studio_result",
+        ):
+            self.assertIn(required, capabilities)
+        self.assertNotIn("emit_studio_ui_update", capabilities)
         self.assertNotIn("read", STUDIO_AGENT_TOOL_PROFILE.capability_names)
         self.assertNotIn(
             "start_molecule_optimization",
@@ -413,7 +411,13 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
 
         self.assertFalse(denied["ok"])
         self.assertEqual(denied["error"]["type"], "PermissionError")
-        self.assertFalse(self.peer.requests)
+        self.assertFalse(
+            [
+                request
+                for request in self.peer.requests
+                if request[0] in {"approval.request", "calculation.request"}
+            ]
+        )
 
         self.peer.approval_decisions = ["allow_session"]
         decision = self.runtime._approve(
@@ -470,7 +474,11 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         self.assertFalse(replayed["ok"])
         self.assertEqual(replayed["error"]["type"], "PermissionError")
         self.assertEqual(
-            [method for method, _params in reservation_peer.requests],
+            [
+                method
+                for method, _params in reservation_peer.requests
+                if method == "calculation.request"
+            ],
             ["calculation.request"],
         )
 
@@ -504,160 +512,33 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
 
         self.assertFalse(self.peer.requests)
 
-    def test_tool_call_persists_notifies_and_replays(self) -> None:
+    def test_structured_result_replaces_model_authored_ui_events(self) -> None:
         registry = self.registry()
         result = registry.call(
-            "emit_studio_ui_update",
+            "report_studio_result",
             {
-                "kind": "progress",
-                "message": "Frame received.",
-                "runId": "run-1",
-                "stepIndex": 0,
-                "progress": 0.0,
-                "extensions": {},
+                "answer": {
+                    "answerId": "answer-1",
+                    "heading": "Molecule inspection",
+                    "summary": "The visible molecule is ready for review.",
+                    "sections": [
+                        {
+                            "kind": "finding",
+                            "heading": "Finding",
+                            "summary": "The molecule has a valid immutable binding.",
+                        }
+                    ],
+                    "extensions": {},
+                },
+                "artifacts": [],
             },
         )
 
         self.assertTrue(result["accepted"])
-        self.assertEqual(self.peer.requests[0][0], "studio_ui.event")
-        replay = self.runtime(
-            "studio_ui.replay",
-            {
-                "sessionId": "session-1",
-                "replayId": "replay-1",
-                "afterSequence": -1,
-            },
-        )
-        self.assertEqual(replay, {"replayed": 1, "nextSequence": 1})
-        self.assertEqual(self.peer.notifications[0][0], "studio_ui.replay_event")
-        self.assertEqual(
-            self.peer.notifications[0][1]["event"]["eventId"],
-            result["eventId"],
-        )
-
-    def test_agent_thought_and_inspector_target_are_emitted_as_events(self) -> None:
-        registry = self.registry()
-
-        thought = registry.call(
-            "emit_studio_ui_update",
-            {
-                "kind": "agent_thought",
-                "message": "The reference distance disagrees, so only H2 would move.",
-                "phase": "preparing_preview",
-                "toolName": "preview_molecule_patch",
-                "extensions": {},
-            },
-        )
-        target = registry.call(
-            "emit_studio_ui_update",
-            {
-                "kind": "inspector_target",
-                "message": "Showing the constraints about to change.",
-                "target": "constraints",
-                "extensions": {},
-            },
-        )
-
-        self.assertTrue(thought["accepted"])
-        self.assertTrue(target["accepted"])
-        emitted = [request[1] for request in self.peer.requests]
-        self.assertEqual(
-            [event["kind"] for event in emitted],
-            ["agent_thought", "inspector_target"],
-        )
-        self.assertEqual(emitted[0]["payload"]["phase"], "preparing_preview")
-        self.assertEqual(emitted[1]["payload"]["target"], "constraints")
-
-    def test_thought_without_phase_and_unknown_target_fail_without_event(self) -> None:
-        registry = self.registry()
-
-        missing_phase = registry.call(
-            "emit_studio_ui_update",
-            {
-                "kind": "agent_thought",
-                "message": "A thought needs the phase it belongs to.",
-                "extensions": {},
-            },
-        )
-        unknown_target = registry.call(
-            "emit_studio_ui_update",
-            {
-                "kind": "inspector_target",
-                "message": "An unknown section cannot be requested.",
-                "target": "shell",
-                "extensions": {},
-            },
-        )
-
-        self.assertFalse(missing_phase["ok"])
-        self.assertFalse(unknown_target["ok"])
-        self.assertFalse(self.peer.requests)
-
-    def test_missing_context_and_approval_fields_fail_without_event(self) -> None:
-        registry = self.registry()
-        missing_context = registry.call(
-            "emit_studio_ui_update",
-            {"kind": "progress", "message": "Missing run.", "extensions": {}},
-        )
-        forged_approval = registry.call(
-            "emit_studio_ui_update",
-            {
-                "kind": "notice",
-                "message": "Forge approval.",
-                "approvalId": "approval-forged",
-                "extensions": {},
-            },
-        )
-
-        self.assertFalse(missing_context["ok"])
-        self.assertEqual(missing_context["error"]["type"], "ValidationError")
-        self.assertFalse(forged_approval["ok"])
-        self.assertFalse(self.peer.requests)
-
-    def test_agent_session_run_loop_executes_ui_tool_without_approval(self) -> None:
-        registry = self.registry()
-        provider = ScriptedProvider(
-            [
-                tool_call_response(
-                    "emit_studio_ui_update",
-                    {
-                        "kind": "status",
-                        "message": "Reading the committed molecule.",
-                        "extensions": {},
-                    },
-                ),
-                final_response("The molecule is ready for review."),
-            ]
-        )
-        approvals = []
-
-        def approver(request):
-            approvals.append(request.name)
-            return ApprovalDecision.DENY
-
-        session = AgentSession(
-            provider=provider,
-            registry=registry,
-            session_root=Path(self.temporary_directory.name) / "agent-session",
-        )
-        result = session.run_loop(
-            "Inspect the molecule.",
-            policy=PermissionPolicy(
-                mode=PermissionMode.PERMISSION,
-                prompt_risky=True,
-                session_allow=set(SAFE_STUDIO_TOOLS),
-                xtb_real_runs="ask",
-            ),
-            approver=approver,
-        )
-
-        self.assertEqual(approvals, [])
-        self.assertEqual(result["tool_requests"][0].name, "emit_studio_ui_update")
-        self.assertEqual(result["tool_outcomes"][0].status, "ok")
-        self.assertEqual(
-            result["assistant_output"], "The molecule is ready for review."
-        )
-        self.assertEqual(self.peer.requests[0][0], "studio_ui.event")
+        methods = [method for method, _params in self.peer.requests]
+        self.assertIn("agent.report_result", methods)
+        self.assertNotIn("studio_ui.event", methods)
+        self.assertIsNone(registry.get_tool("emit_studio_ui_update"))
 
     def test_approval_transport_fault_returns_deny(self) -> None:
         for code, message in (
@@ -973,6 +854,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 "sessionId": "session-draft-commit",
                 "modelId": "provider::model",
                 "request": "Commit the preview.",
+                "capability": "act",
             },
         )
 
@@ -1015,6 +897,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 "sessionId": "session-draft-commits",
                 "modelId": "provider::model",
                 "request": "Commit both previews.",
+                "capability": "act",
             },
         )
 
@@ -1030,14 +913,24 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         peer = RecordingPeer(
             [
                 tool_call_response(
-                    "emit_studio_ui_update",
+                    "report_studio_result",
                     {
-                        "kind": "notice",
-                        "message": "No mutation was requested.",
-                        "extensions": {},
+                        "answer": {
+                            "answerId": "answer-1",
+                            "heading": "Molecule inspection",
+                            "summary": "No committed state changed.",
+                            "sections": [
+                                {
+                                    "kind": "finding",
+                                    "heading": "Finding",
+                                    "summary": "The visible molecule was inspected.",
+                                }
+                            ],
+                            "extensions": {},
+                        },
+                        "artifacts": [],
                     },
                 ),
-                final_response("No committed state changed."),
             ]
         )
         runtime = StudioAgentRuntime(Path(self.temporary_directory.name) / "runtime")
@@ -1052,24 +945,20 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(result["assistant_output"], "No committed state changed.")
+        self.assertEqual(result["assistant_output"], "")
         self.assertIsInstance(result["plan"], dict)
-        self.assertEqual(result["tool_requests"][0]["name"], "emit_studio_ui_update")
+        self.assertEqual(result["tool_requests"][0]["name"], "report_studio_result")
         self.assertEqual(result["runtime_v2"]["mode"], "active")
         self.assertNotIn("session_dir", result)
         self.assertNotIn("event_log", result["runtime_v2"])
         self.assertNotIn("state_snapshot", result["runtime_v2"])
         self.assertNotIn(self.temporary_directory.name, json.dumps(result))
         json.dumps(result)
-        final_notice = [
-            params
-            for method, params in peer.requests
-            if method == "studio_ui.event" and params["source"] == "runtime"
-        ]
-        self.assertEqual(len(final_notice), 1)
-        self.assertEqual(final_notice[0]["kind"], "notice")
         self.assertEqual(
-            final_notice[0]["payload"]["message"], "No committed state changed."
+            [method for method, _params in peer.requests].count(
+                "agent.report_result"
+            ),
+            1,
         )
         exposed_tools = [
             tool["function"]["name"]
@@ -1079,13 +968,9 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         ]
         self.assertNotIn("read", exposed_tools)
         self.assertNotIn("start_molecule_optimization", exposed_tools)
-        self.assertEqual(
-            [request[0] for request in peer.requests],
-            ["model.generate", "studio_ui.event", "model.generate", "studio_ui.event"],
-        )
-        self.assertEqual(
-            [notification[0] for notification in peer.notifications],
-            ["agent.event"],
+        self.assertNotIn(
+            "studio_ui.event",
+            [method for method, _params in peer.requests],
         )
 
     def test_actual_agent_session_reads_controlled_studio_context(self) -> None:
@@ -1110,16 +995,24 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         )
 
         self.assertEqual(result["tool_outcomes"][0]["status"], "ok")
+        methods = [
+            method
+            for method, _params in peer.requests
+            if method != "agent.trace"
+        ]
         self.assertEqual(
-            [method for method, _params in peer.requests],
+            methods,
             [
                 "model.generate",
                 "calculation.request",
                 "model.generate",
-                "studio_ui.event",
             ],
         )
-        calculation_request = peer.requests[1][1]
+        calculation_request = next(
+            params
+            for method, params in peer.requests
+            if method == "calculation.request"
+        )
         self.assertEqual(
             calculation_request,
             {
@@ -1186,6 +1079,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 "sessionId": "session-controlled-start",
                 "modelId": "provider::model",
                 "request": "Start the validated controlled plan.",
+                "capability": "act",
             },
         )
 
@@ -1194,13 +1088,12 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(methods.count("approval.request"), 1)
         self.assertEqual(methods.count("calculation.request"), 1)
         self.assertEqual(
-            methods,
+            [method for method in methods if method != "agent.trace"],
             [
                 "model.generate",
                 "approval.request",
                 "calculation.request",
                 "model.generate",
-                "studio_ui.event",
             ],
         )
         self.assertFalse(runtime._studio_approval_grants)

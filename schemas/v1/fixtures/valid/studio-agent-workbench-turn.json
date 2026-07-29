@@ -13,6 +13,7 @@
     "method": "GFN2-xTB",
     "multiplicity": 1,
     "revision": 2,
+    "runId": "run-1",
     "summary": "The calculation completed normally."
   },
   "eventId": "event-1",

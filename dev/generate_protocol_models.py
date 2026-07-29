@@ -16,6 +16,7 @@ SCHEMAS = ROOT / "schemas" / "v1"
 STUDIO_AGENT_TOOL_INPUT_DEFINITIONS = {
     "get_studio_context": "getStudioContextInput",
     "analyze_current_molecule": "analyzeCurrentMoleculeInput",
+    "report_studio_result": "reportStudioResultInput",
     "prepare_molecule_optimization": "prepareMoleculeOptimizationInput",
     "validate_prepared_optimization": "validatePreparedOptimizationInput",
     "start_prepared_optimization": "startPreparedOptimizationInput",
@@ -279,12 +280,17 @@ def bundle_studio_agent_molecule_request_schema(
 
 def studio_agent_tool_input_schemas(
     controlled_calculation_runtime_schema: dict,
+    studio_agent_workbench_runtime_schema: dict,
 ) -> dict[str, dict]:
     """Project canonical input definitions into self-contained model tool schemas."""
 
-    definitions = controlled_calculation_runtime_schema.get("$defs")
-    if not isinstance(definitions, dict):
+    calculation_definitions = controlled_calculation_runtime_schema.get("$defs")
+    workbench_definitions = studio_agent_workbench_runtime_schema.get("$defs")
+    if not isinstance(calculation_definitions, dict):
         raise TypeError("Controlled calculation schema definitions must be an object")
+    if not isinstance(workbench_definitions, dict):
+        raise TypeError("Studio Agent workbench schema definitions must be an object")
+    definitions = {**calculation_definitions, **workbench_definitions}
     missing = sorted(
         definition
         for definition in STUDIO_AGENT_TOOL_INPUT_DEFINITIONS.values()
@@ -519,7 +525,8 @@ def typescript(
         f"  {json.dumps(tool_name)}: "
         f"{json.dumps(input_schema, indent=2, ensure_ascii=False)},"
         for tool_name, input_schema in studio_agent_tool_input_schemas(
-            controlled_calculation_runtime_schema
+            controlled_calculation_runtime_schema,
+            studio_agent_workbench_runtime_schema,
         ).items()
     )
     common_schema_literal = json.dumps(common_schema, indent=2, ensure_ascii=False)
@@ -573,7 +580,7 @@ export type StudioAgentAnswerSectionKind = 'finding' | 'evidence' | 'warning' | 
 export interface StudioAgentAnswerSection {{ kind: StudioAgentAnswerSectionKind; heading: string; summary: string }}
 export interface StudioAgentAnswer {{ answerId: StableId; heading: string; summary: string; sections: StudioAgentAnswerSection[]; extensions: Extensions }}
 export type StudioAgentArtifactKind = 'molecule_change' | 'calculation_plan' | 'preflight_receipt' | 'trajectory_result' | 'verification'
-export interface StudioAgentArtifact {{ artifactId: StableId; kind: StudioAgentArtifactKind; heading: string; summary: string; documentId: StableId; revision: number; geometryHash: string; charge: number; multiplicity: number; engine?: 'xtb' | 'gaussian' | 'orca'; method?: string; calculationKind?: 'single_point' | 'optimization' | 'frequency' | 'transition_state' | 'scan' | 'other'; energy?: {{ value: number; unit: 'hartree' | 'eV' | 'kJ/mol' | 'kcal/mol' }}; affectedIds?: StableId[]; ruleIds?: string[]; verdict?: 'passed' | 'warning' | 'failed' | 'denied'; extensions: Extensions }}
+export interface StudioAgentArtifact {{ artifactId: StableId; kind: StudioAgentArtifactKind; heading: string; summary: string; documentId: StableId; revision: number; geometryHash: string; charge: number; multiplicity: number; engine?: 'xtb' | 'gaussian' | 'orca'; method?: string; calculationKind?: 'single_point' | 'optimization' | 'frequency' | 'transition_state' | 'scan' | 'other'; planId?: StableId; runId?: StableId; energy?: {{ value: number; unit: 'hartree' | 'eV' | 'kJ/mol' | 'kcal/mol' }}; affectedIds?: StableId[]; ruleIds?: string[]; verdict?: 'passed' | 'warning' | 'failed' | 'denied'; extensions: Extensions }}
 export interface StudioAgentToolProjection {{ toolCallId: StableId; toolName: string; purpose: string; argumentKeys?: string[]; resultKeys?: string[]; ruleIds?: string[]; verdict?: string; durationMs?: number }}
 export type StudioAgentTurnEventKind = 'user_message' | 'reasoning_summary' | 'tool_started' | 'permission_waiting' | 'tool_progress' | 'tool_succeeded' | 'tool_failed' | 'artifact_published' | 'answer_published' | 'turn_terminal'
 export type StudioAgentTurnStatus = 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'denied' | 'cancelled' | 'needs_user'
@@ -1048,7 +1055,10 @@ def python_types(
         width=100,
     )
     studio_agent_tool_input_schemas_literal = pprint.pformat(
-        studio_agent_tool_input_schemas(controlled_calculation_runtime_schema),
+        studio_agent_tool_input_schemas(
+            controlled_calculation_runtime_schema,
+            studio_agent_workbench_runtime_schema,
+        ),
         sort_dicts=False,
         width=100,
     )
@@ -1286,6 +1296,8 @@ class StudioAgentArtifact(TypedDict):
     calculationKind: NotRequired[
         Literal["single_point", "optimization", "frequency", "transition_state", "scan", "other"]
     ]
+    planId: NotRequired[str]
+    runId: NotRequired[str]
     energy: NotRequired[dict[str, Any]]
     affectedIds: NotRequired[list[str]]
     ruleIds: NotRequired[list[str]]
@@ -2500,7 +2512,10 @@ def main() -> int:
         "research-project-session.schema.json",
         schema_documents,
     )
-    studio_agent_tool_input_schemas(controlled_calculation_runtime_schema)
+    studio_agent_tool_input_schemas(
+        controlled_calculation_runtime_schema,
+        studio_agent_workbench_runtime_schema,
+    )
     studio_approval_request_runtime_schema = bundle_studio_approval_request_schema(
         studio_approval_request_schema,
         schema_documents,

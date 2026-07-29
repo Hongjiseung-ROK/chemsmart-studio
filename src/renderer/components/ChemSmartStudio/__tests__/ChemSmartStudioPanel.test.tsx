@@ -1,7 +1,7 @@
 import type {
   MoleculeDocument,
   MoleculeOperation,
-  StudioAgentTraceEvent,
+  StudioAgentTurnEvent,
   StudioControlSnapshot,
   StudioDraftSnapshot
 } from '@chemsmart/studio-protocol'
@@ -42,13 +42,21 @@ vi.mock('@renderer/ipc', () => ({
         const result = await ipcMocks.request(route, ...args)
         return route === 'chemsmart_studio.molecule.draft_snapshot' && result === undefined ? null : result
       } catch (error) {
-        if (
-          (route === 'chemsmart_studio.molecule.draft_snapshot' ||
-            route === 'chemsmart_studio.agent.update_workspace_view') &&
-          error instanceof Error &&
-          error.message.startsWith('Unexpected route:')
-        ) {
-          return route === 'chemsmart_studio.molecule.draft_snapshot' ? null : { accepted: true }
+        if (error instanceof Error && error.message.startsWith('Unexpected route:')) {
+          if (route === 'chemsmart_studio.molecule.draft_snapshot') return null
+          if (route === 'chemsmart_studio.agent.update_workspace_view') return { accepted: true }
+          if (route === 'chemsmart_studio.agent.capabilities') {
+            return {
+              threadId: 'topic-a',
+              projectId: 'project-1',
+              generatedAt: '2026-07-29T00:00:00Z',
+              items: [],
+              extensions: {}
+            }
+          }
+          if (route === 'chemsmart_studio.agent.turns') {
+            return { threadId: 'topic-a', events: [], nextBeforeSequence: null, extensions: {} }
+          }
         }
         throw error
       }
@@ -180,28 +188,6 @@ function moleculeDraft(
   }
 }
 
-function agentControlSnapshot(sessionId = 'topic-a'): StudioControlSnapshot {
-  return {
-    ...emptyControlSnapshot(sessionId),
-    snapshotRevision: 1,
-    agent: {
-      phase: 'running_calculation',
-      currentObject: 'trajectory',
-      activeTool: 'get_optimization_status',
-      statusSummary: 'Monitoring the controlled calculation',
-      progress: 0.42,
-      focus: { atomIds: [], bondIds: [] },
-      latestGate: 'passed',
-      pendingTrustedAction: 'calculation_cancel',
-      requiresUserInput: false,
-      terminalResult: null,
-      recoverySequence: 0,
-      updatedAt: '2026-07-25T00:00:00Z',
-      extensions: {}
-    }
-  }
-}
-
 function previewControlSnapshot(sessionId = 'topic-a'): StudioControlSnapshot {
   return {
     ...emptyControlSnapshot(sessionId),
@@ -265,35 +251,6 @@ function previewControlSnapshot(sessionId = 'topic-a'): StudioControlSnapshot {
       }
     ],
     extensions: { rawJson: { value: 'TOP-LEVEL-RAW' } }
-  }
-}
-
-function calculationControlSnapshot(sessionId = 'topic-a'): StudioControlSnapshot {
-  return {
-    ...emptyControlSnapshot(sessionId),
-    snapshotRevision: 2,
-    pendingApprovals: [
-      {
-        kind: 'calculation_start',
-        requestId: 'request-calculation',
-        approvalId: 'approval-calculation',
-        requestedAt: '2026-07-22T00:00:00Z',
-        expiresAt: '2026-07-22T00:05:00Z',
-        risk: 'calculation_execution',
-        documentId: 'molecule-1',
-        expectedRevision: 4,
-        engine: 'avogadro',
-        method: 'UFF',
-        settings: {
-          maxSteps: 100,
-          charge: 0,
-          multiplicity: 1,
-          extensions: { providerArgs: { value: 'hidden' } }
-        },
-        allowActionId: 'action-start',
-        denyActionId: 'action-deny'
-      }
-    ]
   }
 }
 
@@ -447,23 +404,25 @@ function replayCatalog() {
   }
 }
 
-function createTraceEvent(
-  sessionId: string,
+function createTurnEvent(
+  threadId: string,
   sequence: number,
-  overrides: Partial<StudioAgentTraceEvent> = {}
-): StudioAgentTraceEvent {
+  overrides: Partial<StudioAgentTurnEvent> = {}
+): StudioAgentTurnEvent {
   return {
-    eventId: `trace-${sequence}`,
-    sessionId,
+    eventId: `event-${sequence}`,
+    threadId,
     turnId: 'turn-1',
     sequence,
     timestamp: '2026-07-29T00:00:00Z',
     kind: 'tool_started',
     status: 'running',
-    toolCallId: 'tool-call-1',
-    toolName: 'analyze_current_molecule',
-    title: 'Analyze visible molecule',
     summary: 'Using the immutable draft snapshot.',
+    tool: {
+      toolCallId: 'tool-call-1',
+      toolName: 'analyze_current_molecule',
+      purpose: 'Analyze visible molecule'
+    },
     extensions: {},
     ...overrides
   }
@@ -604,8 +563,12 @@ describe('ChemSmartStudioPanel', () => {
       ipcMocks.order.push(`request:${route}`)
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.molecule.summary') return { documentId: 'molecule-1', revision: 4 }
+      if (route === 'chemsmart_studio.molecule.document') return moleculeDocument()
       if (route === 'chemsmart_studio.agent.replay_studio_ui') return { replayed: 0, nextSequence: 0 }
       if (route === 'chemsmart_studio.control.snapshot') return emptyControlSnapshot()
+      if (route === 'chemsmart_studio.optimization.replay_catalog') {
+        return { totalRuns: 0, runs: [], nextRunId: null, extensions: {} }
+      }
       throw new Error(`Unexpected route: ${route}`)
     })
   })
@@ -625,24 +588,25 @@ describe('ChemSmartStudioPanel', () => {
     const statusRequestIndex = ipcMocks.order.indexOf('request:chemsmart_studio.status')
     expect(statusRequestIndex).toBeGreaterThan(-1)
     expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.agent.state_changed')).toBeLessThan(statusRequestIndex)
-    expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.agent.trace')).toBeLessThan(statusRequestIndex)
-    expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.studio_ui.event')).toBeLessThan(statusRequestIndex)
+    expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.agent.turn_event')).toBeLessThan(statusRequestIndex)
+    expect(ipcMocks.order).not.toContain('subscribe:chemsmart_studio.agent.trace')
+    expect(ipcMocks.order).not.toContain('subscribe:chemsmart_studio.studio_ui.event')
     expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.control.changed')).toBeLessThan(statusRequestIndex)
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.snapshot', { sessionId: 'topic-a' })
     expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.agent.start')
   })
 
-  it('renders only session-bound trusted Agent trace events', async () => {
+  it('renders only thread-bound main-owned Agent turn events', async () => {
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
     await screen.findByTestId('molecule-stage')
 
     act(() => {
-      emit('chemsmart_studio.agent.trace', createTraceEvent('topic-other', 0))
-      emit('chemsmart_studio.agent.trace', createTraceEvent('topic-a', 0))
+      emit('chemsmart_studio.agent.turn_event', createTurnEvent('topic-other', 0))
+      emit('chemsmart_studio.agent.turn_event', createTurnEvent('topic-a', 0))
     })
 
-    expect(screen.getByTestId('agent-trace-timeline')).toHaveTextContent('analyze_current_molecule')
-    expect(screen.getAllByText('Analyze visible molecule')).toHaveLength(1)
+    expect(screen.getByTestId('agent-trace-timeline')).toHaveTextContent('Using the immutable draft snapshot.')
+    expect(screen.getAllByText('Using the immutable draft snapshot.')).toHaveLength(1)
   })
 
   it('shares only path-free pane and editor metadata with the Agent context', async () => {
@@ -679,7 +643,9 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await waitFor(() => expect(screen.getAllByText('molecule-1').length).toBeGreaterThan(0))
+    await waitFor(() =>
+      expect(screen.getByTestId('viewport-identity')).toHaveTextContent('chemsmart_studio.stage.committed_revision')
+    )
 
     act(() => {
       emit('chemsmart_studio.agent.state_changed', {
@@ -690,7 +656,7 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     // The sidecar does not own the main-process document, so an agent failure cannot blank it.
-    await waitFor(() => expect(screen.getAllByText('molecule-1').length).toBeGreaterThan(0))
+    expect(screen.getByTestId('viewport-identity')).toHaveTextContent('chemsmart_studio.stage.committed_revision')
     expect(screen.queryByText('chemsmart_studio.stage.no_identity')).toBeNull()
   })
 
@@ -712,7 +678,9 @@ describe('ChemSmartStudioPanel', () => {
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
 
-    await waitFor(() => expect(screen.getAllByText('molecule-1').length).toBeGreaterThan(0))
+    await waitFor(() =>
+      expect(screen.getByTestId('viewport-identity')).toHaveTextContent('chemsmart_studio.stage.committed_revision')
+    )
     await waitFor(() =>
       expect(ipcMocks.request.mock.calls.map(([route]) => route)).toContain('chemsmart_studio.molecule.document')
     )
@@ -820,7 +788,6 @@ describe('ChemSmartStudioPanel', () => {
 
   it('opens a waiting decision in the single viewport-only sheet', async () => {
     stubWorkspaceSize(760, 560)
-    const user = userEvent.setup()
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.molecule.summary') return { documentId: 'molecule-1', revision: 4 }
@@ -833,7 +800,7 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await user.click(await screen.findByRole('button', { name: /chemsmart_studio\.approval\.review/ }))
+    await openDecisions()
 
     expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
     const reviewSheet = await screen.findByTestId('agent-review-sheet')
@@ -853,38 +820,6 @@ describe('ChemSmartStudioPanel', () => {
     expect(screen.getByTestId('viewport-identity')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.hide' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'chemsmart_studio.ide.bottom.show' })).toBeInTheDocument()
-  })
-
-  it('makes the focused Agent input the compact sheet and restores its draft and focus after resize', async () => {
-    const workspace = stubResizableWorkspace(1440, 900)
-    const user = userEvent.setup()
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await screen.findByTestId('molecule-stage')
-
-    const agentInput = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
-    fireEvent.change(agentInput, { target: { value: 'preserve this draft while resizing' } })
-
-    // Opening Console makes it the most recently toggled pane. Focusing Agent must supersede that
-    // toggle, because the input the researcher is actually using owns the compact presentation.
-    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.ide.bottom.show' }))
-    agentInput.focus()
-    expect(agentInput).toHaveFocus()
-
-    act(() => workspace.resize(960, 600))
-    await waitFor(() => expect(screen.getByTestId('chemsmart-workspace')).toHaveAttribute('data-tier', 'viewport-only'))
-    expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
-    expect(screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })).toHaveValue(
-      'preserve this draft while resizing'
-    )
-    expect(screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })).toHaveFocus()
-    expect(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.hide' })).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    )
-    expect(screen.getByRole('button', { name: 'chemsmart_studio.ide.bottom.show' })).toHaveAttribute(
-      'aria-expanded',
-      'false'
-    )
   })
 
   it('preserves Agent and Console intent, Console draft text, and focus across compact presentation', async () => {
@@ -968,7 +903,11 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await user.click(await screen.findByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
+    const stage = await screen.findByTestId('molecule-stage')
+    expect(within(stage).queryByRole('button', { name: /chemsmart_studio.build.insert_atom/ })).toBeNull()
+    expect(within(stage).getByTestId('element-picker')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
 
     const table = await screen.findByTestId('coordinate-table')
     expect(within(table).getByText('atom-1')).toBeInTheDocument()
@@ -980,9 +919,6 @@ describe('ChemSmartStudioPanel', () => {
     expect(within(table).getAllByRole('checkbox').length).toBeGreaterThan(0)
     // Structural editing belongs beside the 3D view, which is where the researcher is looking while
     // they build — not in the inspector alongside the agent's surfaces.
-    const stage = screen.getByTestId('molecule-stage')
-    expect(within(stage).queryByRole('button', { name: /chemsmart_studio.build.insert_atom/ })).toBeNull()
-    expect(within(stage).getByTestId('element-picker')).toBeInTheDocument()
     expect(within(screen.getByTestId('molecule-inspector')).queryByTestId('molecule-build-tools')).toBeNull()
     expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.agent.run_turn')
 
@@ -993,6 +929,7 @@ describe('ChemSmartStudioPanel', () => {
     )
     expect(xyzPreview.textContent).not.toMatch(/[/\\]/)
 
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.build' }))
     const atomCheckboxes = within(table).getAllByRole('checkbox', {
       name: 'chemsmart_studio.coordinates.select_atom'
     })
@@ -1336,70 +1273,6 @@ describe('ChemSmartStudioPanel', () => {
     )
   })
 
-  it('withholds legacy model thoughts while preserving trusted molecule focus', async () => {
-    const user = userEvent.setup()
-    ipcMocks.request.mockImplementation(async (route: string) => {
-      if (route === 'chemsmart_studio.status') {
-        return {
-          agent: { state: 'running', pid: 62, lastError: null }
-        }
-      }
-      if (route === 'chemsmart_studio.molecule.summary') return { documentId: 'molecule-1', revision: 4 }
-      if (route === 'chemsmart_studio.molecule.document') return moleculeDocument()
-      if (route === 'chemsmart_studio.control.snapshot') return agentControlSnapshot()
-      if (route === 'chemsmart_studio.agent.replay_studio_ui') return { replayed: 0, nextSequence: 0 }
-      if (route === 'chemsmart_studio.optimization.replay_catalog') {
-        return { totalRuns: 0, runs: [], nextRunId: null, extensions: {} }
-      }
-      throw new Error(`Unexpected route: ${route}`)
-    })
-
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await screen.findByRole('button', { name: 'chemsmart_studio.editor.save_as' })
-
-    // A working Agent says so in words in the status bar, not only in colour, and never steals focus.
-    expect(screen.getByTestId('studio-status-bar')).toHaveTextContent('Monitoring the controlled calculation')
-
-    act(() => {
-      emit('chemsmart_studio.studio_ui.event', {
-        eventId: 'thought-1',
-        sessionId: 'topic-a',
-        sequence: 0,
-        timestamp: '2026-07-25T00:00:00Z',
-        source: 'runtime',
-        kind: 'agent_thought',
-        payload: { message: 'The O-H distance disagrees with the reference.', phase: 'preparing_preview' },
-        extensions: {}
-      })
-      emit('chemsmart_studio.studio_ui.event', {
-        eventId: 'focus-1',
-        sessionId: 'topic-a',
-        sequence: 1,
-        timestamp: '2026-07-25T00:00:01Z',
-        source: 'runtime',
-        kind: 'molecule_focus',
-        payload: {
-          message: 'Looking at the hydrogen it wants to move.',
-          documentId: 'molecule-1',
-          revision: 4,
-          atomIds: ['atom-2']
-        },
-        extensions: {}
-      })
-    })
-
-    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
-    // The touched atom is marked in the coordinate rows with text, not colour alone.
-    const touched = screen.getByTestId('coordinate-table').querySelector('[data-agent-touched="true"]')
-    expect(touched).toHaveAttribute('data-atom-id', 'atom-2')
-    expect(touched).toHaveTextContent('chemsmart_studio.coordinates.agent_touched')
-
-    // Legacy model-written thought text is not a trusted lifecycle event and is not rendered.
-    expect(screen.queryByTestId('agent-thought-stream')).toBeNull()
-    expect(screen.queryByText('The O-H distance disagrees with the reference.')).toBeNull()
-    expect(screen.queryByText('Looking at the hydrogen it wants to move.')).toBeNull()
-  })
-
   it('keeps scientific tools on the viewport and reveals only the pane each tool owns', async () => {
     const user = userEvent.setup()
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
@@ -1458,7 +1331,8 @@ describe('ChemSmartStudioPanel', () => {
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.agent.run_turn', {
       sessionId: 'topic-a',
       modelId: 'deterministic::controlled-calculation',
-      request: 'Inspect and prepare the controlled calculation.'
+      request: 'Inspect and prepare the controlled calculation.',
+      intent: null
     })
     await waitFor(() => expect(request).toHaveValue(''))
   })
@@ -1545,15 +1419,15 @@ describe('ChemSmartStudioPanel', () => {
     expect(screen.queryByText('private-document-uuid')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'chemsmart_studio.editor.open_project' }))
-    expect(await screen.findByText('Opened Project')).toBeInTheDocument()
+    expect((await screen.findAllByText('Opened Project')).length).toBeGreaterThan(0)
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.editor.open_project')
 
     await user.click(screen.getByRole('button', { name: 'chemsmart_studio.editor.import_molecule' }))
-    expect(await screen.findByText('Ethanol')).toBeInTheDocument()
+    expect((await screen.findAllByText('Ethanol')).length).toBeGreaterThan(0)
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.editor.import_molecule')
 
     await user.click(screen.getByRole('button', { name: 'chemsmart_studio.editor.save_as' }))
-    expect(await screen.findByText('Ethanol Copy')).toBeInTheDocument()
+    expect((await screen.findAllByText('Ethanol Copy')).length).toBeGreaterThan(0)
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.editor.save_as')
 
     // The explorer is the app's one deliberate path surface — the researcher has to be able to see
@@ -1597,7 +1471,7 @@ describe('ChemSmartStudioPanel', () => {
     expect(screen.queryByText('/private/project-path')).toBeNull()
 
     await user.click(openProject)
-    expect(await screen.findByText('Recovered Project')).toBeInTheDocument()
+    expect((await screen.findAllByText('Recovered Project')).length).toBeGreaterThan(0)
     expect(screen.queryByTestId('workspace-inline-error')).toBeNull()
 
     await openProblems()
@@ -1627,7 +1501,6 @@ describe('ChemSmartStudioPanel', () => {
   })
 
   it('renders a canonical preview approval and sends only the session and opaque action id', async () => {
-    const user = userEvent.setup()
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.control.snapshot') return previewControlSnapshot()
@@ -1639,7 +1512,6 @@ describe('ChemSmartStudioPanel', () => {
 
     // A preview commit is not high risk, so it never blocks the workspace behind an allow notice.
     expect(screen.queryByTestId('allow-notice')).toBeNull()
-    expect(await screen.findByRole('button', { name: /chemsmart_studio\.approval\.review/ })).toBeInTheDocument()
 
     await openDecisions()
     expect(screen.getByTestId('trusted-decision-list')).toBeInTheDocument()
@@ -1656,7 +1528,7 @@ describe('ChemSmartStudioPanel', () => {
     expect(screen.queryByText(/must-not-render|TOP-LEVEL-RAW|providerArguments|rawJson/)).toBeNull()
     expect(within(screen.getByTestId('preview-approval')).queryByText(/providerArguments|rawJson/)).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.approval.preview.commit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'chemsmart_studio.approval.preview.commit' }))
 
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
       sessionId: 'topic-a',
@@ -1668,41 +1540,7 @@ describe('ChemSmartStudioPanel', () => {
     expect(actionCall).toHaveLength(2)
   })
 
-  it('renders a calculation approval separately and sends its one-shot start action', async () => {
-    const user = userEvent.setup()
-    ipcMocks.request.mockImplementation(async (route: string) => {
-      if (route === 'chemsmart_studio.status') return stoppedStatus()
-      if (route === 'chemsmart_studio.control.snapshot') return calculationControlSnapshot()
-      if (route === 'chemsmart_studio.control.perform_action') return emptyControlSnapshot()
-      throw new Error(`Unexpected route: ${route}`)
-    })
-
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-
-    // Approval remains inline until the researcher opens its focused Review sheet.
-    await openDecisions()
-    const reviewSheet = screen.getByTestId('agent-review-sheet')
-    expect(within(reviewSheet).getByText('chemsmart_studio.approval.requested_by_agent')).toBeInTheDocument()
-    expect(
-      within(reviewSheet).getByText('chemsmart_studio.optimization.engine_name.unsupported_legacy')
-    ).toBeInTheDocument()
-    expect(within(reviewSheet).getByText('UFF')).toBeInTheDocument()
-    expect(within(reviewSheet).getByText('chemsmart_studio.approval.single_use_notice')).toBeInTheDocument()
-    expect(reviewSheet).not.toHaveTextContent(/avogadro/i)
-    expect(screen.queryByText('hidden')).toBeNull()
-    expect(within(reviewSheet).getByTestId('calculation-approval')).toBeInTheDocument()
-    expect(within(reviewSheet).getByText('approval-calculation')).toBeInTheDocument()
-
-    await user.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
-
-    expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
-      sessionId: 'topic-a',
-      actionId: 'action-start'
-    })
-  })
-
   it('renders exact generic execution arguments and sends only the one-shot action id', async () => {
-    const user = userEvent.setup()
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.control.snapshot') return executionControlSnapshot()
@@ -1720,7 +1558,7 @@ describe('ChemSmartStudioPanel', () => {
     expect(within(reviewSheet).getByTestId('execution-approval')).toBeInTheDocument()
     expect(screen.queryByText(/providerArguments|rawJson|session_root|\/private\//)).toBeNull()
 
-    await user.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.execution.approve' }))
+    fireEvent.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.execution.approve' }))
 
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
       sessionId: 'topic-a',
@@ -1729,7 +1567,6 @@ describe('ChemSmartStudioPanel', () => {
   })
 
   it('renders a controlled xTB plan and runtime identity before its one-shot start action', async () => {
-    const user = userEvent.setup()
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.control.snapshot') return controlledCalculationControlSnapshot()
@@ -1751,7 +1588,7 @@ describe('ChemSmartStudioPanel', () => {
       'open'
     )
 
-    await user.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
+    fireEvent.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
 
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
       sessionId: 'topic-a',
@@ -1804,11 +1641,12 @@ describe('ChemSmartStudioPanel', () => {
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
     await openDecisions()
-    await user.click(await screen.findByRole('button', { name: 'chemsmart_studio.approval.preview.commit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'chemsmart_studio.approval.preview.commit' }))
 
     expect((await screen.findAllByText('chemsmart_studio.control.revision_conflict')).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'chemsmart_studio.approval.preview.commit' })).toBeDisabled()
 
+    fireEvent.click(within(screen.getByTestId('agent-review-sheet')).getByRole('button', { name: 'common.close' }))
     await openProblems()
     await user.click(within(screen.getByTestId('studio-problems-panel')).getByRole('button', { name: 'common.retry' }))
 
@@ -1818,7 +1656,6 @@ describe('ChemSmartStudioPanel', () => {
   })
 
   it('explains that a malformed trusted request was refused without applying it', async () => {
-    const user = userEvent.setup()
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.control.snapshot') return previewControlSnapshot()
@@ -1830,7 +1667,7 @@ describe('ChemSmartStudioPanel', () => {
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
     await openDecisions()
-    await user.click(await screen.findByRole('button', { name: 'chemsmart_studio.approval.preview.commit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'chemsmart_studio.approval.preview.commit' }))
 
     expect((await screen.findAllByText('chemsmart_studio.control.schema_invalid')).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'chemsmart_studio.approval.preview.commit' })).toBeDisabled()
@@ -2002,7 +1839,6 @@ describe('ChemSmartStudioPanel', () => {
     ['chemsmart_studio.optimization.final_geometry.accept', 'action-accept'],
     ['chemsmart_studio.optimization.final_geometry.reject', 'action-reject']
   ])('performs the final geometry control %s through its one-shot action', async (buttonName, expectedActionId) => {
-    const user = userEvent.setup()
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.control.snapshot') {
@@ -2013,7 +1849,8 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await user.click(await screen.findByRole('button', { name: buttonName }))
+    await openDecisions()
+    fireEvent.click(await screen.findByRole('button', { name: buttonName }))
 
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
       sessionId: 'topic-a',

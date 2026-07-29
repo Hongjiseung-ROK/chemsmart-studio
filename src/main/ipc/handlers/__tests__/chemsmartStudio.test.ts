@@ -210,6 +210,7 @@ describe('chemsmartStudioHandlers', () => {
       'session-1',
       'deterministic::controlled-calculation',
       'Run the controlled test.',
+      null,
       'main-window'
     )
   })

@@ -36,6 +36,7 @@ from chemsmart.agent.runtime.calculations import (
 )
 from chemsmart.agent.runtime.tool_catalog import PhaseToolProfile
 from chemsmart.agent.studio import (
+    StudioCapability,
     StudioToolAdapters,
     build_studio_tool_specs,
 )
@@ -54,12 +55,12 @@ from .project_workspace import (
 from .generated_protocol import (
     COMMAND_SYNTHESIS_RUNTIME_SCHEMA,
     CONTROLLED_CALCULATION_RUNTIME_SCHEMA,
-    EMIT_STUDIO_UI_UPDATE_TOOL,
     PROJECT_WORKSPACE_RUNTIME_SCHEMA,
     OPTIMIZATION_TRAJECTORY_RUNTIME_SCHEMA,
     STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA,
     STUDIO_AGENT_MOLECULE_REQUEST_RUNTIME_SCHEMA,
     STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
+    STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA,
     STUDIO_CONTROL_RUNTIME_SCHEMA,
 )
 from .molecule_import import import_molecule
@@ -90,7 +91,7 @@ SAFE_STUDIO_TOOLS = {
     "preview_molecule_patch",
     "commit_molecule_preview",
     "discard_molecule_preview",
-    "emit_studio_ui_update",
+    "report_studio_result",
     "get_studio_context",
     "analyze_current_molecule",
     "prepare_molecule_optimization",
@@ -405,6 +406,7 @@ are classified separately as always-ask and receive exact one-shot approval card
 STUDIO_WITHHELD_TOOLS = frozenset(
     {
         "save_geometry",
+        "emit_studio_ui_update",
         "ssh_probe",
         "scheduler_query",
         "log_tail",
@@ -425,91 +427,202 @@ researcher through typed IPC: the project workspace and the command console call
 `render_project_yaml`, `validate_project_yaml`, `critic_project_yaml`, `extract_project_protocol` and
 `search_basis_sets` deterministically, with no model in the loop.
 """
-STUDIO_AGENT_TOOL_PROFILE = PhaseToolProfile(
-    {
-        TaskPhase.ROUTE: (
-            "get_studio_context",
-            "get_molecule_snapshot",
-            "analyze_current_molecule",
-            "emit_studio_ui_update",
-            # Routing chooses between Gaussian/ORCA, which need a project, and xTB, which does not, so it
-            # has to be able to see whether a project exists.
-            "read_project_yaml",
-        ),
-        TaskPhase.PROJECT: (
-            "analyze_current_molecule",
-            "preview_molecule_patch",
-            "read_project_yaml",
-            "validate_project_yaml",
-            "critic_project_yaml",
-        ),
-        TaskPhase.PROJECT_READ: (
-            "get_molecule_snapshot",
-            "analyze_current_molecule",
-            "get_optimization_status",
-            "list_calculation_artifacts",
-            "read_project_yaml",
-        ),
-        TaskPhase.PROJECT_WRITE: (
-            "commit_molecule_preview",
-            "accept_optimization_geometry",
-            "reject_optimization_geometry",
-            "import_completed_calculation",
-        ),
-        # Atomic analysis returns the current document/revision/hash binding in one read-only
-        # call, so molecule previews and controlled plans do not need a preceding context call. The later
-        # prepare/commit operations still reject stale bindings.
-        TaskPhase.SYNTHESIS: (
-            "analyze_current_molecule",
-            "preview_molecule_patch",
-            "commit_molecule_preview",
-            "prepare_molecule_optimization",
-            "validate_prepared_optimization",
-            "synthesize_command",
-            "recommend_method",
-        ),
-        TaskPhase.VALIDATION: (
-            "analyze_current_molecule",
-            "validate_prepared_optimization",
-            "get_optimization_status",
-            "get_optimization_replay",
-            "validate_project_yaml",
-        ),
-        TaskPhase.REPAIR: (
-            "analyze_current_molecule",
-            "prepare_molecule_optimization",
-            "validate_prepared_optimization",
-            "commit_molecule_preview",
-            "discard_molecule_preview",
-            "repair_command",
-        ),
-        TaskPhase.EXECUTION: (
-            "start_prepared_optimization",
-            "get_optimization_status",
-            "get_optimization_replay",
-            "cancel_molecule_optimization",
-            "emit_studio_ui_update",
-            "run_local",
-            "submit_hpc",
-            "execute_chemsmart_command",
-        ),
-        TaskPhase.DIAGNOSTICS: (
-            "get_optimization_status",
-            "list_calculation_artifacts",
-            "read_calculation_artifact",
-            "get_optimization_replay",
-            "compare_optimization_frames",
-            "inspect_calculation",
-        ),
-    },
-    specialist_tools=(
+_STUDIO_PHASE_TOOLS = {
+    TaskPhase.ROUTE: (
+        "get_studio_context",
+        "get_molecule_snapshot",
         "analyze_current_molecule",
+        "read_project_yaml",
+        "report_studio_result",
+    ),
+    TaskPhase.PROJECT: (
+        "analyze_current_molecule",
+        "preview_molecule_patch",
+        "read_project_yaml",
+        "validate_project_yaml",
+        "critic_project_yaml",
+        "report_studio_result",
+    ),
+    TaskPhase.PROJECT_READ: (
+        "get_molecule_snapshot",
+        "analyze_current_molecule",
+        "get_optimization_status",
+        "list_calculation_artifacts",
+        "read_project_yaml",
+        "report_studio_result",
+    ),
+    TaskPhase.PROJECT_WRITE: (
+        "commit_molecule_preview",
+        "accept_optimization_geometry",
+        "reject_optimization_geometry",
+        "import_completed_calculation",
+        "report_studio_result",
+    ),
+    TaskPhase.SYNTHESIS: (
+        "analyze_current_molecule",
+        "preview_molecule_patch",
+        "commit_molecule_preview",
         "prepare_molecule_optimization",
         "validate_prepared_optimization",
         "synthesize_command",
-        "repair_command",
+        "recommend_method",
+        "report_studio_result",
     ),
+    TaskPhase.VALIDATION: (
+        "analyze_current_molecule",
+        "validate_prepared_optimization",
+        "get_optimization_status",
+        "get_optimization_replay",
+        "validate_project_yaml",
+        "report_studio_result",
+    ),
+    TaskPhase.REPAIR: (
+        "analyze_current_molecule",
+        "prepare_molecule_optimization",
+        "validate_prepared_optimization",
+        "commit_molecule_preview",
+        "discard_molecule_preview",
+        "repair_command",
+        "report_studio_result",
+    ),
+    TaskPhase.EXECUTION: (
+        "start_prepared_optimization",
+        "get_optimization_status",
+        "get_optimization_replay",
+        "cancel_molecule_optimization",
+        "run_local",
+        "submit_hpc",
+        "execute_chemsmart_command",
+        "report_studio_result",
+    ),
+    TaskPhase.DIAGNOSTICS: (
+        "get_optimization_status",
+        "list_calculation_artifacts",
+        "read_calculation_artifact",
+        "get_optimization_replay",
+        "compare_optimization_frames",
+        "inspect_calculation",
+        "report_studio_result",
+    ),
+}
+_STUDIO_SPECIALIST_TOOLS = (
+    "analyze_current_molecule",
+    "prepare_molecule_optimization",
+    "validate_prepared_optimization",
+    "synthesize_command",
+    "repair_command",
+    "report_studio_result",
 )
+_STUDIO_INSPECT_TOOLS = frozenset(
+    {
+        "get_studio_context",
+        "get_molecule_snapshot",
+        "analyze_current_molecule",
+        "get_optimization_status",
+        "list_calculation_artifacts",
+        "read_calculation_artifact",
+        "get_optimization_replay",
+        "compare_optimization_frames",
+        "inspect_calculation",
+        "recommend_method",
+        "report_studio_result",
+    }
+)
+_STUDIO_PLAN_TOOLS = _STUDIO_INSPECT_TOOLS | {
+    "prepare_molecule_optimization",
+    "validate_prepared_optimization",
+    "preview_molecule_patch",
+    "discard_molecule_preview",
+    "synthesize_command",
+    "repair_command",
+    "read_project_yaml",
+    "validate_project_yaml",
+    "critic_project_yaml",
+}
+_STUDIO_INSPECT_DIRECT = (
+    "get_studio_context",
+    "analyze_current_molecule",
+    "get_optimization_status",
+    "get_optimization_replay",
+    "list_calculation_artifacts",
+    "inspect_calculation",
+    "recommend_method",
+    "report_studio_result",
+)
+_STUDIO_ACT_DIRECT = (
+    "get_studio_context",
+    "analyze_current_molecule",
+    "start_prepared_optimization",
+    "get_optimization_status",
+    "report_studio_result",
+)
+
+
+def _studio_agent_tool_profile(capability: StudioCapability) -> PhaseToolProfile:
+    if capability is StudioCapability.INSPECT:
+        phase_tools = {
+            phase: _STUDIO_INSPECT_DIRECT
+            for phase in _STUDIO_PHASE_TOOLS
+        }
+    elif capability is StudioCapability.PLAN:
+        phase_tools = {}
+        for phase, tools in _STUDIO_PHASE_TOOLS.items():
+            base = (
+                "get_studio_context",
+                "analyze_current_molecule",
+            )
+            additions = tuple(
+                tool
+                for tool in tools
+                if tool in _STUDIO_PLAN_TOOLS
+                and tool not in base
+                and tool != "report_studio_result"
+            )
+            phase_tools[phase] = (
+                *base,
+                *additions[: 10 - len(base) - 1],
+                "report_studio_result",
+            )
+    else:
+        phase_tools = {}
+        for phase, tools in _STUDIO_PHASE_TOOLS.items():
+            actions = tuple(
+                tool
+                for tool in tools
+                if tool not in _STUDIO_ACT_DIRECT
+            )
+            phase_tools[phase] = (
+                *_STUDIO_ACT_DIRECT[:-1],
+                *actions[: 10 - len(_STUDIO_ACT_DIRECT)],
+                _STUDIO_ACT_DIRECT[-1],
+            )
+    allowed = frozenset(
+        tool
+        for tools in phase_tools.values()
+        for tool in tools
+    )
+    return PhaseToolProfile(
+        phase_tools,
+        specialist_tools=tuple(
+            tool for tool in _STUDIO_SPECIALIST_TOOLS if tool in allowed
+        ),
+    )
+
+
+# Compatibility export for deterministic harnesses that exercise the complete act surface.
+# Runtime Agent turns select a narrower profile from their main-issued capability.
+STUDIO_AGENT_TOOL_PROFILE = _studio_agent_tool_profile(StudioCapability.ACT)
+
+
+_REPORT_STUDIO_RESULT_INPUT_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA["$defs"],
+    **STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA["$defs"]["reportStudioResultInput"],
+}
+_STUDIO_TOOL_INPUT_SCHEMAS = {
+    **STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
+    "report_studio_result": _REPORT_STUDIO_RESULT_INPUT_SCHEMA,
+}
 
 
 def _definition_validator(
@@ -650,6 +763,12 @@ class _StudioRpcAdapter:
 
     def analyze_current_molecule(self, arguments: dict[str, Any]) -> Any:
         return self._request("analyze_current_molecule", arguments)
+
+    def report_studio_result(self, arguments: dict[str, Any]) -> Any:
+        return self._runtime._report_studio_result(
+            self._session_id,
+            arguments,
+        )
 
     def prepare_molecule_optimization(self, arguments: dict[str, Any]) -> Any:
         return self._request("prepare_molecule_optimization", arguments)
@@ -1116,6 +1235,17 @@ class StudioAgentRuntime:
         session_id = self._required_string(params, "sessionId")
         model_id = self._required_string(params, "modelId")
         request = self._required_string(params, "request")
+        capability_value = params.get("capability", "inspect") if isinstance(params, dict) else "inspect"
+        if not isinstance(capability_value, str) or not capability_value.strip():
+            raise RpcFault(-32602, "Agent capability is invalid")
+        try:
+            capability = StudioCapability(capability_value)
+        except ValueError as error:
+            raise RpcFault(
+                -32602,
+                "Agent capability is invalid",
+            ) from error
+        tool_profile = _studio_agent_tool_profile(capability)
         with self._session_lock(session_id):
             with self._operation_scope(session_id, operation_id):
                 provider, command_session = self._provider_and_command_session(
@@ -1140,18 +1270,17 @@ class StudioAgentRuntime:
                     ),
                 )
                 session = self._sessions.get(session_id)
-                emitter = self._studio_ui_emitter(session_id)
                 if session is None:
                     session_options = {
                         "provider": provider,
                         "registry": self._studio_registry(
                             session_id,
-                            emitter,
                             command_session,
                         ),
                         "session_root": self._session_root,
                         "runtime_v2": "active",
-                        "tool_profile": STUDIO_AGENT_TOOL_PROFILE,
+                        "tool_profile": tool_profile,
+                        "training_capture": "disabled",
                     }
                     persisted_session_id = self._read_agent_session_binding(
                         session_id
@@ -1163,6 +1292,7 @@ class StudioAgentRuntime:
                     )
                     self._sessions[session_id] = session
                 session.bind_provider(provider)
+                session.bind_tool_profile(tool_profile)
 
                 try:
                     raw_result = session.run_loop(
@@ -1211,9 +1341,6 @@ class StudioAgentRuntime:
                         f"ChemSmart agent turn stopped before completion ({limit_reason})",
                     )
                 result = _public_agent_result(raw_result)
-                assistant_output = result.get("assistant_output")
-                if isinstance(assistant_output, str) and assistant_output.strip():
-                    emitter.emit_runtime_notice(assistant_output)
                 self._publish_agent_trace(
                     session_id,
                     kind="turn_completed",
@@ -1469,6 +1596,30 @@ class StudioAgentRuntime:
                 "calculation.request response is schema-invalid",
             )
         return result
+
+    def _report_studio_result(
+        self,
+        session_id: str,
+        arguments: dict[str, Any],
+    ) -> Any:
+        assert self._peer is not None
+        if not Draft202012Validator(
+            _REPORT_STUDIO_RESULT_INPUT_SCHEMA
+        ).is_valid(arguments):
+            raise RpcFault(
+                -32602,
+                "report_studio_result arguments are schema-invalid",
+            )
+        return self._peer.request(
+            "agent.report_result",
+            self._operation_callback(
+                session_id,
+                {
+                    "sessionId": session_id,
+                    "arguments": arguments,
+                },
+            ),
+        )
 
     def _studio_ui_emitter(self, session_id: str) -> StudioUiEventEmitter:
         emitter = self._studio_ui_emitters.get(session_id)
@@ -1827,9 +1978,10 @@ class StudioAgentRuntime:
     def _studio_registry(
         self,
         session_id: str,
-        emitter: StudioUiEventEmitter,
-        command_session: CommandSynthesisSession | None = None,
+        command_session: CommandSynthesisSession | StudioUiEventEmitter | None = None,
     ) -> ToolRegistry:
+        if isinstance(command_session, StudioUiEventEmitter):
+            command_session = None
         if command_session is None:
             command_session = (
                 self._provider_and_command_session(
@@ -1885,64 +2037,6 @@ class StudioAgentRuntime:
                     "extensions": {},
                 }
             )
-
-        def emit_studio_ui_update(
-            kind: Literal[
-                "status",
-                "progress",
-                "molecule_focus",
-                "notice",
-                "agent_thought",
-                "inspector_target",
-            ],
-            message: str,
-            extensions: dict[str, dict[str, Any]],
-            documentId: str | None = None,
-            revision: int | None = None,
-            atomIds: list[str] | None = None,
-            bondIds: list[str] | None = None,
-            runId: str | None = None,
-            stepIndex: int | None = None,
-            totalSteps: int | None = None,
-            progress: float | None = None,
-            phase: str | None = None,
-            toolName: str | None = None,
-            target: Literal[
-                "coordinates",
-                "measurements",
-                "constraints",
-                "decisions",
-                "activity",
-            ]
-            | None = None,
-        ) -> dict[str, Any]:
-            """Emit a validated, non-mutating Studio UI update."""
-            arguments: dict[str, Any] = {
-                "kind": kind,
-                "message": message,
-                "extensions": extensions,
-            }
-            optional_values = {
-                "documentId": documentId,
-                "revision": revision,
-                "atomIds": atomIds,
-                "bondIds": bondIds,
-                "runId": runId,
-                "stepIndex": stepIndex,
-                "totalSteps": totalSteps,
-                "progress": progress,
-                "phase": phase,
-                "toolName": toolName,
-                "target": target,
-            }
-            arguments.update(
-                {
-                    key: value
-                    for key, value in optional_values.items()
-                    if value is not None
-                }
-            )
-            return emitter.emit(arguments)
 
         def get_molecule_snapshot() -> dict[str, Any]:
             """Read the current committed molecule document and revision."""
@@ -2030,14 +2124,7 @@ class StudioAgentRuntime:
                 raise RuntimeError("Calculation inspection returned an invalid result")
             return projected
 
-        studio_specs = [
-            build_tool_spec(
-                emit_studio_ui_update,
-                description=EMIT_STUDIO_UI_UPDATE_TOOL["description"],
-                metadata=RuntimeToolMetadata(read_only=True, edit_safe=True),
-                input_json_schema=EMIT_STUDIO_UI_UPDATE_TOOL["inputSchema"],
-            )
-        ]
+        studio_specs = []
         studio_specs.append(
             build_tool_spec(
                 inspect_calculation,
@@ -2122,7 +2209,7 @@ class StudioAgentRuntime:
                     artifacts=rpc_adapter,
                     approvals=_StudioApprovalGrantAdapter(self, session_id),
                 ),
-                STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
+                _STUDIO_TOOL_INPUT_SCHEMAS,
             )
         )
         default_registry = ToolRegistry.default()

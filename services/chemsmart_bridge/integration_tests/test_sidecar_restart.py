@@ -71,6 +71,7 @@ class SidecarProcess:
         self.live_events: list[dict[str, Any]] = []
         self.model_calls: list[dict[str, Any]] = []
         self.replay_events: list[dict[str, Any]] = []
+        self.trace_events: list[dict[str, Any]] = []
         self._responses = list(responses)
         self._on_model_call = on_model_call
         self._replay_received = threading.Event()
@@ -152,6 +153,10 @@ class SidecarProcess:
             return None
         if method == "agent.event":
             return None
+        if method == "agent.trace":
+            assert isinstance(params, dict)
+            self.trace_events.append(params)
+            return {"accepted": True}
         raise RpcFault(-32601, f"Method not found: {method}")
 
     def _wait_for_socket(self, socket_path: Path) -> None:
@@ -181,10 +186,7 @@ def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) 
         first = SidecarProcess(
             tmp_path,
             socket_root / "first.sock",
-            [
-                tool_call_response("Before restart."),
-                final_response("First turn complete."),
-            ],
+            [final_response("First turn complete.")],
         )
         try:
             first_result = first.request(
@@ -195,20 +197,19 @@ def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) 
                     "request": "Run it now and report status.",
                 },
             )
-            assert [event["sequence"] for event in first.live_events] == [0, 1]
-            assert first.live_events[1]["source"] == "runtime"
-            assert first.live_events[1]["payload"]["message"] == "First turn complete."
-            first_event_id = first.live_events[0]["eventId"]
+            assert [event["kind"] for event in first.trace_events] == [
+                "turn_started",
+                "reasoning_summary",
+                "turn_completed",
+            ]
+            assert first.live_events == []
         finally:
             first.close()
 
         second = SidecarProcess(
             tmp_path,
             socket_root / "second.sock",
-            [
-                tool_call_response("After restart."),
-                final_response("Second turn complete."),
-            ],
+            [final_response("Second turn complete.")],
         )
         try:
             replay = second.request(
@@ -219,13 +220,8 @@ def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) 
                     "afterSequence": -1,
                 },
             )
-            second.wait_for_replay(2)
-            assert replay == {"replayed": 2, "nextSequence": 2}
-            assert second.replay_events[0]["eventId"] == first_event_id
-            assert second.replay_events[1]["source"] == "runtime"
-            assert (
-                second.replay_events[1]["payload"]["message"] == "First turn complete."
-            )
+            assert replay == {"replayed": 0, "nextSequence": 0}
+            assert second.replay_events == []
 
             second_result = second.request(
                 "agent.run_turn",
@@ -239,18 +235,17 @@ def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) 
             assert "Run it now and report status." in json.dumps(
                 second.model_calls[0]["messages"]
             )
-            assert [event["sequence"] for event in second.live_events] == [2, 3]
-            assert second.live_events[1]["source"] == "runtime"
-            assert (
-                second.live_events[1]["payload"]["message"] == "Second turn complete."
-            )
+            assert [event["kind"] for event in second.trace_events] == [
+                "turn_started",
+                "reasoning_summary",
+                "turn_completed",
+            ]
+            assert second.live_events == []
         finally:
             second.close()
 
     ledger = tmp_path / session_id / "studio-ui-events.ndjson"
-    assert [
-        json.loads(line)["sequence"] for line in ledger.read_text().splitlines()
-    ] == [0, 1, 2, 3]
+    assert not ledger.exists()
     binding = tmp_path / session_id / "agent-session.json"
     assert stat.S_IMODE(binding.stat().st_mode) == 0o600
     assert json.loads(binding.read_text()) == {

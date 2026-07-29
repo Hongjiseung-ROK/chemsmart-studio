@@ -1,4 +1,4 @@
-import type { StudioAgentTraceEvent } from '@chemsmart/studio-protocol'
+import type { StudioAgentTurnEvent } from '@chemsmart/studio-protocol'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
@@ -22,17 +22,16 @@ const initialComposer: AgentComposerSnapshot = {
   value: ''
 }
 
-function traceEvent(overrides: Partial<StudioAgentTraceEvent> = {}): StudioAgentTraceEvent {
+function traceEvent(overrides: Partial<StudioAgentTurnEvent> = {}): StudioAgentTurnEvent {
   return {
-    eventId: 'trace-1',
+    eventId: 'event-1',
     extensions: {},
     kind: 'reasoning_summary',
     sequence: 1,
-    sessionId: 'session-1',
     status: 'running',
     summary: 'Checking the visible molecule without exposing private provider data.',
+    threadId: 'thread-1',
     timestamp: '2026-07-29T00:00:00Z',
-    title: 'Understanding the request',
     turnId: 'turn-1',
     ...overrides
   }
@@ -41,31 +40,62 @@ function traceEvent(overrides: Partial<StudioAgentTraceEvent> = {}): StudioAgent
 function PaneHarness({
   artifacts = [],
   pendingDecisionCount = 0,
-  traceEvents = [],
+  turnEvents = [],
   onSubmit = vi.fn()
 }: {
   artifacts?: readonly AgentWorkbenchArtifact[]
   pendingDecisionCount?: number
-  traceEvents?: readonly StudioAgentTraceEvent[]
+  turnEvents?: readonly StudioAgentTurnEvent[]
   onSubmit?: () => void
 }) {
   const [composer, setComposer] = useState(initialComposer)
   return (
     <ChemSmartAgentPane
+      activeThreadId="thread-1"
       artifacts={artifacts}
       available
       busy={false}
+      capabilities={[
+        {
+          capability: 'inspect',
+          contextRef: 'context-molecule',
+          description: 'Reference the molecule visible in the Stage',
+          discovery: 'mention',
+          key: 'current_molecule',
+          label: 'Current molecule'
+        },
+        {
+          capability: 'inspect',
+          description: 'Inspect the visible molecule',
+          discovery: 'command',
+          key: 'inspect',
+          label: 'Inspect molecule'
+        }
+      ]}
       composer={composer}
       failed={false}
       pendingDecisionCount={pendingDecisionCount}
-      requests={[]}
       reviewContent={<p>Trusted decision content</p>}
       reviewRequestId={0}
       threadTitle="Water optimization"
-      traceEvents={traceEvents}
+      threads={[
+        {
+          activityCount: 1,
+          agentBound: true,
+          createdAt: '2026-07-29T00:00:00Z',
+          imported: false,
+          threadId: 'thread-1',
+          title: 'Water optimization',
+          updatedAt: '2026-07-29T00:00:00Z'
+        }
+      ]}
+      turnEvents={turnEvents}
       onClose={vi.fn()}
       onComposerChange={setComposer}
+      onCreateThread={vi.fn()}
       onOpenProperties={vi.fn()}
+      onRenameThread={vi.fn()}
+      onSelectThread={vi.fn()}
       onSubmit={onSubmit}
     />
   )
@@ -103,10 +133,10 @@ describe('ChemSmartAgentPane', () => {
     expect(
       screen.getByRole('listbox', { name: 'chemsmart_studio.agent_workbench.discovery.label' })
     ).toBeInTheDocument()
-    expect(screen.getByRole('option')).toHaveTextContent('chemsmart_studio.agent_workbench.discovery.current_molecule')
+    expect(screen.getByRole('option')).toHaveTextContent('Current molecule')
     await user.keyboard('{Enter}')
 
-    expect(composer).toHaveValue('@current-molecule ')
+    expect(composer).toHaveValue('@current_molecule ')
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -116,7 +146,7 @@ describe('ChemSmartAgentPane', () => {
       providerPayload: 'RAW_CHAIN_OF_THOUGHT',
       rawArguments: { path: '/Users/researcher/private.xyz' }
     })
-    render(<PaneHarness traceEvents={[event]} />)
+    render(<PaneHarness turnEvents={[event]} />)
 
     expect(
       screen.getByText('Checking the visible molecule without exposing private provider data.')

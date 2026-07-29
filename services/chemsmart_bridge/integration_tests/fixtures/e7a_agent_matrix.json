@@ -47,7 +47,7 @@
         "message": "Focus atoms for distance, angle, and dihedral inspection.",
         "revision": 3
       },
-      "expectedStatus": "ok",
+      "expectedStatus": "denied",
       "id": "focus-and-measure",
       "lane": "studio",
       "requests": [

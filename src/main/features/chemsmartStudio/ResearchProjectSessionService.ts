@@ -146,7 +146,7 @@ export class ResearchProjectSessionService extends BaseService {
     })
   }
 
-  async recordActivity(threadId: string): Promise<void> {
+  async recordActivity(threadId: string, firstRequest?: string): Promise<void> {
     await this.enqueue(async () => {
       const projectPath = this.projectPath()
       const index = await this.loadIndex(projectPath)
@@ -157,6 +157,12 @@ export class ResearchProjectSessionService extends BaseService {
         found = true
         return {
           ...thread,
+          ...(thread.activityCount === 0 &&
+          !thread.imported &&
+          /^(?:New research thread|Research thread \d+)$/.test(thread.title) &&
+          firstRequest
+            ? { title: normalizeTitle(firstRequest.replace(/\s+/g, ' ').slice(0, 80)) }
+            : {}),
           updatedAt: now,
           activityCount: Math.min(MAX_ACTIVITY_COUNT, thread.activityCount + 1),
           agentBound: true
