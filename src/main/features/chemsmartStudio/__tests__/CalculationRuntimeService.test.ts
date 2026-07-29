@@ -1061,7 +1061,9 @@ describe('CalculationRuntimeService controlled fake execution', () => {
         geometryHash: draftGeometryHash
       }
     })
-    if (prepared.type !== 'prepared_controlled_calculation') throw new Error('Expected a prepared plan')
+    if (!('type' in prepared) || prepared.type !== 'prepared_controlled_calculation') {
+      throw new Error('Expected a prepared plan')
+    }
     const validated = await service.validateCalculation(prepared.planId, prepared.planDigest)
     expect(validated.state).toBe('validated')
     await expect(service.reserveCalculation(validated.planId, validated.planDigest)).rejects.toMatchObject({

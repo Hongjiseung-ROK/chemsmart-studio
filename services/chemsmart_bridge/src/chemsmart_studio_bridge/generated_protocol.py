@@ -275,6 +275,8 @@ class ControlledCalculationBinding(TypedDict):
     documentId: str
     expectedRevision: int
     geometryHash: str
+    source: NotRequired[Literal["committed", "draft"]]
+    draftId: NotRequired[str]
 
 class ControlledCalculationExecutableIdentity(TypedDict):
     kind: Literal["native_editor", "local_executable"]
