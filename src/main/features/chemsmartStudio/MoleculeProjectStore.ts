@@ -8,6 +8,7 @@ import type { MoleculeDocument, ProjectManifest } from '@chemsmart/studio-protoc
 import { loggerService } from '@logger'
 import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 
+import { elementSymbolForAtomicNumber } from './ControlledCalculationIdentity'
 import {
   normalizeProjectPath,
   prepareNewProjectPath,
@@ -25,6 +26,7 @@ const MAX_PROJECT_FILES = 10_000
 const MAX_PROJECT_BYTES = 1024 * 1024 * 1024
 const MAX_ACTIVE_PROJECT_MARKER_BYTES = 64 * 1024
 const MAX_DRAFT_JOURNAL_BYTES = 64 * 1024 * 1024
+const COMMAND_INPUT_NAME = /^chemsmart-input-[0-9a-f]{16}\.xyz$/
 
 interface ActiveProjectMarker {
   version: 1
@@ -286,6 +288,54 @@ export class MoleculeProjectStore extends BaseService {
         extensions: current.manifest.extensions
       })
       return this.inspectProject(projectPath)
+    })
+  }
+
+  async materializeCommandInput(
+    document: MoleculeDocument,
+    geometryHash: string
+  ): Promise<{ basename: string; sha256: string }> {
+    if (!/^sha256:[0-9a-f]{64}$/.test(geometryHash)) throw new Error('Molecule command input hash is invalid')
+    const projectPath = this.getActiveProjectPath()
+    await this.inspectProject(projectPath)
+    const basename = `chemsmart-input-${geometryHash.slice(-16)}.xyz`
+    const bytes = Buffer.from(
+      [
+        String(document.atoms.length),
+        'ChemSmart Studio generated molecule input',
+        ...document.atoms.map(
+          (atom) =>
+            `${elementSymbolForAtomicNumber(atom.atomicNumber)} ${atom.position.map((coordinate) => String(coordinate)).join(' ')}`
+        ),
+        ''
+      ].join('\n'),
+      'utf8'
+    )
+    const sha256 = hashBytes(bytes)
+    return this.withWrite(async () => {
+      const directory = await opendir(projectPath)
+      for await (const entry of directory) {
+        if (!COMMAND_INPUT_NAME.test(entry.name) || entry.name === basename) continue
+        const stalePath = path.join(projectPath, entry.name)
+        const stat = await lstat(stalePath)
+        if (!stat.isFile() || stat.isSymbolicLink()) {
+          throw new Error('Molecule command input is not a regular private file')
+        }
+        await unlink(stalePath)
+      }
+      const target = path.join(projectPath, basename)
+      const existingHash = await regularFileHash(target)
+      if (existingHash === sha256) return { basename, sha256 }
+      if (existingHash !== null) throw new Error('Molecule command input does not match its geometry hash')
+      const temporary = path.join(projectPath, `.chemsmart-input-${randomUUID()}.tmp`)
+      try {
+        await writeSynced(temporary, bytes)
+        await rename(temporary, target)
+        await syncDirectory(projectPath)
+      } finally {
+        await rm(temporary, { force: true })
+      }
+      return { basename, sha256 }
     })
   }
 

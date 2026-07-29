@@ -114,6 +114,13 @@ function emptyState(documentId: string): MoleculeState {
   }
 }
 
+function trustedDraftStateHash(state: MoleculeState): string {
+  const persisted = cloneState(state)
+  persisted.selected.clear()
+  persisted.selectionOrder = []
+  return trustedMoleculeStateHash(persisted)
+}
+
 function studioPreviewSummary(
   before: MoleculeState,
   after: MoleculeState,
@@ -374,8 +381,8 @@ export class MoleculeDocumentService extends BaseService {
         outcome.affectedAtomIds,
         outcome.affectedBondIds
       ),
-      beforeHash: trustedMoleculeStateHash(current),
-      afterHash: trustedMoleculeStateHash(candidate),
+      beforeHash: trustedDraftStateHash(current),
+      afterHash: trustedDraftStateHash(candidate),
       ...(request.gesture ? { gesture: request.gesture } : {}),
       createdAt: now,
       extensions: {}
@@ -728,15 +735,15 @@ export class MoleculeDocumentService extends BaseService {
     }
     const states = history.map(fromDocument)
     if (
-      trustedMoleculeStateHash(states[0]) !== trustedMoleculeStateHash(this.committed) ||
-      trustedMoleculeStateHash(states[snapshot.cursor]) !== trustedMoleculeStateHash(fromDocument(snapshot.document))
+      trustedDraftStateHash(states[0]) !== trustedDraftStateHash(this.committed) ||
+      trustedDraftStateHash(states[snapshot.cursor]) !== trustedDraftStateHash(fromDocument(snapshot.document))
     ) {
       throw new Error('Molecule draft journal geometry is inconsistent')
     }
     snapshot.entries.forEach((entry, index) => {
       if (
-        entry.beforeHash !== trustedMoleculeStateHash(states[index]) ||
-        entry.afterHash !== trustedMoleculeStateHash(states[index + 1])
+        entry.beforeHash !== trustedDraftStateHash(states[index]) ||
+        entry.afterHash !== trustedDraftStateHash(states[index + 1])
       ) {
         throw new Error('Molecule draft history hash is inconsistent')
       }

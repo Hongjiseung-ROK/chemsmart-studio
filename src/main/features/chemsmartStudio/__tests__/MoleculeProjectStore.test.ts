@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const { getPath } = vi.hoisted(() => ({ getPath: vi.fn() }))
 vi.mock('@application', () => ({ application: { getPath } }))
 
+import { moleculeGeometryHash } from '../ControlledCalculationIdentity'
 import { MoleculeProjectStore } from '../MoleculeProjectStore'
 
 const roots: string[] = []
@@ -95,6 +96,37 @@ describe('MoleculeProjectStore', () => {
     await expect(access(path.join(project.projectPath, '.chemsmart-molecule-transaction.json'))).rejects.toMatchObject({
       code: 'ENOENT'
     })
+  })
+
+  it('materializes the visible molecule as one private parser input and retires stale inputs', async () => {
+    const directory = await root()
+    getPath.mockImplementation((key: string) => {
+      if (key === 'feature.chemsmart_studio.active_project_file') {
+        return path.join(directory, 'active-project.json')
+      }
+      throw new Error(`Unexpected path key: ${key}`)
+    })
+    const store = new MoleculeProjectStore()
+    const initial = document()
+    const project = await store.createProject(path.join(directory, 'Water'), initial)
+    await store.activateProject(project)
+
+    const first = await store.materializeCommandInput(initial, moleculeGeometryHash(initial))
+    const firstPath = path.join(project.projectPath, first.basename)
+
+    expect(await readFile(firstPath, 'utf8')).toBe(
+      ['2', 'ChemSmart Studio generated molecule input', 'O 0 0 0', 'H 0.96 0 0', ''].join('\n')
+    )
+    expect((await stat(firstPath)).mode & 0o777).toBe(0o600)
+    expect(first.sha256).toBe(hash(Buffer.from(await readFile(firstPath))))
+
+    const moved = document()
+    moved.atoms[1] = { ...moved.atoms[1], position: [1.2, 0, 0] }
+    const second = await store.materializeCommandInput(moved, moleculeGeometryHash(moved))
+
+    expect(second.basename).not.toBe(first.basename)
+    await expect(access(firstPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(path.join(project.projectPath, second.basename), 'utf8')).resolves.toContain('H 1.2 0 0')
   })
 
   it('writes, verifies, and clears a private draft recovery journal', async () => {

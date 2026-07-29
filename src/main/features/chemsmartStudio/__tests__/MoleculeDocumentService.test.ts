@@ -332,6 +332,22 @@ describe('MoleculeDocumentService', () => {
       ])
     })
 
+    it('excludes transient selection from recoverable draft hashes', async () => {
+      service.setSelection('document-water', 0, ['atom-o'])
+      await service.applyDraftPatch(
+        draftRequest([{ op: 'set_positions', positions: [{ atomId: 'atom-h1', position: [3, 2, 1] }] }])
+      )
+      BaseService.resetInstances()
+      const recovered = new MoleculeDocumentService()
+      recovered.loadDocument(waterDocument())
+
+      await expect(recovered.recoverDraft()).resolves.toMatchObject({
+        document: { selections: [] },
+        cursor: 1,
+        dirty: true
+      })
+    })
+
     it('discards the draft without changing committed geometry', async () => {
       await service.applyDraftPatch(draftRequest([{ op: 'remove_atoms', atomIds: ['atom-h1'] }]))
       const document = await service.discardDraft()

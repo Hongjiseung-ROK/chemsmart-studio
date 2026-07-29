@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { type CoordinationGeometry, MoleculeBuildTools } from './MoleculeBuildTools'
+import { positionForNextCoordinationSite } from './moleculePlacement'
 import type { useMoleculeDocument } from './useMoleculeDocument'
 import type { WorkbenchMode, WorkbenchModeContract } from './useWorkbenchMode'
 
@@ -23,13 +24,6 @@ const TOOL_ICONS: Record<StageTool, LucideIcon> = {
   rotate: Rotate3D
 }
 const INSERT_BOND_LENGTH = 1.5
-const coordinationDirections: Record<CoordinationGeometry, Vec3> = {
-  linear: [1, 0, 0],
-  trigonal_planar: [0.866, 0.5, 0],
-  tetrahedral: [1, 1, 1],
-  square_planar: [0, 1, 0],
-  octahedral: [0, 0, 1]
-}
 
 interface MoleculeStageProps {
   compact?: boolean
@@ -94,15 +88,9 @@ export function MoleculeStage({
     (atomId: string | null, additive: boolean, emptyPosition: Vec3 | null) => {
       if (canInsert && insertionMode && document) {
         const anchor = atomId ? document.atoms.find((atom) => atom.id === atomId) : undefined
-        const direction = coordinationDirections[coordination]
-        const magnitude = Math.hypot(direction[0], direction[1], direction[2])
         const base = anchor?.position ?? emptyPosition ?? [0, 0, 0]
         const position: Vec3 = anchor
-          ? [
-              base[0] + (direction[0] / magnitude) * INSERT_BOND_LENGTH,
-              base[1] + (direction[1] / magnitude) * INSERT_BOND_LENGTH,
-              base[2] + (direction[2] / magnitude) * INSERT_BOND_LENGTH
-            ]
+          ? [...positionForNextCoordinationSite(document, anchor.id, coordination, INSERT_BOND_LENGTH)]
           : [base[0], base[1], base[2]]
         const insertedAtomId = `atom-${crypto.randomUUID()}`
         const operations: MoleculeOperation[] = [
