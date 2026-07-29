@@ -1889,17 +1889,6 @@
     }
   },
   "chemsmart_studio": {
-    "activity": {
-      "empty": "此对话的活动将显示在这里。",
-      "title": "Studio UI 活动"
-    },
-    "agent_mode": {
-      "allow": "逐次确认",
-      "allow_description": "智能体的每个操作都会先征求确认。",
-      "execute": "执行",
-      "execute_description": "本次会话中可撤销的操作不再逐次确认；计算始终需要确认。",
-      "label": "智能体模式"
-    },
     "agent_trace": {
       "current": "当前",
       "elapsed": "{{duration}} 毫秒",
@@ -1908,6 +1897,47 @@
       "rules": "门控规则",
       "turn": "智能体轮次 {{index}}",
       "verdict": "判定"
+    },
+    "agent_workbench": {
+      "approval_description": "请先检查已验证的请求再作决定。该选择仅适用于所显示的精确请求。",
+      "approval_title": "需要您的决定",
+      "artifact": {
+        "draft": "草稿",
+        "ready": "就绪",
+        "waiting": "等待中"
+      },
+      "artifacts": "产物与结果",
+      "current_session": "当前研究会话",
+      "discovery": {
+        "current_molecule": "当前分子",
+        "current_molecule_description": "引用 Stage 中显示的分子",
+        "draft_snapshot": "草稿快照",
+        "draft_snapshot_description": "附加当前不可变草稿上下文",
+        "hint": "输入 + 附加、@ 引用，或 / 选择命令",
+        "inspect": "检查分子",
+        "inspect_description": "编写分子检查请求",
+        "label": "智能体编辑器建议",
+        "preflight": "准备 xTB 预检",
+        "preflight_description": "编写不会执行计算的安全预检请求"
+      },
+      "empty_description": "询问当前显示的分子、准备计算或检查结果。",
+      "empty_title": "可以开始科研任务",
+      "hide": "隐藏 ChemSmart 智能体",
+      "history": "对话历史",
+      "history_description": "本会话中的公开推理摘要与宿主报告的工具活动。",
+      "history_empty": "本会话尚未记录智能体回合。",
+      "more": "更多智能体操作",
+      "new": "新建对话",
+      "new_unavailable": "新智能体会话将在能力清单接入后启用。",
+      "reasoning": "公开推理",
+      "request": "研究者请求",
+      "result": "结果",
+      "review": "检查",
+      "review_description": "检查结构化产物，不暴露本地路径或提供商数据。",
+      "show": "显示 ChemSmart 智能体",
+      "title": "ChemSmart 智能体",
+      "tools": "工具活动",
+      "waiting_for_agent": "正在等待智能体"
     },
     "approval": {
       "affected_atoms": "受影响的原子",
@@ -2226,17 +2256,6 @@
       "status": {
         "ready": "[to be translated]:Ready"
       }
-    },
-    "inspector": {
-      "hide": "隐藏检查器",
-      "show": "显示检查器",
-      "tab": {
-        "agent": "智能体",
-        "coordinates": "坐标",
-        "decisions": "决策",
-        "properties": "[to be translated]:Properties"
-      },
-      "tabs": "检查器分区"
     },
     "measure": {
       "angstrom": "Å",

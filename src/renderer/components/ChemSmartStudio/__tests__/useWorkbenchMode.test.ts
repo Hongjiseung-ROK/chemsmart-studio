@@ -48,13 +48,12 @@ describe('workbenchModeContracts', () => {
     expect(revealing).toEqual(['run'])
   })
 
-  it('sends each mode to the inspector section that holds its work', () => {
-    expect(workbenchModeContracts.run.inspectorTab).toBe('decisions')
-    expect(workbenchModeContracts.replay.inspectorTab).toBe('decisions')
-    // The editing modes all use the consolidated Studio Properties inspector.
-    expect(workbenchModeContracts.build.inspectorTab).toBe('properties')
-    expect(workbenchModeContracts.measure.inspectorTab).toBe('properties')
-    expect(workbenchModeContracts.constrain.inspectorTab).toBe('properties')
-    expect(workbenchModeContracts.inspect.inspectorTab).toBe('properties')
+  it('routes researcher-selected modes to the context sheet that holds their work', () => {
+    expect(workbenchModeContracts.run.contextPane).toBe('decisions')
+    expect(workbenchModeContracts.replay.contextPane).toBe('decisions')
+    expect(workbenchModeContracts.build.contextPane).toBe('properties')
+    expect(workbenchModeContracts.measure.contextPane).toBe('properties')
+    expect(workbenchModeContracts.constrain.contextPane).toBe('properties')
+    expect(workbenchModeContracts.inspect.contextPane).toBe('properties')
   })
 })

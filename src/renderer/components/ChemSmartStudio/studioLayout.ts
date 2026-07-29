@@ -36,12 +36,7 @@ export const compactStudioRelativeLayout = {
   bottom: 0.42
 } as const
 
-export const inspectorPaneIds = ['properties', 'agent', 'decisions'] as const satisfies readonly StudioPaneId[]
 export const bottomPaneIds = ['console', 'jobs', 'problems'] as const satisfies readonly StudioPaneId[]
-
-export function isInspectorPane(pane: StudioPaneId): pane is (typeof inspectorPaneIds)[number] {
-  return inspectorPaneIds.includes(pane as (typeof inspectorPaneIds)[number])
-}
 
 export function isBottomPane(pane: StudioPaneId): pane is (typeof bottomPaneIds)[number] {
   return bottomPaneIds.includes(pane as (typeof bottomPaneIds)[number])

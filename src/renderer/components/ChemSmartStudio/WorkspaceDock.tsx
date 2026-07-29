@@ -12,7 +12,6 @@ import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useStat
 import {
   defaultStudioRelativeLayout,
   isBottomPane,
-  isInspectorPane,
   normalizedSizeToPercentage,
   normalizePanelLayout,
   type StudioPaneId,
@@ -292,6 +291,7 @@ interface WorkspaceDockProps {
   rail: ReactNode
   /** Activity bar stays visible; this only decides whether the Explorer shares its dock. */
   railExpanded: boolean
+  sheetContexts: Partial<Record<'decisions' | 'properties', ReactNode>>
   sheetExplorer: ReactNode
   sheetPane: StudioPaneId | null
   onSheetOpenChange: (open: boolean) => void
@@ -318,6 +318,7 @@ export function WorkspaceDock({
   onInspectorSizeChange,
   rail,
   railExpanded,
+  sheetContexts,
   sheetExplorer,
   sheetPane,
   onSheetOpenChange,
@@ -370,11 +371,13 @@ export function WorkspaceDock({
   const sheetContent =
     sheetPane === 'explorer'
       ? sheetExplorer
-      : sheetPane && isInspectorPane(sheetPane)
+      : sheetPane === 'agent'
         ? inspector
-        : sheetPane && isBottomPane(sheetPane)
-          ? bottom
-          : null
+        : sheetPane === 'properties' || sheetPane === 'decisions'
+          ? sheetContexts[sheetPane]
+          : sheetPane && isBottomPane(sheetPane)
+            ? bottom
+            : null
   const inspectorActive =
     inspectorDocked && bottomDocked && inspectorIntent.lastActivatedAt > bottomIntent.lastActivatedAt
   const bottomActive =

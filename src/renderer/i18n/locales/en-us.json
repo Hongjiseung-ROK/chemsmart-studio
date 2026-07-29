@@ -1889,17 +1889,6 @@
     }
   },
   "chemsmart_studio": {
-    "activity": {
-      "empty": "Activity for this conversation will appear here.",
-      "title": "Studio UI activity"
-    },
-    "agent_mode": {
-      "allow": "Allow",
-      "allow_description": "Every agent action asks first.",
-      "execute": "Execute",
-      "execute_description": "Reversible actions run without asking for this session. Calculations always ask.",
-      "label": "Agent mode"
-    },
     "agent_trace": {
       "current": "Current",
       "elapsed": "{{duration}} ms",
@@ -1908,6 +1897,47 @@
       "rules": "Gate rules",
       "turn": "Agent turn {{index}}",
       "verdict": "Verdict"
+    },
+    "agent_workbench": {
+      "approval_description": "Review the validated request before deciding. A choice applies only to the exact request shown.",
+      "approval_title": "Your decision is required",
+      "artifact": {
+        "draft": "Draft",
+        "ready": "Ready",
+        "waiting": "Waiting"
+      },
+      "artifacts": "Artifacts and results",
+      "current_session": "Current research session",
+      "discovery": {
+        "current_molecule": "Current molecule",
+        "current_molecule_description": "Reference the molecule visible in the Stage",
+        "draft_snapshot": "Draft snapshot",
+        "draft_snapshot_description": "Attach the current immutable draft context",
+        "hint": "Type + to attach, @ to reference, or / for a command",
+        "inspect": "Inspect molecule",
+        "inspect_description": "Compose an inspection request",
+        "label": "Agent composer suggestions",
+        "preflight": "Prepare xTB preflight",
+        "preflight_description": "Compose a safe preflight request without executing"
+      },
+      "empty_description": "Ask about the visible molecule, prepare a calculation, or inspect a result.",
+      "empty_title": "Ready for a scientific task",
+      "hide": "Hide ChemSmart Agent",
+      "history": "Conversation history",
+      "history_description": "Public reasoning summaries and host-reported tool activity for this session.",
+      "history_empty": "No Agent turns have been recorded in this session.",
+      "more": "More Agent actions",
+      "new": "New conversation",
+      "new_unavailable": "New Agent sessions will be enabled by the capability manifest.",
+      "reasoning": "Public reasoning",
+      "request": "Researcher request",
+      "result": "Result",
+      "review": "Review",
+      "review_description": "Review the structured artifact without exposing local paths or provider data.",
+      "show": "Show ChemSmart Agent",
+      "title": "ChemSmart Agent",
+      "tools": "Tool activity",
+      "waiting_for_agent": "Waiting for the Agent"
     },
     "approval": {
       "affected_atoms": "Affected atoms",
@@ -2226,17 +2256,6 @@
       "status": {
         "ready": "Ready"
       }
-    },
-    "inspector": {
-      "hide": "Hide inspector",
-      "show": "Show inspector",
-      "tab": {
-        "agent": "Agent",
-        "coordinates": "Coordinates",
-        "decisions": "Decisions",
-        "properties": "Properties"
-      },
-      "tabs": "Inspector sections"
     },
     "measure": {
       "angstrom": "Å",

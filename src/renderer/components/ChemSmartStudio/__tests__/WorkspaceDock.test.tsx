@@ -50,6 +50,7 @@ function dock(
       inspectorPresentation={inspectorOpen && overrides.tier !== 'viewport-only' ? 'docked' : 'hidden'}
       rail={<p>rail content</p>}
       railExpanded
+      sheetContexts={{}}
       sheetExplorer={<p>explorer content</p>}
       sheetPane={null}
       onBottomOpenChange={vi.fn()}

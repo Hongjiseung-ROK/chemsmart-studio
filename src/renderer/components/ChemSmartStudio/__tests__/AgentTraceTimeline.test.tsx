@@ -98,6 +98,45 @@ describe('AgentTraceTimeline', () => {
     expect(screen.queryByText('/Users/researcher/private.xyz')).toBeNull()
   })
 
+  it('groups one host tool lifecycle into one compact disclosure', () => {
+    render(
+      <AgentTraceTimeline
+        events={[
+          event({
+            detail: { argumentKeys: ['engine'] },
+            eventId: 'event-tool-start',
+            kind: 'tool_started',
+            status: 'running',
+            summary: 'Starting the deterministic preflight.',
+            title: 'Prepare xTB preflight',
+            toolCallId: 'tool-call-1',
+            toolName: 'prepare_xtb',
+            turnId: 'turn-current'
+          }),
+          event({
+            detail: { durationMs: 42, resultKeys: ['receiptId'] },
+            eventId: 'event-tool-finish',
+            kind: 'tool_succeeded',
+            status: 'succeeded',
+            summary: 'Prepared a safe preflight receipt.',
+            title: 'Preflight ready',
+            toolCallId: 'tool-call-1',
+            toolName: 'prepare_xtb',
+            turnId: 'turn-current'
+          })
+        ]}
+      />
+    )
+
+    expect(document.querySelectorAll('[data-trace-event-id]')).toHaveLength(1)
+    expect(screen.getByText('Prepare xTB preflight')).toBeInTheDocument()
+    expect(screen.getByText('Prepared a safe preflight receipt.')).toBeInTheDocument()
+    expect(document.querySelector('[data-trace-status="succeeded"]')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /prepare_xtb/i }))
+    expect(screen.getByText('engine')).toBeInTheDocument()
+    expect(screen.getByText('receiptId')).toBeInTheDocument()
+  })
+
   it('auto-opens failed tool detail and labels failure without relying on color', () => {
     render(
       <AgentTraceTimeline
@@ -186,8 +225,7 @@ describe('AgentTraceTimeline', () => {
       />
     )
 
-    expect(screen.queryByText('Started the Agent turn.')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    expect(screen.getByText('Started the Agent turn.')).toBeInTheDocument()
 
     for (const eventId of ['event-started', 'event-reasoning']) {
       const row = document.querySelector(`[data-trace-event-id="${eventId}"]`)
@@ -196,6 +234,6 @@ describe('AgentTraceTimeline', () => {
       expect(row?.querySelector('[data-trace-status="succeeded"]')).not.toBeNull()
     }
     expect(screen.queryByTestId('agent-trace-running-wave')).toBeNull()
-    expect(document.querySelector('[data-current="true"]')).toBeNull()
+    expect(screen.getByRole('button', { expanded: true })).toBeInTheDocument()
   })
 })

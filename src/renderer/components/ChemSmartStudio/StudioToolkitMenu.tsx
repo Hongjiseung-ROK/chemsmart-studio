@@ -83,9 +83,6 @@ export function StudioToolkitMenu({
           <DropdownMenuItem onSelect={() => onPaneSelect('agent')}>
             {t('chemsmart_studio.ide.pane.agent')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onPaneSelect('decisions')}>
-            {t('chemsmart_studio.ide.pane.decisions')}
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

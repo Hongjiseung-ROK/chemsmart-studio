@@ -57,7 +57,7 @@ export function StudioCommandPalette({
           </CommandItem>
         </CommandGroup>
         <CommandGroup heading={t('chemsmart_studio.ide.palette.view')}>
-          {(['explorer', 'properties', 'agent', 'decisions', 'console', 'jobs', 'problems'] as const).map((pane) => (
+          {(['explorer', 'properties', 'agent', 'console', 'jobs', 'problems'] as const).map((pane) => (
             <CommandItem key={pane} onSelect={() => run(() => onPaneSelect(pane))}>
               <PanelsTopLeft aria-hidden />
               {t(`chemsmart_studio.ide.pane.${pane}`)}

@@ -1,5 +1,5 @@
 import type { StudioAgentTraceEvent, StudioUiEvent } from '@chemsmart/studio-protocol'
-import { Alert, Badge, Button, Scrollbar, Textarea } from '@cherrystudio/ui'
+import { Alert, Badge, Button, Scrollbar } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { loggerService } from '@logger'
 import { useDefaultModel } from '@renderer/hooks/useModel'
@@ -12,18 +12,13 @@ import type {
   ChemSmartStudioControlSnapshot,
   ChemSmartStudioMoleculeSummary,
   ChemSmartStudioOpenDocuments,
-  ChemSmartStudioProcessState,
   ChemSmartStudioProcessStatus,
   ChemSmartStudioReplayCatalog,
   ChemSmartStudioReplaySelection,
   ChemSmartStudioReplayTimeline
 } from '@shared/ipc/schemas/chemsmartStudio'
 import {
-  ArrowUp,
   Bot,
-  CheckCircle2,
-  Circle,
-  LoaderCircle,
   MoreHorizontal,
   PanelBottomClose,
   PanelBottomOpen,
@@ -32,17 +27,14 @@ import {
   RotateCcw,
   TriangleAlert
 } from 'lucide-react'
-import type { ComponentType } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 
 import chemSmartLogo from '../../../../build/logo.png'
-import { type AgentMode, AgentModeSwitch } from './AgentModeSwitch'
-import { AgentTraceTimeline } from './AgentTraceTimeline'
-import { AllowNoticeDialog } from './AllowNoticeDialog'
+import type { AgentConversationRequest } from './AgentTraceTimeline'
+import { type AgentComposerSnapshot, type AgentWorkbenchArtifact, ChemSmartAgentPane } from './ChemSmartAgentPane'
 import { CommandConsole } from './CommandConsole'
-import { InspectorPanel, type InspectorTab } from './InspectorPanel'
 import { MoleculeDraftReviewDialog } from './MoleculeDraftReviewDialog'
 import { MoleculeInspector } from './MoleculeInspector'
 import { MoleculeStage } from './MoleculeStage'
@@ -50,30 +42,15 @@ import { MoleculeTabs } from './MoleculeTabs'
 import { ResearchRail } from './ResearchRail'
 import { StudioActivityBar } from './StudioActivityBar'
 import { StudioCommandPalette } from './StudioCommandPalette'
-import {
-  EngineName,
-  ExecutionApprovalSummary,
-  isHighRiskApproval,
-  type OptimizationReplayViewState,
-  StudioControlSections,
-  StudioDecisionList,
-  SummaryField
-} from './StudioControlSections'
-import {
-  defaultStudioRelativeLayout,
-  isBottomPane,
-  isInspectorPane,
-  resolvePanePresentation,
-  type StudioPaneId
-} from './studioLayout'
+import { type OptimizationReplayViewState, StudioControlSections, StudioDecisionList } from './StudioControlSections'
+import { defaultStudioRelativeLayout, isBottomPane, resolvePanePresentation, type StudioPaneId } from './studioLayout'
 import { StudioSettingsSheet } from './StudioSettingsSheet'
 import { StudioToolkitMenu } from './StudioToolkitMenu'
-import { StudioUiEventItem } from './StudioUiEventItem'
 import { useAgentTouch } from './useAgentTouch'
 import { useContainerTier } from './useContainerTier'
 import { useMoleculeDocument } from './useMoleculeDocument'
 import { useStudioPaneIntent } from './useStudioPaneIntent'
-import { useWorkbenchMode, type WorkbenchMode, workbenchModes } from './useWorkbenchMode'
+import { useWorkbenchMode, type WorkbenchContextPane, type WorkbenchMode, workbenchModes } from './useWorkbenchMode'
 import { type WorkbenchTab, WorkbenchTabs } from './WorkbenchTabs'
 import { WorkspaceDock } from './WorkspaceDock'
 
@@ -84,7 +61,6 @@ const REPLAY_CATALOG_LIMIT = 50
 const REPLAY_TIMELINE_LIMIT = 500
 const REPLAY_STEP_DELAY_MS = 700
 
-type DisplayProcessState = ChemSmartStudioProcessState | 'loading'
 type WorkspaceAction = 'activate_document' | 'import_molecule' | 'open_project' | 'save_as' | null
 type ControlActionFailure = 'generic' | 'revision_conflict' | 'schema_invalid'
 type StudioProblemKind = 'control' | 'replay' | 'status' | 'workspace'
@@ -99,27 +75,6 @@ const projectActionRoutes = {
   import_molecule: 'chemsmart_studio.editor.import_molecule',
   open_project: 'chemsmart_studio.editor.open_project',
   save_as: 'chemsmart_studio.editor.save_as'
-} as const
-
-const statePresentation = {
-  loading: { Icon: LoaderCircle, className: 'text-info', animate: true },
-  stopped: { Icon: Circle, className: 'text-foreground-muted', animate: false },
-  starting: { Icon: LoaderCircle, className: 'text-info', animate: true },
-  running: { Icon: CheckCircle2, className: 'text-success', animate: false },
-  stopping: { Icon: LoaderCircle, className: 'text-warning', animate: true },
-  failed: { Icon: TriangleAlert, className: 'text-destructive', animate: false }
-} satisfies Record<
-  DisplayProcessState,
-  { Icon: ComponentType<{ 'aria-hidden'?: boolean; className?: string }>; className: string; animate: boolean }
->
-
-const stateTranslationKeys = {
-  loading: 'chemsmart_studio.state.loading',
-  stopped: 'chemsmart_studio.state.stopped',
-  starting: 'chemsmart_studio.state.starting',
-  running: 'chemsmart_studio.state.running',
-  stopping: 'chemsmart_studio.state.stopping',
-  failed: 'chemsmart_studio.state.failed'
 } as const
 
 const problemTranslationKeys = {
@@ -151,33 +106,6 @@ function classifyControlActionFailure(error: unknown): ControlActionFailure {
   return 'generic'
 }
 
-function ProcessHealth({
-  icon: ProcessIcon,
-  label,
-  status
-}: {
-  icon: ComponentType<{ 'aria-hidden'?: boolean; className?: string }>
-  label: string
-  status: ChemSmartStudioProcessStatus | null
-}) {
-  const { t } = useTranslation()
-  const state: DisplayProcessState = status?.state ?? 'loading'
-  const { Icon, animate, className } = statePresentation[state]
-
-  return (
-    <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2">
-      <span className="flex min-w-0 items-center gap-2 font-medium text-foreground text-sm">
-        <ProcessIcon aria-hidden className="size-4 shrink-0 text-foreground-secondary" />
-        <span className="truncate">{label}</span>
-      </span>
-      <Badge className="gap-1.5 border-transparent bg-secondary text-secondary-foreground" variant="secondary">
-        <Icon aria-hidden className={cn('size-3.5', className, animate && 'animate-spin motion-reduce:animate-none')} />
-        {t(stateTranslationKeys[state])}
-      </Badge>
-    </div>
-  )
-}
-
 interface ChemSmartWorkspaceProps {
   active: boolean
   sessionId: string
@@ -201,7 +129,6 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const [sheetPane, setSheetPane] = useState<StudioPaneId | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('agent')
   /**
    * One place decides what "the workbench is open" means, so the header toggle, a mode that needs it, and a
    * panel the researcher dragged all land in the same state.
@@ -212,12 +139,14 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     bottomPane.activate()
     if (tier === 'viewport-only') setSheetPane('jobs')
   }, [bottomPane, tier])
-  const selectInspectorForMode = useCallback(
-    (tab: InspectorTab) => {
-      setInspectorTab(tab)
-      if (tab !== 'properties') return
+  const selectContextForMode = useCallback(
+    (pane: WorkbenchContextPane) => {
+      if (pane === 'properties') {
+        setSheetPane('properties')
+        return
+      }
       inspectorPane.activate()
-      if (tier === 'viewport-only') setSheetPane('properties')
+      if (tier === 'viewport-only') setSheetPane('agent')
     },
     [inspectorPane, tier]
   )
@@ -227,7 +156,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     setMode: setWorkbenchMode
   } = useWorkbenchMode({
     onRevealCommandWorkbench: revealCommandWorkbench,
-    onSelectInspectorTab: selectInspectorForMode
+    onSelectContextPane: selectContextForMode
   })
   const requestWorkbenchModeChange = useCallback(
     (next: WorkbenchMode) => {
@@ -248,11 +177,17 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     { enabled: active, preventDefault: true },
     [active, requestWorkbenchModeChange]
   )
-  const [dismissedNotices, setDismissedNotices] = useState<readonly string[]>([])
   const [agentStatus, setAgentStatus] = useState<ChemSmartStudioProcessStatus | null>(null)
   const [deterministicModelId, setDeterministicModelId] = useState<UniqueModelId | null>(null)
   const activeModelId = deterministicModelId ?? defaultModel?.id ?? null
-  const [agentRequest, setAgentRequest] = useState('')
+  const [agentComposer, setAgentComposer] = useState<AgentComposerSnapshot>({
+    selectionEnd: 0,
+    selectionStart: 0,
+    scrollTop: 0,
+    value: ''
+  })
+  const [agentRequests, setAgentRequests] = useState<AgentConversationRequest[]>([])
+  const [agentReviewRequestId, setAgentReviewRequestId] = useState(0)
   const [agentTurnBusy, setAgentTurnBusy] = useState(false)
   const [agentTurnFailed, setAgentTurnFailed] = useState(false)
   const [moleculeSummary, setMoleculeSummary] = useState<ChemSmartStudioMoleculeSummary | null>(null)
@@ -265,9 +200,6 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const [workspaceActionFailed, setWorkspaceActionFailed] = useState(false)
   const [problems, setProblems] = useState<StudioProblemKind[]>([])
   const [openDocuments, setOpenDocuments] = useState<ChemSmartStudioOpenDocuments | null>(null)
-  // Allow is the default and the safe one: main reads an unset session the same way.
-  const [agentMode, setAgentMode] = useState<AgentMode>('allow')
-  const [agentModeBusy, setAgentModeBusy] = useState(false)
   const [controlSnapshot, setControlSnapshot] = useState<ChemSmartStudioControlSnapshot | null>(null)
   const [controlLoading, setControlLoading] = useState(true)
   const [controlFailed, setControlFailed] = useState(false)
@@ -294,6 +226,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const activeRef = useRef(active)
   const currentSessionRef = useRef(sessionId)
   const agentEventVersionRef = useRef(0)
+  const agentRequestSequenceRef = useRef(0)
   currentSessionRef.current = sessionId
   activeRef.current = active
   replaySelectionRef.current = replaySelection
@@ -342,22 +275,30 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   }, [recordProblem, refreshMoleculeSummary])
 
   const runAgentTurn = useCallback(async () => {
-    const request = agentRequest.trim()
+    const request = agentComposer.value.trim()
     const modelId = activeModelId
     if (!request || !modelId || agentTurnBusy) return
 
+    const requestId = `agent-request-${++agentRequestSequenceRef.current}`
+    setAgentRequests((current) => [...current, { id: requestId, status: 'running', text: request }])
     setAgentTurnBusy(true)
     setAgentTurnFailed(false)
     try {
       await ipcApi.request('chemsmart_studio.agent.run_turn', { sessionId, modelId, request })
-      setAgentRequest('')
+      setAgentRequests((current) =>
+        current.map((item) => (item.id === requestId ? { ...item, status: 'succeeded' } : item))
+      )
+      setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
     } catch (error) {
+      setAgentRequests((current) =>
+        current.map((item) => (item.id === requestId ? { ...item, status: 'failed' } : item))
+      )
       setAgentTurnFailed(true)
       logger.error('ChemSmart Agent turn failed', error as Error)
     } finally {
       setAgentTurnBusy(false)
     }
-  }, [activeModelId, agentRequest, agentTurnBusy, sessionId])
+  }, [activeModelId, agentComposer.value, agentTurnBusy, sessionId])
 
   const refreshControlSnapshot = useCallback(async () => {
     const requestId = ++controlRequestRef.current
@@ -482,22 +423,6 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     })
   })
 
-  const changeAgentMode = useCallback(
-    (mode: AgentMode) => {
-      setAgentModeBusy(true)
-      void ipcApi
-        .request('chemsmart_studio.agent.set_mode', { sessionId, mode })
-        .then((result) => setAgentMode(result.mode))
-        .catch((error) => {
-          // The mode main holds is the one that governs approvals, so a failed switch must leave the
-          // control showing what main still believes rather than what the researcher clicked.
-          logger.error('Failed to change the ChemSmart agent mode', error as Error)
-        })
-        .finally(() => setAgentModeBusy(false))
-    },
-    [sessionId]
-  )
-
   const refreshOpenDocuments = useCallback(async () => {
     try {
       setOpenDocuments(await ipcApi.request('chemsmart_studio.editor.open_documents'))
@@ -511,15 +436,16 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     activityRef.current = []
     setActivity([])
     setAgentTrace([])
+    setAgentRequests([])
+    setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
+    setAgentReviewRequestId(0)
+    agentRequestSequenceRef.current = 0
     setAgentStatus(null)
     setMoleculeSummary(null)
     setDocumentName(null)
     setWorkspaceAction(null)
     setWorkspaceActionFailed(false)
     setProblems([])
-    // A session grant belongs to the session that granted it; a new topic starts by asking again.
-    setAgentMode('allow')
-    setAgentModeBusy(false)
     setControlSnapshot(null)
     setControlLoading(true)
     setControlFailed(false)
@@ -838,8 +764,6 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     selection: replaySelection,
     timeline: replayTimeline
   }
-  const latestActivity = activity.at(-1) ?? null
-  const visibleActivity = activity.filter((event) => event.kind !== 'agent_thought')
   const agentWorkflow = controlSnapshot?.agent ?? null
   const agentWorkflowActive =
     agentWorkflow !== null &&
@@ -847,7 +771,6 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     agentWorkflow.phase !== 'completed' &&
     agentWorkflow.phase !== 'failed' &&
     agentWorkflow.phase !== 'recovering'
-  const agentBadgeActive = agentWorkflow === null ? latestActivity !== null : agentWorkflowActive
   const approvalCount = controlSnapshot?.pendingApprovals.length ?? 0
   const activeRun = controlSnapshot?.optimization?.run ?? null
   const activeAgentModelId = deterministicModelId ?? defaultModel?.id ?? null
@@ -861,14 +784,12 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const paneIntentRef = useRef({
     bottom: bottomPane.intent,
     bottomTab,
-    inspector: inspectorPane.intent,
-    inspectorTab
+    inspector: inspectorPane.intent
   })
   paneIntentRef.current = {
     bottom: bottomPane.intent,
     bottomTab,
-    inspector: inspectorPane.intent,
-    inspectorTab
+    inspector: inspectorPane.intent
   }
   const previousTierRef = useRef(tier)
   useEffect(() => {
@@ -878,11 +799,10 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
       if (current.bottom.open && current.bottom.lastActivatedAt > current.inspector.lastActivatedAt) {
         setSheetPane(current.bottomTab)
       } else if (current.inspector.open) {
-        setSheetPane(current.inspectorTab)
+        setSheetPane('agent')
       } else if (current.bottom.open) {
         setSheetPane(current.bottomTab)
       } else {
-        setInspectorTab('agent')
         inspectorPane.activate()
         setSheetPane('agent')
       }
@@ -895,9 +815,17 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const openPane = useCallback(
     (pane: StudioPaneId) => {
       if (tier === 'viewport-only' || (tier === 'focused' && pane === 'explorer')) {
-        if (isInspectorPane(pane)) {
-          setInspectorTab(pane)
+        if (pane === 'agent') {
           inspectorPane.activate()
+        }
+        if (pane === 'properties') {
+          setSheetPane(pane)
+          return
+        }
+        if (pane === 'decisions') {
+          inspectorPane.activate()
+          setSheetPane('agent')
+          return
         }
         if (isBottomPane(pane)) {
           setBottomTab(pane)
@@ -911,8 +839,15 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
         setExplorerOpen(true)
         return
       }
-      if (isInspectorPane(pane)) {
-        setInspectorTab(pane)
+      if (pane === 'agent') {
+        inspectorPane.activate()
+        return
+      }
+      if (pane === 'properties') {
+        setSheetPane(pane)
+        return
+      }
+      if (pane === 'decisions') {
         inspectorPane.activate()
         return
       }
@@ -926,7 +861,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const inspectorPresentation = resolvePanePresentation({
     compact,
     intent: inspectorPane.intent,
-    sheetActive: sheetPane !== null && isInspectorPane(sheetPane)
+    sheetActive: sheetPane === 'agent'
   })
   const bottomPresentation = resolvePanePresentation({
     compact,
@@ -940,7 +875,8 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
 
     const panes: StudioPaneId[] = []
     if ((tier === 'wide' && explorerOpen) || sheetPane === 'explorer') panes.push('explorer')
-    if (inspectorPresentation !== 'hidden') panes.push(inspectorTab)
+    if (inspectorPresentation !== 'hidden') panes.push('agent')
+    if (sheetPane === 'properties' || sheetPane === 'decisions') panes.push(sheetPane)
     if (bottomPresentation !== 'hidden') panes.push(bottomTab)
     void ipcApi
       .request('chemsmart_studio.agent.update_workspace_view', {
@@ -955,7 +891,6 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     controlLoading,
     explorerOpen,
     inspectorPresentation,
-    inspectorTab,
     sessionId,
     sheetPane,
     tier,
@@ -963,22 +898,22 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   ])
   const activePane: StudioPaneId | null =
     sheetPane ??
-    (inspectorPresentation === 'docked' ? inspectorTab : null) ??
+    (inspectorPresentation === 'docked' ? 'agent' : null) ??
     (bottomPresentation === 'docked' ? bottomTab : null) ??
     (tier === 'wide' && explorerOpen ? 'explorer' : null)
   const toggleInspector = useCallback(() => {
     if (tier === 'viewport-only') {
-      if (sheetPane !== null && isInspectorPane(sheetPane)) {
+      if (sheetPane === 'agent') {
         setSheetPane(null)
         setInspectorOpen(false)
       } else {
         inspectorPane.activate()
-        setSheetPane(inspectorTab)
+        setSheetPane('agent')
       }
       return
     }
     setInspectorOpen((open) => !open)
-  }, [inspectorPane, inspectorTab, setInspectorOpen, sheetPane, tier])
+  }, [inspectorPane, setInspectorOpen, sheetPane, tier])
   const toggleBottom = useCallback(() => {
     if (tier === 'viewport-only') {
       if (sheetPane !== null && isBottomPane(sheetPane)) {
@@ -1007,7 +942,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     'escape',
     () => {
       if (sheetPane !== null) {
-        if (isInspectorPane(sheetPane)) setInspectorOpen(false)
+        if (sheetPane === 'agent') setInspectorOpen(false)
         if (isBottomPane(sheetPane)) setBottomOpen(false)
       }
       setSheetPane(null)
@@ -1021,39 +956,86 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   // the helper is stopped or has crashed — losing the structure because a renderer died was the
   // whole point of moving the authority.
   const agentTouch = useAgentTouch(activity)
-  useEffect(() => {
-    // The Agent's only way to move the interface is this declared target.
-    if (agentTouch.tab) setInspectorTab(agentTouch.tab)
-  }, [agentTouch.tab])
   const moleculeEditable = approvalCount === 0 && activeRun === null
   const moleculeSelectable = approvalCount === 0
   const finalGeometry = controlSnapshot?.optimization?.finalGeometry ?? null
   const pendingDecisionCount = approvalCount + (finalGeometry ? 1 : 0)
   // The highest-risk waiting decision is announced with a blocking notice; preview commits are not.
-  const highRiskApproval = controlSnapshot?.pendingApprovals.find(isHighRiskApproval) ?? null
-  const noticeId = highRiskApproval
-    ? highRiskApproval.approvalId
-    : finalGeometry
-      ? `final-geometry:${activeRun?.runId ?? 'run'}:${finalGeometry.expectedRevision}`
-      : null
-  const noticeOpen = noticeId !== null && !dismissedNotices.includes(noticeId)
   const activeDocumentName =
     documentName ??
     openDocuments?.documents.find((document) => document.projectId === openDocuments.activeProjectId)?.projectName ??
     null
-  // Only gates the trusted snapshot actually reports; model confidence is never one of them.
-  const passedGates = [
-    t('chemsmart_studio.approval.gate.schema'),
-    ...(controlSnapshot?.activity ?? [])
-      .filter((item) => item.status === 'passed' && (item.kind === 'intent_gate' || item.kind === 'semantic_gate'))
-      .map((item) => t(`chemsmart_studio.trusted_activity.kind.${item.kind}`))
-  ]
-  const reviewDecisions = useCallback(() => openPane('decisions'), [openPane])
-  const dismissNotice = useCallback(() => {
-    setDismissedNotices((current) =>
-      noticeId === null || current.includes(noticeId) ? current : [...current, noticeId]
-    )
-  }, [noticeId])
+  const reviewDecisions = useCallback(() => {
+    inspectorPane.activate()
+    if (tier === 'viewport-only') setSheetPane('agent')
+    else setSheetPane(null)
+    setAgentReviewRequestId((current) => current + 1)
+  }, [inspectorPane, tier])
+  const draftEntries = molecule.draft?.entries.slice(0, molecule.draft.cursor) ?? []
+  const agentArtifacts: AgentWorkbenchArtifact[] = []
+  if (molecule.draft?.dirty) {
+    agentArtifacts.push({
+      id: molecule.draft.draftId,
+      status: 'draft',
+      title: t('chemsmart_studio.draft.history'),
+      summary: t('chemsmart_studio.draft.change_count', { count: draftEntries.length }),
+      review: (
+        <ol aria-label={t('chemsmart_studio.draft.history')} className="space-y-2">
+          {draftEntries.map((entry, index) => (
+            <li className="rounded-md border border-border-subtle bg-background-subtle p-2.5" key={entry.entryId}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground text-sm">
+                  {t('chemsmart_studio.draft.history_entry', { index: index + 1 })}
+                </span>
+                <Badge variant="outline">{t(`chemsmart_studio.draft.actor.${entry.actor}`)}</Badge>
+              </div>
+              <p className="mt-1 text-foreground-secondary text-xs">
+                {entry.summary.operationKinds
+                  .map((kind) => t(`chemsmart_studio.approval.preview.operation.${kind}`))
+                  .join(' · ')}
+              </p>
+              <p className="mt-1 text-foreground-muted text-xs">
+                {t('chemsmart_studio.draft.change_summary', {
+                  atoms: entry.summary.affectedAtomIds.length,
+                  bonds: entry.summary.affectedBondIds.length,
+                  coordinates: entry.summary.coordinateChangeCount,
+                  constraints: entry.summary.constraintChangeCount
+                })}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )
+    })
+  }
+  if (activeRun) {
+    agentArtifacts.push({
+      id: activeRun.runId,
+      status: activeRun.status === 'pending_approval' ? 'waiting' : 'ready',
+      title: t('chemsmart_studio.optimization.title'),
+      summary: t('chemsmart_studio.workspace.run_state', { state: activeRun.status }),
+      review: (
+        <dl className="grid grid-cols-2 gap-3 rounded-md border border-border-subtle bg-background-subtle p-3 text-xs">
+          <div>
+            <dt className="text-foreground-muted">{t('chemsmart_studio.optimization.run')}</dt>
+            <dd className="mt-1 break-words text-foreground">{activeRun.runId}</dd>
+          </div>
+          <div>
+            <dt className="text-foreground-muted">{t('chemsmart_studio.optimization.engine')}</dt>
+            <dd className="mt-1 text-foreground">{activeRun.engine}</dd>
+          </div>
+          <div>
+            <dt className="text-foreground-muted">{t('chemsmart_studio.optimization.method')}</dt>
+            <dd className="mt-1 text-foreground">{activeRun.method}</dd>
+          </div>
+          <div>
+            <dt className="text-foreground-muted">{t('chemsmart_studio.optimization.input_revision')}</dt>
+            <dd className="mt-1 text-foreground">{activeRun.inputRevision}</dd>
+          </div>
+        </dl>
+      )
+    })
+  }
   const inspectorExpanded = inspectorPresentation !== 'hidden'
   const bottomExpanded = bottomPresentation !== 'hidden'
   const lastFocusedControlIdRef = useRef<string | null>(null)
@@ -1165,7 +1147,9 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
           <Button
             aria-controls="chemsmart-inspector"
             aria-expanded={inspectorExpanded}
-            aria-label={t(inspectorExpanded ? 'chemsmart_studio.inspector.hide' : 'chemsmart_studio.inspector.show')}
+            aria-label={t(
+              inspectorExpanded ? 'chemsmart_studio.agent_workbench.hide' : 'chemsmart_studio.agent_workbench.show'
+            )}
             className="size-8"
             size="icon-sm"
             variant="ghost"
@@ -1181,7 +1165,9 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
       <StudioToolkitMenu
         isPaneExpanded={(pane) => {
           if (pane === 'explorer') return tier === 'wide' && explorerOpen
-          if (isInspectorPane(pane)) return inspectorPresentation !== 'hidden' && inspectorTab === pane
+          if (pane === 'agent') return inspectorPresentation !== 'hidden'
+          if (pane === 'properties') return sheetPane === 'properties'
+          if (pane === 'decisions') return pendingDecisionCount > 0
           return bottomPresentation !== 'hidden' && bottomTab === pane
         }}
         onCommandPaletteOpen={() => setPaletteOpen(true)}
@@ -1196,6 +1182,19 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
         inspectorPresentation={inspectorPresentation}
         railExpanded={explorerOpen}
         sheetPane={sheetPane}
+        sheetContexts={{
+          properties: (
+            <MoleculeInspector
+              agentAtomIds={agentTouch.atomIds}
+              contract={modeContract}
+              editable={moleculeEditable}
+              mode={workbenchMode}
+              molecule={molecule}
+              selectable={moleculeSelectable}
+              tier={tier}
+            />
+          )
+        }}
         tier={tier}
         onBottomOpenChange={applyBottomOpen}
         onBottomSizeChange={bottomPane.setNormalizedSize}
@@ -1203,7 +1202,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
         onInspectorSizeChange={inspectorPane.setNormalizedSize}
         onSheetOpenChange={(open) => {
           if (open || sheetPane === null) return
-          if (isInspectorPane(sheetPane)) setInspectorOpen(false)
+          if (sheetPane === 'agent') setInspectorOpen(false)
           if (isBottomPane(sheetPane)) setBottomOpen(false)
           setSheetPane(null)
         }}
@@ -1339,183 +1338,32 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
           </main>
         }
         inspector={
-          <InspectorPanel
-            activeTab={inspectorTab}
-            decisionCount={pendingDecisionCount}
-            onTabChange={setInspectorTab}
-            content={{
-              properties: (
-                <MoleculeInspector
-                  agentAtomIds={agentTouch.atomIds}
-                  contract={modeContract}
-                  editable={moleculeEditable}
-                  mode={workbenchMode}
-                  molecule={molecule}
-                  selectable={moleculeSelectable}
-                  tier={tier}
-                />
-              ),
-              agent: (
-                <aside
-                  aria-labelledby="chemsmart-agent-workspace-title"
-                  className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-border border-l bg-background"
-                  id="chemsmart-agent-workspace"
-                  data-testid="agent-workspace-view">
-                  <Scrollbar
-                    className="min-h-0 shrink space-y-3 border-border border-b p-3"
-                    data-testid="agent-status-region">
-                    <div className="flex items-center justify-between gap-3">
-                      <h2 id="chemsmart-agent-workspace-title" className="font-semibold text-base text-foreground">
-                        {t('chemsmart_studio.workspace.agent_workspace')}
-                      </h2>
-                      <div className="flex items-center gap-1.5">
-                        {molecule.draft?.dirty ? (
-                          <Badge data-testid="agent-draft-count" variant="outline">
-                            {t('chemsmart_studio.draft.change_count', { count: molecule.draft.cursor })}
-                          </Badge>
-                        ) : null}
-                        <Badge variant={agentBadgeActive ? 'secondary' : 'outline'}>
-                          {agentWorkflow?.requiresUserInput
-                            ? t('chemsmart_studio.trusted_activity.status.needs_user')
-                            : agentBadgeActive
-                              ? t('chemsmart_studio.workspace.agent_active')
-                              : t('chemsmart_studio.workspace.agent_idle')}
-                        </Badge>
-                      </div>
-                    </div>
-                    <AgentModeSwitch disabled={agentModeBusy} mode={agentMode} onChange={changeAgentMode} />
-                    <ProcessHealth
-                      icon={Bot}
-                      label={t('chemsmart_studio.workspace.chemsmart_agent')}
-                      status={agentStatus}
-                    />
-                    <div
-                      aria-atomic="true"
-                      aria-live="polite"
-                      className="rounded-lg border border-border-subtle bg-background-subtle p-3"
-                      data-phase={agentWorkflow?.phase ?? 'idle'}
-                      data-testid="agent-workflow-state"
-                      role="status">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-foreground-muted text-xs">
-                          {t('chemsmart_studio.workspace.current_activity')}
-                        </p>
-                        {agentWorkflow ? (
-                          <span className="flex items-center gap-1.5 text-foreground-secondary text-xs">
-                            <span
-                              aria-hidden
-                              className={cn(
-                                'size-1.5 rounded-full',
-                                agentWorkflowActive ? 'animate-pulse bg-info motion-reduce:animate-none' : 'bg-border'
-                              )}
-                            />
-                            {t(`chemsmart_studio.workspace.agent_object.${agentWorkflow.currentObject}`)}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-1 font-medium text-foreground text-sm">
-                        {agentWorkflow?.statusSummary ??
-                          latestActivity?.payload.message ??
-                          t('chemsmart_studio.workspace.agent_ready')}
-                      </p>
-                      {agentWorkflow?.progress !== null && agentWorkflow?.progress !== undefined ? (
-                        <div
-                          aria-label={t('chemsmart_studio.workspace.agent_progress')}
-                          aria-valuemax={100}
-                          aria-valuemin={0}
-                          aria-valuenow={Math.round(agentWorkflow.progress * 100)}
-                          className="mt-2 h-1.5 overflow-hidden rounded-full bg-border"
-                          role="progressbar">
-                          <div
-                            className="h-full rounded-full bg-info transition-[width] motion-reduce:transition-none"
-                            style={{ width: `${Math.round(agentWorkflow.progress * 100)}%` }}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  </Scrollbar>
-                  <Scrollbar className="min-h-0 flex-1 p-3">
-                    <section aria-labelledby="chemsmart-studio-activity-title" className="space-y-3">
-                      <AgentTraceTimeline events={agentTrace} />
-                      <h3 id="chemsmart-studio-activity-title" className="font-medium text-foreground text-sm">
-                        {t('chemsmart_studio.activity.title')}
-                      </h3>
-                      {visibleActivity.length === 0 ? (
-                        <p className="rounded-md border border-border border-dashed px-3 py-6 text-center text-foreground-muted text-sm leading-5">
-                          {t('chemsmart_studio.activity.empty')}
-                        </p>
-                      ) : (
-                        <ol className="space-y-2" data-testid="chemsmart-studio-activity">
-                          {visibleActivity.map((event, index) => (
-                            <li data-event-id={event.eventId} key={event.eventId}>
-                              <StudioUiEventItem event={event} live={index === visibleActivity.length - 1} />
-                            </li>
-                          ))}
-                        </ol>
-                      )}
-                    </section>
-                  </Scrollbar>
-                  <form
-                    aria-label={t('chemsmart_studio.workspace.agent_composer')}
-                    className="shrink-0 space-y-2 border-border border-t p-3"
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      void runAgentTurn()
-                    }}>
-                    {agentTurnFailed ? (
-                      <Alert
-                        message={t('chemsmart_studio.workspace.agent_turn_failed')}
-                        role="alert"
-                        showIcon
-                        type="error"
-                      />
-                    ) : null}
-                    <label className="sr-only" htmlFor="chemsmart-agent-request">
-                      {t('chemsmart_studio.workspace.agent_request')}
-                    </label>
-                    <Textarea.Input
-                      aria-describedby="chemsmart-agent-model"
-                      disabled={agentTurnBusy}
-                      id="chemsmart-agent-request"
-                      maxLength={100000}
-                      placeholder={t('chemsmart_studio.workspace.agent_request_placeholder')}
-                      rows={3}
-                      value={agentRequest}
-                      onChange={(event) => setAgentRequest(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                          event.preventDefault()
-                          event.currentTarget.form?.requestSubmit()
-                        }
-                      }}
-                    />
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="min-w-0 truncate text-foreground-muted text-xs" id="chemsmart-agent-model">
-                        {deterministicModelId
-                          ? t('chemsmart_studio.workspace.deterministic_validation_model')
-                          : (defaultModel?.name ?? t('chemsmart_studio.workspace.no_agent_model'))}
-                      </p>
-                      <Button
-                        aria-label={t('chemsmart_studio.workspace.send_agent_request')}
-                        disabled={!activeAgentModelId || agentRequest.trim().length === 0}
-                        loading={agentTurnBusy}
-                        size="icon"
-                        type="submit">
-                        <ArrowUp aria-hidden className="size-4" />
-                      </Button>
-                    </div>
-                  </form>
-                </aside>
-              ),
-              decisions: (
-                <StudioDecisionList
-                  actionId={controlActionId}
-                  actionsDisabled={controlActionFailed || controlFailed}
-                  snapshot={controlSnapshot}
-                  onAction={(actionId) => void performControlAction(actionId)}
-                />
-              )
+          <ChemSmartAgentPane
+            artifacts={agentArtifacts}
+            available={activeAgentModelId !== null}
+            busy={agentTurnBusy}
+            composer={agentComposer}
+            failed={agentTurnFailed}
+            pendingDecisionCount={pendingDecisionCount}
+            requests={agentRequests}
+            reviewContent={
+              <StudioDecisionList
+                actionId={controlActionId}
+                actionsDisabled={controlActionFailed || controlFailed}
+                snapshot={controlSnapshot}
+                onAction={(actionId) => void performControlAction(actionId)}
+              />
+            }
+            reviewRequestId={agentReviewRequestId}
+            threadTitle={activeDocumentName ?? t('chemsmart_studio.agent_workbench.current_session')}
+            traceEvents={agentTrace}
+            onClose={() => {
+              if (tier === 'viewport-only') setSheetPane(null)
+              setInspectorOpen(false)
             }}
+            onComposerChange={setAgentComposer}
+            onOpenProperties={() => openPane('properties')}
+            onSubmit={() => void runAgentTurn()}
           />
         }
       />
@@ -1558,82 +1406,6 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
         onCancel={() => setDraftReview(null)}
         onDiscard={() => void continueDraftReview('discard')}
       />
-      {highRiskApproval ? (
-        <AllowNoticeDialog
-          actionId={controlActionId}
-          approveActionId={highRiskApproval.allowActionId}
-          approveLabel={t(
-            highRiskApproval.kind === 'execution_tool'
-              ? 'chemsmart_studio.approval.execution.approve'
-              : 'chemsmart_studio.approval.calculation.start'
-          )}
-          denyActionId={highRiskApproval.denyActionId}
-          denyLabel={t(
-            highRiskApproval.kind === 'execution_tool'
-              ? 'chemsmart_studio.approval.execution.deny'
-              : 'chemsmart_studio.approval.calculation.deny'
-          )}
-          description={t(
-            highRiskApproval.kind === 'execution_tool'
-              ? 'chemsmart_studio.approval.execution.description'
-              : 'chemsmart_studio.approval.calculation.description'
-          )}
-          gates={passedGates}
-          open={noticeOpen}
-          requester="agent"
-          title={t(
-            highRiskApproval.kind === 'execution_tool'
-              ? 'chemsmart_studio.approval.execution.title'
-              : 'chemsmart_studio.approval.calculation.title'
-          )}
-          details={
-            highRiskApproval.kind === 'execution_tool' ? (
-              <ExecutionApprovalSummary approval={highRiskApproval} />
-            ) : (
-              <dl className="grid grid-cols-2 gap-3 text-xs">
-                <SummaryField label={t('chemsmart_studio.document.id')} value={highRiskApproval.documentId} />
-                <SummaryField
-                  label={t('chemsmart_studio.approval.expected_revision')}
-                  value={highRiskApproval.expectedRevision}
-                />
-                <SummaryField
-                  label={t('chemsmart_studio.optimization.engine')}
-                  value={<EngineName engine={highRiskApproval.engine} />}
-                />
-                <SummaryField label={t('chemsmart_studio.optimization.method')} value={highRiskApproval.method} />
-              </dl>
-            )
-          }
-          onAction={(actionId) => void performControlAction(actionId)}
-          onDismiss={dismissNotice}
-        />
-      ) : finalGeometry ? (
-        <AllowNoticeDialog
-          actionId={controlActionId}
-          approveActionId={finalGeometry.acceptActionId}
-          approveLabel={t('chemsmart_studio.optimization.final_geometry.accept')}
-          denyActionId={finalGeometry.rejectActionId}
-          denyLabel={t('chemsmart_studio.optimization.final_geometry.reject')}
-          description={t('chemsmart_studio.optimization.final_geometry.description', {
-            revision: finalGeometry.expectedRevision
-          })}
-          gates={passedGates}
-          open={noticeOpen}
-          requester="agent"
-          title={t('chemsmart_studio.optimization.final_geometry.title')}
-          details={
-            <dl className="grid grid-cols-2 gap-3 text-xs">
-              <SummaryField
-                label={t('chemsmart_studio.approval.expected_revision')}
-                value={finalGeometry.expectedRevision}
-              />
-              <SummaryField label={t('chemsmart_studio.optimization.frame')} value={finalGeometry.frame.stepIndex} />
-            </dl>
-          }
-          onAction={(actionId) => void performControlAction(actionId)}
-          onDismiss={dismissNotice}
-        />
-      ) : null}
     </section>
   )
 }

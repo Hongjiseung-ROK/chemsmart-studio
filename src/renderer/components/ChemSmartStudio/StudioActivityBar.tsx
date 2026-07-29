@@ -14,7 +14,7 @@ interface ActivityItem {
 const activityItems: readonly ActivityItem[] = [
   { icon: FolderTree, pane: 'explorer', translationKey: 'chemsmart_studio.ide.activity.explorer' },
   { icon: FlaskConical, pane: 'jobs', translationKey: 'chemsmart_studio.ide.activity.calculations' },
-  { icon: Bot, pane: 'decisions', translationKey: 'chemsmart_studio.ide.activity.agent_decisions' },
+  { icon: Bot, pane: 'agent', translationKey: 'chemsmart_studio.ide.activity.agent_decisions' },
   { icon: SquareTerminal, pane: 'console', translationKey: 'chemsmart_studio.ide.activity.console' }
 ]
 

@@ -1,9 +1,8 @@
 import { useCallback, useState } from 'react'
 
-import type { InspectorTab } from './InspectorPanel'
-
 export const workbenchModes = ['build', 'inspect', 'measure', 'constrain', 'run', 'replay'] as const
 export type WorkbenchMode = (typeof workbenchModes)[number]
+export type WorkbenchContextPane = 'decisions' | 'properties'
 
 /** Patch operation discriminators, exactly as `schemas/v1/molecule-patch.schema.json` writes them on the wire. */
 export type MoleculePatchOperation =
@@ -28,8 +27,8 @@ export type SelectionMeaning = 'anchor' | 'constraint_target' | 'frame_cursor' |
 export interface WorkbenchModeContract {
   /** The only operations this mode may propose. Main re-validates; this keeps the UI from offering more. */
   allowedOperations: readonly MoleculePatchOperation[]
-  /** Which inspector section this mode works in. */
-  inspectorTab: InspectorTab
+  /** Context sheet this researcher-selected mode works in. */
+  contextPane: WorkbenchContextPane
   /** True when entering the mode should reveal the ChemSmart command workbench. */
   opensCommandWorkbench: boolean
   selection: SelectionMeaning
@@ -49,37 +48,37 @@ export const workbenchModeContracts: Record<WorkbenchMode, WorkbenchModeContract
       'set_atomic_numbers',
       'set_bond_orders'
     ],
-    inspectorTab: 'properties',
+    contextPane: 'properties',
     opensCommandWorkbench: false,
     selection: 'anchor'
   },
   inspect: {
     allowedOperations: [],
-    inspectorTab: 'properties',
+    contextPane: 'properties',
     opensCommandWorkbench: false,
     selection: 'multiple'
   },
   measure: {
     allowedOperations: ['set_positions'],
-    inspectorTab: 'properties',
+    contextPane: 'properties',
     opensCommandWorkbench: false,
     selection: 'ordered'
   },
   constrain: {
     allowedOperations: ['set_constraints', 'remove_constraints', 'set_frozen_axes'],
-    inspectorTab: 'properties',
+    contextPane: 'properties',
     opensCommandWorkbench: false,
     selection: 'constraint_target'
   },
   run: {
     allowedOperations: [],
-    inspectorTab: 'decisions',
+    contextPane: 'decisions',
     opensCommandWorkbench: true,
     selection: 'multiple'
   },
   replay: {
     allowedOperations: [],
-    inspectorTab: 'decisions',
+    contextPane: 'decisions',
     opensCommandWorkbench: false,
     selection: 'frame_cursor'
   }
@@ -88,24 +87,24 @@ export const workbenchModeContracts: Record<WorkbenchMode, WorkbenchModeContract
 interface WorkbenchModeHandlers {
   /** Called when the mode wants the command workbench revealed; entering a mode never closes it. */
   onRevealCommandWorkbench: () => void
-  onSelectInspectorTab: (tab: InspectorTab) => void
+  onSelectContextPane: (pane: WorkbenchContextPane) => void
 }
 
 /**
  * Single owner of the mode contract. Switching modes moves the inspector and the command workbench with
  * it, so the visible surface always matches the work the mode owns.
  */
-export function useWorkbenchMode({ onRevealCommandWorkbench, onSelectInspectorTab }: WorkbenchModeHandlers) {
+export function useWorkbenchMode({ onRevealCommandWorkbench, onSelectContextPane }: WorkbenchModeHandlers) {
   const [mode, setModeState] = useState<WorkbenchMode>(initialWorkbenchMode)
 
   const setMode = useCallback(
     (next: WorkbenchMode) => {
       setModeState(next)
       const contract = workbenchModeContracts[next]
-      onSelectInspectorTab(contract.inspectorTab)
+      onSelectContextPane(contract.contextPane)
       if (contract.opensCommandWorkbench) onRevealCommandWorkbench()
     },
-    [onRevealCommandWorkbench, onSelectInspectorTab]
+    [onRevealCommandWorkbench, onSelectContextPane]
   )
 
   return { contract: workbenchModeContracts[mode], mode, setMode }

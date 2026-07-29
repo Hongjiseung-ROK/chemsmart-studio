@@ -3,8 +3,7 @@ import type {
   MoleculeOperation,
   StudioAgentTraceEvent,
   StudioControlSnapshot,
-  StudioDraftSnapshot,
-  StudioUiEvent
+  StudioDraftSnapshot
 } from '@chemsmart/studio-protocol'
 import { chemsmartStudioErrorCodes } from '@shared/ipc/errors/chemsmartStudio'
 import { IpcError } from '@shared/ipc/errors/IpcError'
@@ -448,19 +447,6 @@ function replayCatalog() {
   }
 }
 
-function createEvent(sessionId: string, sequence: number, eventId = `event-${sequence}`): StudioUiEvent {
-  return {
-    eventId,
-    sessionId,
-    sequence,
-    timestamp: '2026-07-22T00:00:00Z',
-    source: 'runtime',
-    kind: 'notice',
-    payload: { message: `Activity ${sequence}` },
-    extensions: {}
-  }
-}
-
 function createTraceEvent(
   sessionId: string,
   sequence: number,
@@ -506,16 +492,18 @@ function emit(event: string, payload: unknown) {
   listener?.(payload as never)
 }
 
-/** Reviews waiting decisions the way the strip offers: open the inspector on its decisions tab. */
+/** Opens the trusted decision history from the Agent's inline waiting card. */
 async function openDecisions() {
-  fireEvent.click(await screen.findByRole('button', { name: /chemsmart_studio\.approval\.review/ }))
+  const waitingCard = await screen.findByTestId('agent-inline-approval')
+  fireEvent.click(within(waitingCard).getByRole('button', { name: /chemsmart_studio\.approval\.review/ }))
+  await screen.findByTestId('agent-review-sheet')
 }
 
-/** Opens the Agent inspector if needed, then selects its Agent tab. */
+/** Opens the dedicated Agent pane if it is currently hidden. */
 async function openAgentPanel() {
-  const show = screen.queryByRole('button', { name: 'chemsmart_studio.inspector.show' })
+  const show = screen.queryByRole('button', { name: 'chemsmart_studio.agent_workbench.show' })
   if (show) fireEvent.click(show)
-  fireEvent.click(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.agent/ }))
+  await screen.findByTestId('chemsmart-agent-pane')
 }
 
 async function openJobs() {
@@ -627,15 +615,12 @@ describe('ChemSmartStudioPanel', () => {
 
     expect(screen.getByRole('img', { name: 'chemsmart_studio.workspace.brand_logo' })).toBeInTheDocument()
     await screen.findByTestId('molecule-stage')
-    expect(screen.getByRole('button', { name: 'chemsmart_studio.inspector.hide' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.hide' })).toHaveAttribute(
       'aria-expanded',
       'true'
     )
     expect(screen.getByTestId('workspace-dock-inspector')).toHaveAttribute('data-open', 'true')
-    expect(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.agent/ })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    expect(screen.getByTestId('chemsmart-agent-pane')).toBeInTheDocument()
 
     const statusRequestIndex = ipcMocks.order.indexOf('request:chemsmart_studio.status')
     expect(statusRequestIndex).toBeGreaterThan(-1)
@@ -820,7 +805,7 @@ describe('ChemSmartStudioPanel', () => {
     expect(screen.queryByTestId('workspace-dock-bottom')).toBeNull()
     expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
     expect(screen.getByTestId('studio-pane-sheet')).toHaveStyle({ width: '44%' })
-    expect(screen.getByRole('button', { name: 'chemsmart_studio.inspector.hide' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.hide' })).toHaveAttribute(
       'aria-expanded',
       'true'
     )
@@ -850,12 +835,9 @@ describe('ChemSmartStudioPanel', () => {
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
     await user.click(await screen.findByRole('button', { name: /chemsmart_studio\.approval\.review/ }))
 
-    expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'decisions')
-    expect(screen.getByRole('tab', { name: /chemsmart_studio\.inspector\.tab\.decisions/ })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
-    expect(screen.getByTestId('preview-approval')).toBeInTheDocument()
+    expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
+    const reviewSheet = await screen.findByTestId('agent-review-sheet')
+    expect(within(reviewSheet).getByTestId('preview-approval')).toBeInTheDocument()
   })
 
   it('uses an icon-only Activity Bar while preserving the default Agent pane intent in focused layout', async () => {
@@ -869,7 +851,7 @@ describe('ChemSmartStudioPanel', () => {
     expect(screen.getByTestId('workspace-dock-inspector')).toHaveAttribute('data-open', 'true')
     expect(screen.getByTestId('workspace-dock-bottom')).toHaveAttribute('data-open', 'false')
     expect(screen.getByTestId('viewport-identity')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'chemsmart_studio.inspector.hide' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.hide' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'chemsmart_studio.ide.bottom.show' })).toBeInTheDocument()
   })
 
@@ -895,7 +877,7 @@ describe('ChemSmartStudioPanel', () => {
       'preserve this draft while resizing'
     )
     expect(screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })).toHaveFocus()
-    expect(screen.getByRole('button', { name: 'chemsmart_studio.inspector.hide' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.hide' })).toHaveAttribute(
       'aria-expanded',
       'true'
     )
@@ -930,12 +912,12 @@ describe('ChemSmartStudioPanel', () => {
       'aria-expanded',
       'true'
     )
-    expect(screen.getByRole('button', { name: 'chemsmart_studio.inspector.show' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.show' })).toHaveAttribute(
       'aria-expanded',
       'false'
     )
 
-    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.inspector.show' }))
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.show' }))
     expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
     expect(screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })).toHaveValue(
       'Keep this research plan'
@@ -986,7 +968,7 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await user.click(await screen.findByRole('tab', { name: /chemsmart_studio.inspector.tab.properties/ }))
+    await user.click(await screen.findByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
 
     const table = await screen.findByTestId('coordinate-table')
     expect(within(table).getByText('atom-1')).toBeInTheDocument()
@@ -994,11 +976,7 @@ describe('ChemSmartStudioPanel', () => {
     expect(within(table).getAllByText('H')).toHaveLength(2)
     // Element, stable id, angstrom coordinates, and the frozen axis all come from trusted state.
     expect(screen.getByText('chemsmart_studio.coordinates.unit_notice')).toBeInTheDocument()
-    // Build owns the coordinates section, so opening the inspector lands there without extra clicks.
-    expect(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.properties/ })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'properties')
     expect(within(table).getAllByRole('checkbox').length).toBeGreaterThan(0)
     // Structural editing belongs beside the 3D view, which is where the researcher is looking while
     // they build — not in the inspector alongside the agent's surfaces.
@@ -1410,19 +1388,16 @@ describe('ChemSmartStudioPanel', () => {
       })
     })
 
-    await user.click(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.properties/ }))
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
     // The touched atom is marked in the coordinate rows with text, not colour alone.
     const touched = screen.getByTestId('coordinate-table').querySelector('[data-agent-touched="true"]')
     expect(touched).toHaveAttribute('data-atom-id', 'atom-2')
     expect(touched).toHaveTextContent('chemsmart_studio.coordinates.agent_touched')
 
-    await user.click(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.agent/ }))
     // Legacy model-written thought text is not a trusted lifecycle event and is not rendered.
     expect(screen.queryByTestId('agent-thought-stream')).toBeNull()
     expect(screen.queryByText('The O-H distance disagrees with the reference.')).toBeNull()
-    expect(screen.getByTestId('chemsmart-studio-activity')).toHaveTextContent(
-      'Looking at the hydrogen it wants to move.'
-    )
+    expect(screen.queryByText('Looking at the hydrogen it wants to move.')).toBeNull()
   })
 
   it('keeps scientific tools on the viewport and reveals only the pane each tool owns', async () => {
@@ -1435,20 +1410,15 @@ describe('ChemSmartStudioPanel', () => {
     expect(buildTool).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('workspace-dock-bottom')).toHaveAttribute('data-open', 'false')
     expect(screen.getByTestId('workspace-dock-inspector')).toHaveAttribute('data-open', 'true')
-    expect(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.agent/ })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    expect(screen.getByTestId('chemsmart-agent-pane')).toBeInTheDocument()
 
-    // Measure opens Properties without opening the bottom panel.
+    // Measure opens a contextual Properties sheet without replacing the dedicated Agent pane.
     const measureTool = screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' })
     await user.click(measureTool)
     expect(measureTool).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('workspace-dock-inspector')).toHaveAttribute('data-open', 'true')
-    expect(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.properties/ })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'properties')
+    expect(screen.getByTestId('molecule-inspector')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-dock-bottom')).toHaveAttribute('data-open', 'false')
 
     // Calculations live in Jobs, and selecting them reveals the bottom panel.
@@ -1462,79 +1432,6 @@ describe('ChemSmartStudioPanel', () => {
     // Returning to Build does not steal focus or close a pane the researcher chose.
     await user.click(buildTool)
     expect(screen.getByTestId('workspace-dock-bottom')).toHaveAttribute('data-open', 'true')
-  })
-
-  it('shows the public Agent workflow phase and accessible progress without exposing internal reasoning', async () => {
-    ipcMocks.request.mockImplementation(async (route: string) => {
-      if (route === 'chemsmart_studio.status') return stoppedStatus()
-      if (route === 'chemsmart_studio.control.snapshot') return agentControlSnapshot()
-      throw new Error(`Unexpected route: ${route}`)
-    })
-
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await openAgentPanel()
-
-    const state = await screen.findByTestId('agent-workflow-state')
-    expect(state).toHaveAttribute('data-phase', 'running_calculation')
-    expect(within(state).getByText('Monitoring the controlled calculation')).toBeInTheDocument()
-    expect(within(state).getByText('chemsmart_studio.workspace.agent_object.trajectory')).toBeInTheDocument()
-    expect(within(state).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '42')
-    expect(state).not.toHaveTextContent('get_optimization_status')
-    expect(state).not.toHaveTextContent('reasoning')
-  })
-
-  it('returns the Agent badge to idle after a completed response remains in history', async () => {
-    const completed = agentControlSnapshot()
-    completed.agent = {
-      ...completed.agent!,
-      phase: 'completed',
-      activeTool: null,
-      statusSummary: 'Agent task completed',
-      progress: null,
-      pendingTrustedAction: null,
-      terminalResult: 'completed'
-    }
-    ipcMocks.request.mockImplementation(async (route: string) => {
-      if (route === 'chemsmart_studio.status') return stoppedStatus()
-      if (route === 'chemsmart_studio.control.snapshot') return completed
-      throw new Error(`Unexpected route: ${route}`)
-    })
-
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    expect(await screen.findByTestId('agent-workflow-state')).toHaveAttribute('data-phase', 'completed')
-
-    act(() => {
-      emit('chemsmart_studio.studio_ui.event', createEvent('topic-a', 0, 'runtime-response'))
-    })
-
-    expect(screen.getByText('Activity 0')).toBeInTheDocument()
-    expect(screen.getByText('chemsmart_studio.workspace.agent_idle')).toBeInTheDocument()
-    expect(screen.queryByText('chemsmart_studio.workspace.agent_active')).toBeNull()
-  })
-
-  it('does not present editor recovery as Agent activity', async () => {
-    const recovering = agentControlSnapshot()
-    recovering.agent = {
-      ...recovering.agent!,
-      phase: 'recovering',
-      activeTool: null,
-      statusSummary: 'Recovering trusted workspace state',
-      progress: null,
-      latestGate: 'failed',
-      pendingTrustedAction: null,
-      recoverySequence: 1
-    }
-    ipcMocks.request.mockImplementation(async (route: string) => {
-      if (route === 'chemsmart_studio.status') return stoppedStatus()
-      if (route === 'chemsmart_studio.control.snapshot') return recovering
-      throw new Error(`Unexpected route: ${route}`)
-    })
-
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    expect(await screen.findByTestId('agent-workflow-state')).toHaveAttribute('data-phase', 'recovering')
-    expect(screen.queryByTestId('agent-driving')).toBeNull()
-    expect(screen.getByText('chemsmart_studio.workspace.agent_idle')).toBeInTheDocument()
-    expect(screen.queryByText('chemsmart_studio.workspace.agent_active')).toBeNull()
   })
 
   it('runs the deterministic Agent path only after an explicit composer submission', async () => {
@@ -1598,96 +1495,10 @@ describe('ChemSmartStudioPanel', () => {
     expect(await screen.findByRole('button', { name: 'chemsmart_studio.editor.save_as' })).toBeInTheDocument()
     expect(screen.getByTestId('viewport-identity')).toHaveTextContent('chemsmart_studio.stage.committed_revision')
     expect(screen.getByTestId('chemsmart-workspace').querySelector('header')).not.toHaveTextContent('molecule-2')
-    await user.click(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.properties/ }))
-    expect(screen.getByText('molecule-2')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
+    expect(within(screen.getByTestId('studio-pane-sheet')).getByText('molecule-2')).toBeInTheDocument()
     expect(screen.queryByText(/private\/runtime|token\.sock/)).toBeNull()
     expect(loggerMocks.error).toHaveBeenCalled()
-  })
-
-  it('filters and deduplicates activity, replays from the latest sequence, and resets for a new topic', async () => {
-    ipcMocks.request.mockImplementation(async (route: string, input?: unknown) => {
-      if (route === 'chemsmart_studio.status') {
-        return {
-          agent: { state: 'running', pid: 52, lastError: null }
-        }
-      }
-      if (route === 'chemsmart_studio.agent.replay_studio_ui') {
-        return { replayed: 0, nextSequence: ((input as { afterSequence: number }).afterSequence ?? -1) + 1 }
-      }
-      if (route === 'chemsmart_studio.control.snapshot') {
-        return emptyControlSnapshot((input as { sessionId: string }).sessionId)
-      }
-      throw new Error(`Unexpected route: ${route}`)
-    })
-
-    const { rerender } = render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await openAgentPanel()
-
-    await waitFor(() => {
-      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.agent.replay_studio_ui', {
-        sessionId: 'topic-a',
-        afterSequence: -1
-      })
-    })
-
-    act(() => {
-      emit('chemsmart_studio.studio_ui.event', createEvent('topic-b', 0, 'wrong-session'))
-      emit('chemsmart_studio.studio_ui.event', createEvent('topic-a', 0))
-      emit('chemsmart_studio.studio_ui.event', createEvent('topic-a', 0, 'duplicate-sequence'))
-      emit('chemsmart_studio.studio_ui.event', createEvent('topic-a', 1, 'event-0'))
-    })
-
-    const activity = screen.getByTestId('chemsmart-studio-activity')
-    expect(within(activity).getAllByRole('listitem')).toHaveLength(1)
-    expect(screen.queryByText('wrong-session')).toBeNull()
-
-    rerender(<ChemSmartStudioPanel active={false} sessionId="topic-a" />)
-    rerender(<ChemSmartStudioPanel active sessionId="topic-a" />)
-
-    await waitFor(() => {
-      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.agent.replay_studio_ui', {
-        sessionId: 'topic-a',
-        afterSequence: 0
-      })
-    })
-
-    rerender(<ChemSmartStudioPanel active sessionId="topic-b" />)
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('chemsmart-studio-activity')).toBeNull()
-      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.agent.replay_studio_ui', {
-        sessionId: 'topic-b',
-        afterSequence: -1
-      })
-    })
-
-    act(() => {
-      emit('chemsmart_studio.studio_ui.event', createEvent('topic-a', 1, 'stale-topic'))
-      emit('chemsmart_studio.studio_ui.event', createEvent('topic-b', 0, 'current-topic'))
-    })
-
-    expect(within(screen.getByTestId('chemsmart-studio-activity')).getByText('Activity 0')).toBeInTheDocument()
-    expect(document.querySelector('[data-event-id="stale-topic"]')).toBeNull()
-    expect(document.querySelector('[data-event-id="current-topic"]')).toBeInTheDocument()
-  })
-
-  it('caps activity history and exposes only the newest event as a polite live status', async () => {
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await screen.findByTestId('molecule-stage')
-    await openAgentPanel()
-
-    act(() => {
-      for (let sequence = 0; sequence < 105; sequence += 1) {
-        emit('chemsmart_studio.studio_ui.event', createEvent('topic-a', sequence))
-      }
-    })
-
-    const activity = screen.getByTestId('chemsmart-studio-activity')
-    expect(within(activity).getAllByRole('listitem')).toHaveLength(100)
-    expect(document.querySelector('[data-event-id="event-0"]')).toBeNull()
-    expect(document.querySelector('[data-event-id="event-104"]')).toBeInTheDocument()
-    expect(within(activity).getAllByRole('status')).toHaveLength(1)
-    expect(within(activity).getAllByRole('group')).toHaveLength(99)
   })
 
   it('opens, imports, and saves projects through path-free main-owned actions', async () => {
@@ -1809,14 +1620,10 @@ describe('ChemSmartStudioPanel', () => {
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
 
-    // An unresolved final geometry is high risk, so its allow notice blocks the workspace first.
-    const notice = await screen.findByTestId('allow-notice')
-    expect(notice).toHaveAttribute('role', 'alertdialog')
-    fireEvent.click(within(notice).getByRole('button', { name: 'chemsmart_studio.approval.decide_later' }))
-
     expect(await screen.findByRole('button', { name: 'chemsmart_studio.editor.open_project' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'chemsmart_studio.editor.import_molecule' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'chemsmart_studio.editor.save_as' })).toBeDisabled()
+    expect(screen.getByTestId('agent-inline-approval')).toBeInTheDocument()
   })
 
   it('renders a canonical preview approval and sends only the session and opaque action id', async () => {
@@ -1872,20 +1679,21 @@ describe('ChemSmartStudioPanel', () => {
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
 
-    // Starting a calculation is high risk, so it is announced by a blocking notice with denial focused.
-    const notice = await screen.findByTestId('allow-notice')
-    expect(within(notice).getByText('chemsmart_studio.approval.requested_by_agent')).toBeInTheDocument()
-    expect(within(notice).getByText('chemsmart_studio.optimization.engine_name.unsupported_legacy')).toBeInTheDocument()
-    expect(within(notice).getByText('UFF')).toBeInTheDocument()
-    expect(within(notice).getByText('chemsmart_studio.approval.single_use_notice')).toBeInTheDocument()
-    expect(notice).not.toHaveTextContent(/avogadro/i)
-    expect(within(notice).getByRole('button', { name: 'chemsmart_studio.approval.calculation.deny' })).toHaveFocus()
+    // Approval remains inline until the researcher opens its focused Review sheet.
+    await openDecisions()
+    const reviewSheet = screen.getByTestId('agent-review-sheet')
+    expect(within(reviewSheet).getByText('chemsmart_studio.approval.requested_by_agent')).toBeInTheDocument()
+    expect(
+      within(reviewSheet).getByText('chemsmart_studio.optimization.engine_name.unsupported_legacy')
+    ).toBeInTheDocument()
+    expect(within(reviewSheet).getByText('UFF')).toBeInTheDocument()
+    expect(within(reviewSheet).getByText('chemsmart_studio.approval.single_use_notice')).toBeInTheDocument()
+    expect(reviewSheet).not.toHaveTextContent(/avogadro/i)
     expect(screen.queryByText('hidden')).toBeNull()
-    // The same decision remains available in the inspector once the notice is set aside.
-    expect(screen.getByTestId('calculation-approval')).toBeInTheDocument()
-    expect(screen.getByText('approval-calculation')).toBeInTheDocument()
+    expect(within(reviewSheet).getByTestId('calculation-approval')).toBeInTheDocument()
+    expect(within(reviewSheet).getByText('approval-calculation')).toBeInTheDocument()
 
-    await user.click(within(notice).getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
+    await user.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
 
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
       sessionId: 'topic-a',
@@ -1904,49 +1712,19 @@ describe('ChemSmartStudioPanel', () => {
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
 
-    const notice = await screen.findByTestId('allow-notice')
-    expect(within(notice).getByText('chemsmart_studio.approval.execution.title')).toBeInTheDocument()
-    expect(within(notice).getByText('chemsmart run gaussian sp water')).toBeInTheDocument()
-    expect(within(notice).getByText('30')).toBeInTheDocument()
-    expect(within(notice).getByRole('button', { name: 'chemsmart_studio.approval.execution.deny' })).toHaveFocus()
-    expect(screen.getByTestId('execution-approval')).toBeInTheDocument()
+    await openDecisions()
+    const reviewSheet = screen.getByTestId('agent-review-sheet')
+    expect(within(reviewSheet).getByText('chemsmart_studio.approval.execution.title')).toBeInTheDocument()
+    expect(within(reviewSheet).getByText('chemsmart run gaussian sp water')).toBeInTheDocument()
+    expect(within(reviewSheet).getByText('30')).toBeInTheDocument()
+    expect(within(reviewSheet).getByTestId('execution-approval')).toBeInTheDocument()
     expect(screen.queryByText(/providerArguments|rawJson|session_root|\/private\//)).toBeNull()
 
-    await user.click(within(notice).getByRole('button', { name: 'chemsmart_studio.approval.execution.approve' }))
+    await user.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.execution.approve' }))
 
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
       sessionId: 'topic-a',
       actionId: 'action-execute-once'
-    })
-  })
-
-  it('keeps a dismissed allow notice dismissed while the decision stays reachable', async () => {
-    const user = userEvent.setup()
-    ipcMocks.request.mockImplementation(async (route: string) => {
-      if (route === 'chemsmart_studio.status') return stoppedStatus()
-      if (route === 'chemsmart_studio.control.snapshot') return calculationControlSnapshot()
-      if (route === 'chemsmart_studio.control.perform_action') return emptyControlSnapshot()
-      throw new Error(`Unexpected route: ${route}`)
-    })
-
-    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    const notice = await screen.findByTestId('allow-notice')
-    await user.click(within(notice).getByRole('button', { name: 'chemsmart_studio.approval.decide_later' }))
-
-    await waitFor(() => expect(screen.queryByTestId('allow-notice')).toBeNull())
-    // Dismissing decides nothing: no action was performed and the title bar still counts the decision.
-    expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.control.perform_action')
-    expect(screen.getByRole('button', { name: /chemsmart_studio\.approval\.review/ })).toBeInTheDocument()
-    // The retired 45vh banner and decision strip must not come back.
-    expect(screen.queryByTestId('trusted-decision-surface')).toBeNull()
-    expect(screen.queryByTestId('trusted-decision-strip')).toBeNull()
-
-    await openDecisions()
-    expect(screen.getByTestId('trusted-decision-list')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
-    expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
-      sessionId: 'topic-a',
-      actionId: 'action-start'
     })
   })
 
@@ -1961,7 +1739,9 @@ describe('ChemSmartStudioPanel', () => {
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
 
-    expect(await screen.findByTestId('calculation-approval')).toBeInTheDocument()
+    await openDecisions()
+    const reviewSheet = screen.getByTestId('agent-review-sheet')
+    expect(within(reviewSheet).getByTestId('calculation-approval')).toBeInTheDocument()
     expect(screen.getByText('plan-ethanol-1')).toBeInTheDocument()
     expect(screen.getByText(`sha256:${'a'.repeat(64)}`)).toBeInTheDocument()
     expect(screen.getByText(`sha256:${'b'.repeat(64)}`)).toBeInTheDocument()
@@ -1971,7 +1751,7 @@ describe('ChemSmartStudioPanel', () => {
       'open'
     )
 
-    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
+    await user.click(within(reviewSheet).getByRole('button', { name: 'chemsmart_studio.approval.calculation.start' }))
 
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.perform_action', {
       sessionId: 'topic-a',
@@ -2110,7 +1890,7 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
-    await user.click(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.properties/ }))
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
 
     const table = await screen.findByTestId('coordinate-table')
     let atomCheckboxes = within(table).getAllByRole('checkbox', {

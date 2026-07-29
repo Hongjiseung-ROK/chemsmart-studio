@@ -1,7 +1,7 @@
 import type { StudioUiEvent } from '@chemsmart/studio-protocol'
 import { useEffect, useState } from 'react'
 
-import type { InspectorTab } from './InspectorPanel'
+export type AgentContextTarget = 'agent' | 'decisions' | 'properties'
 
 /** How long a newly touched target stays flashed before it settles into a quiet marker. */
 const FLASH_MS = 1200
@@ -13,15 +13,15 @@ const targetTabs = {
   coordinates: 'properties',
   decisions: 'decisions',
   measurements: 'properties'
-} as const satisfies Record<string, InspectorTab>
+} as const satisfies Record<string, AgentContextTarget>
 
 export interface AgentTouch {
   /** Atom ids the Agent last pointed at, so the coordinate rows can mark them. */
   atomIds: readonly string[]
   /** True for a short moment after a new touch, for a one-off flash rather than a permanent animation. */
   flashing: boolean
-  /** Inspector section the Agent asked to show, if it asked. */
-  tab: InspectorTab | null
+  /** Context the Agent referenced. Background events never open or focus it. */
+  target: AgentContextTarget | null
 }
 
 /**
@@ -42,12 +42,12 @@ export function useAgentTouch(events: readonly StudioUiEvent[]): AgentTouch {
     return () => window.clearTimeout(timeout)
   }, [latest])
 
-  if (!latest) return { atomIds: [], flashing: false, tab: null }
+  if (!latest) return { atomIds: [], flashing: false, target: null }
 
   const target = latest.payload.target
   return {
     atomIds: latest.payload.atomIds ?? [],
     flashing: flashingEventId === latest.eventId,
-    tab: target ? targetTabs[target] : null
+    target: target ? targetTabs[target] : null
   }
 }

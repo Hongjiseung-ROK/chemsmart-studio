@@ -17,6 +17,13 @@ import { useTranslation } from 'react-i18next'
 
 interface AgentTraceTimelineProps {
   events: readonly StudioAgentTraceEvent[]
+  requests?: readonly AgentConversationRequest[]
+}
+
+export interface AgentConversationRequest {
+  id: string
+  status: 'failed' | 'running' | 'succeeded'
+  text: string
 }
 
 type TraceStatus = StudioAgentTraceEvent['status']
@@ -33,7 +40,7 @@ const statusTranslationKeys: Record<TraceStatus, string> = {
 }
 
 const statusClasses: Record<TraceStatus, string> = {
-  denied: 'border-warning text-warning',
+  denied: 'border-border text-foreground-muted',
   failed: 'border-destructive text-destructive',
   queued: 'border-border text-foreground-muted',
   running: 'border-info text-info',
@@ -105,7 +112,7 @@ function AgentTraceEventCard({
   live: boolean
 }) {
   const { t } = useTranslation()
-  const failed = event.kind === 'tool_failed' || event.kind === 'turn_blocked' || effectiveStatus === 'failed'
+  const failed = event.kind === 'tool_failed' || effectiveStatus === 'failed'
   const [open, setOpen] = useState(failed)
   const detailId = useId()
   const expandable = hasStructuredDetail(event)
@@ -201,17 +208,154 @@ function groupTurns(events: readonly StudioAgentTraceEvent[]): TraceTurn[] {
   for (const event of events) {
     const turn: TraceTurn = turns.get(event.turnId) ?? { events: [], failed: false, turnId: event.turnId }
     turn.events.push(event)
-    turn.failed ||= event.kind === 'tool_failed' || event.kind === 'turn_blocked' || event.status === 'failed'
+    turn.failed ||= event.kind === 'tool_failed' || event.status === 'failed'
     if (event.kind === 'turn_completed' || event.kind === 'turn_blocked') turn.terminalStatus = event.status
     turns.set(event.turnId, turn)
   }
   return [...turns.values()]
 }
 
-function AgentTraceTurn({ current, index, turn }: { current: boolean; index: number; turn: TraceTurn }) {
+function EventSection({
+  current,
+  events,
+  label
+}: {
+  current: boolean
+  events: readonly StudioAgentTraceEvent[]
+  label: string
+}) {
+  if (events.length === 0) return null
+  return (
+    <section aria-label={label} className="space-y-1.5">
+      <h4 className="px-0.5 font-medium text-[11px] text-foreground-muted uppercase tracking-wide">{label}</h4>
+      <ol className="space-y-1.5">
+        {events.map((event, index) => (
+          <AgentTraceEventCard
+            effectiveStatus={event.status}
+            event={event}
+            key={event.eventId}
+            live={current && index === events.length - 1}
+          />
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+function unique(values: readonly (readonly string[] | undefined)[]) {
+  return [...new Set(values.flatMap((value) => value ?? []))]
+}
+
+function groupToolLifecycles(events: readonly StudioAgentTraceEvent[]) {
+  const groups = new Map<string, StudioAgentTraceEvent[]>()
+  for (const event of events) {
+    const key = event.toolCallId ?? event.eventId
+    const lifecycle = groups.get(key) ?? []
+    lifecycle.push(event)
+    groups.set(key, lifecycle)
+  }
+
+  return [...groups.values()].map((lifecycle) => {
+    const first = lifecycle[0]
+    const latest = lifecycle.at(-1) ?? first
+    const argumentKeys = unique(lifecycle.map((event) => event.detail?.argumentKeys))
+    const resultKeys = unique(lifecycle.map((event) => event.detail?.resultKeys))
+    const ruleIds = unique(lifecycle.map((event) => event.detail?.ruleIds))
+    const verdict = [...lifecycle].reverse().find((event) => event.detail?.verdict)?.detail?.verdict
+    const durationMs = [...lifecycle].reverse().find((event) => event.detail?.durationMs !== undefined)
+      ?.detail?.durationMs
+    const hasDetail =
+      argumentKeys.length > 0 ||
+      resultKeys.length > 0 ||
+      ruleIds.length > 0 ||
+      verdict !== undefined ||
+      durationMs !== undefined
+
+    return {
+      ...latest,
+      ...(hasDetail
+        ? {
+            detail: {
+              ...(argumentKeys.length > 0 ? { argumentKeys } : {}),
+              ...(durationMs !== undefined ? { durationMs } : {}),
+              ...(resultKeys.length > 0 ? { resultKeys } : {}),
+              ...(ruleIds.length > 0 ? { ruleIds } : {}),
+              ...(verdict !== undefined ? { verdict } : {})
+            }
+          }
+        : {}),
+      title: first.title,
+      toolName: first.toolName ?? latest.toolName
+    }
+  })
+}
+
+function ToolLifecycleSection({
+  current,
+  events,
+  label
+}: {
+  current: boolean
+  events: readonly StudioAgentTraceEvent[]
+  label: string
+}) {
+  const lifecycles = groupToolLifecycles(events)
+  if (lifecycles.length === 0) return null
+  return (
+    <section aria-label={label} className="space-y-1.5">
+      <h4 className="px-0.5 font-medium text-[11px] text-foreground-muted uppercase tracking-wide">{label}</h4>
+      <ol className="space-y-1.5">
+        {lifecycles.map((event, index) => (
+          <AgentTraceEventCard
+            effectiveStatus={event.status}
+            event={event}
+            key={event.toolCallId ?? event.eventId}
+            live={current && index === lifecycles.length - 1}
+          />
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+function AgentTraceTurn({
+  current,
+  index,
+  request,
+  turn
+}: {
+  current: boolean
+  index: number
+  request?: AgentConversationRequest
+  turn: TraceTurn
+}) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(current || turn.failed)
   const contentId = useId()
+  const effectiveEvents = turn.events.map((event) => ({
+    ...event,
+    status:
+      turn.terminalStatus !== undefined &&
+      event.status === 'running' &&
+      event.kind !== 'turn_completed' &&
+      event.kind !== 'turn_blocked'
+        ? turn.terminalStatus
+        : event.status
+  }))
+  const reasoningEvents = effectiveEvents.filter(
+    (event) => event.kind === 'turn_started' || event.kind === 'reasoning_summary'
+  )
+  const toolEvents = effectiveEvents.filter(
+    (event) =>
+      event.kind === 'tool_started' ||
+      event.kind === 'tool_progress' ||
+      event.kind === 'tool_succeeded' ||
+      event.kind === 'tool_failed' ||
+      event.kind === 'permission_waiting'
+  )
+  const resultEvents = effectiveEvents.filter(
+    (event) => event.kind === 'turn_completed' || event.kind === 'turn_blocked'
+  )
 
   useEffect(() => {
     setOpen(current || turn.failed)
@@ -238,25 +382,30 @@ function AgentTraceTurn({ current, index, turn }: { current: boolean; index: num
         </Badge>
       </Button>
       {open ? (
-        <ol className="space-y-1.5 px-2 pb-2" id={contentId}>
-          {turn.events.map((event, index) => {
-            const effectiveStatus =
-              turn.terminalStatus !== undefined &&
-              event.status === 'running' &&
-              event.kind !== 'turn_completed' &&
-              event.kind !== 'turn_blocked'
-                ? turn.terminalStatus
-                : event.status
-            return (
-              <AgentTraceEventCard
-                effectiveStatus={effectiveStatus}
-                event={event}
-                key={event.eventId}
-                live={current && index === turn.events.length - 1}
-              />
-            )
-          })}
-        </ol>
+        <div className="space-y-3 px-2 pb-2" id={contentId}>
+          {request ? (
+            <section aria-label={t('chemsmart_studio.agent_workbench.request')}>
+              <div
+                className={cn(
+                  'ml-6 rounded-lg border border-border-subtle bg-secondary px-3 py-2 text-foreground text-sm leading-5',
+                  request.status === 'failed' && 'border-error-border bg-error-bg text-error-text'
+                )}>
+                {request.text}
+              </div>
+            </section>
+          ) : null}
+          <EventSection
+            current={current}
+            events={reasoningEvents}
+            label={t('chemsmart_studio.agent_workbench.reasoning')}
+          />
+          <ToolLifecycleSection
+            current={current}
+            events={toolEvents}
+            label={t('chemsmart_studio.agent_workbench.tools')}
+          />
+          <EventSection current={current} events={resultEvents} label={t('chemsmart_studio.agent_workbench.result')} />
+        </div>
       ) : null}
     </li>
   )
@@ -266,17 +415,49 @@ function AgentTraceTurn({ current, index, turn }: { current: boolean; index: num
  * Balanced, trusted Agent activity. Current work is visible, historical turns recede, and only
  * schema-approved summaries cross the renderer boundary.
  */
-export function AgentTraceTimeline({ events }: AgentTraceTimelineProps) {
+export function AgentTraceTimeline({ events, requests = [] }: AgentTraceTimelineProps) {
+  const { t } = useTranslation()
   const turns = useMemo(() => groupTurns(events), [events])
   const latestTurn = turns.at(-1)
-  const currentTurnId = latestTurn?.terminalStatus === undefined ? latestTurn?.turnId : undefined
+  const currentTurnId = latestTurn?.turnId
+  const pendingRequests = requests.slice(turns.length)
 
-  if (turns.length === 0) return null
+  if (turns.length === 0 && requests.length === 0) return null
 
   return (
     <ol className="space-y-2" data-testid="agent-trace-timeline">
       {turns.map((turn, index) => (
-        <AgentTraceTurn current={turn.turnId === currentTurnId} index={index + 1} key={turn.turnId} turn={turn} />
+        <AgentTraceTurn
+          current={turn.turnId === currentTurnId}
+          index={index + 1}
+          key={turn.turnId}
+          request={requests[index]}
+          turn={turn}
+        />
+      ))}
+      {pendingRequests.map((request, index) => (
+        <li
+          className={cn(
+            'rounded-lg border border-border-subtle bg-background p-2',
+            request.status === 'failed' && 'border-error-border bg-error-bg'
+          )}
+          key={request.id}>
+          <div className="flex items-center justify-between gap-2 px-1 pb-2">
+            <span className="font-medium text-foreground text-sm">
+              {t('chemsmart_studio.agent_trace.turn', { index: turns.length + index + 1 })}
+            </span>
+            <Badge variant="secondary">{t('chemsmart_studio.agent_trace.current')}</Badge>
+          </div>
+          <div className="ml-6 rounded-lg border border-border-subtle bg-secondary px-3 py-2 text-foreground text-sm leading-5">
+            {request.text}
+          </div>
+          {request.status === 'running' ? (
+            <div className="mt-2 flex items-center gap-2 px-1 text-foreground-muted text-xs" role="status">
+              <RunningWave />
+              {t('chemsmart_studio.agent_workbench.waiting_for_agent')}
+            </div>
+          ) : null}
+        </li>
       ))}
     </ol>
   )
