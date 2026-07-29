@@ -18,6 +18,7 @@ export {
   researchProjectSessionRuntimeSchema,
   studioAgentMoleculeRequestRuntimeSchema,
   studioAgentToolInputSchemas,
+  studioAgentTraceEventRuntimeSchema,
   studioApprovalRequestRuntimeSchema,
   studioApprovalRequestSchema,
   studioCommonSchema,

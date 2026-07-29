@@ -21,6 +21,7 @@ import {
   type ControlledCalculationStatus,
   type ControlledCalculationTerminal,
   type CurrentMoleculeAnalysis,
+  type CurrentMoleculeBinding,
   type MoleculeDocument,
   type OptimizationFinalCommit,
   type OptimizationFinalDecisionEvent,
@@ -38,7 +39,8 @@ import {
   type OptimizationTrajectoryRunStateRequest,
   optimizationTrajectoryRuntimeSchema,
   type PreparedControlledCalculation,
-  type StudioControlledCalculationContext
+  type StudioControlledCalculationContext,
+  type StudioWorkspacePane
 } from '@chemsmart/studio-protocol'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Emitter, type Event, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
@@ -108,6 +110,11 @@ interface RegisteredArtifact {
   artifact: ControlledCalculationArtifact
   filePath: string
   identity: FileIdentity
+}
+
+export interface StudioWorkspaceViewState {
+  editorMode: 'build' | 'inspect' | 'measure' | 'constrain'
+  panes: StudioWorkspacePane[]
 }
 
 export interface ControlledCalculationRunSnapshot {
@@ -212,7 +219,7 @@ function frameGeometryHash(frame: ControlledCalculationExternalFrame): string {
   )
 }
 
-function currentMoleculeAnalysis(document: MoleculeDocument): CurrentMoleculeAnalysis {
+function currentMoleculeAnalysis(document: MoleculeDocument, binding: CurrentMoleculeBinding): CurrentMoleculeAnalysis {
   const counts = new Map<number, number>()
   for (const atom of document.atoms) counts.set(atom.atomicNumber, (counts.get(atom.atomicNumber) ?? 0) + 1)
   const elementCounts = [...counts.entries()]
@@ -234,6 +241,7 @@ function currentMoleculeAnalysis(document: MoleculeDocument): CurrentMoleculeAna
     type: 'current_molecule_analysis',
     molecule: structuredClone(document),
     geometryHash: moleculeGeometryHash(document),
+    binding,
     atomCount: document.atoms.length,
     bondCount: document.bonds.length,
     elementCounts,
@@ -255,6 +263,7 @@ export class CalculationRuntimeService extends BaseService {
   private readonly plans = new Map<string, PreparedControlledCalculation>()
   private readonly runs = new Map<string, ControlledRunState>()
   private readonly artifacts = new Map<string, RegisteredArtifact>()
+  private readonly workspaceViewStates = new Map<string, StudioWorkspaceViewState>()
   private readonly trustedLocalAdapters = new WeakSet<CalculationExecutionAdapter>()
   private readonly runStartedEmitter: Emitter<ControlledCalculationRunStarted>
   private readonly frameCommittedEmitter: Emitter<ControlledCalculationExternalFrame>
@@ -315,6 +324,10 @@ export class CalculationRuntimeService extends BaseService {
 
   getLocalXtbRuntimeIdentity(): ControlledCalculationExecutableIdentity | null {
     return this.xtbRuntime ? structuredClone(this.xtbRuntime.identity) : null
+  }
+
+  setWorkspaceViewState(sessionId: string, state: StudioWorkspaceViewState): void {
+    this.workspaceViewStates.set(sessionId, structuredClone(state))
   }
 
   getPreparedPlanForApproval(sessionId: string, planId: string, planDigest: string): PreparedControlledCalculation {
@@ -396,15 +409,23 @@ export class CalculationRuntimeService extends BaseService {
     if (!executable) {
       throw new IpcError(chemsmartStudioErrorCodes.EDITOR_UNAVAILABLE, `${input.engine} runtime is not configured`)
     }
-    const document = await application.get('MoleculeWorkspaceService').getMoleculeDocument()
-    if (
-      document.documentId !== input.documentId ||
-      document.revision !== input.expectedRevision ||
-      moleculeGeometryHash(document) !== input.geometryHash
-    ) {
+    const workspace = application.get('MoleculeWorkspaceService')
+    const committed = await workspace.getMoleculeDocument()
+    const draft = workspace.getMoleculeDraft()
+    const draftMatches =
+      draft?.dirty === true &&
+      draft.documentId === input.documentId &&
+      draft.baseRevision === input.expectedRevision &&
+      moleculeGeometryHash(draft.document) === input.geometryHash
+    const committedMatches =
+      committed.documentId === input.documentId &&
+      committed.revision === input.expectedRevision &&
+      moleculeGeometryHash(committed) === input.geometryHash
+    const document = draftMatches ? draft.document : committedMatches ? committed : null
+    if (!document) {
       throw new IpcError(
         chemsmartStudioErrorCodes.REVISION_CONFLICT,
-        'Prepared calculation input does not match the committed molecule'
+        'Prepared calculation input does not match the displayed molecule'
       )
     }
     const settings = structuredClone(input.settings)
@@ -415,7 +436,7 @@ export class CalculationRuntimeService extends BaseService {
     ) {
       throw new IpcError(
         chemsmartStudioErrorCodes.SCHEMA_INVALID,
-        'The controlled method, charge, and multiplicity must match the committed molecule'
+        'The controlled method, charge, and multiplicity must match the displayed molecule'
       )
     }
     const createdAt = new Date().toISOString()
@@ -425,8 +446,10 @@ export class CalculationRuntimeService extends BaseService {
       binding: {
         sessionId: input.sessionId,
         documentId: document.documentId,
-        expectedRevision: document.revision,
-        geometryHash: moleculeGeometryHash(document)
+        expectedRevision: draftMatches ? draft.baseRevision : document.revision,
+        geometryHash: moleculeGeometryHash(document),
+        source: draftMatches ? ('draft' as const) : ('committed' as const),
+        ...(draftMatches ? { draftId: draft.draftId } : {})
       },
       engine: input.engine,
       method: input.method,
@@ -462,6 +485,12 @@ export class CalculationRuntimeService extends BaseService {
     const plan = this.requirePlan(planId, planDigest)
     if (plan.state !== 'validated') {
       throw new IpcError(chemsmartStudioErrorCodes.APPROVAL_REQUIRED, 'Calculation plan has not been validated')
+    }
+    if (plan.binding.source === 'draft') {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.APPROVAL_REQUIRED,
+        'Apply the molecule draft before starting this calculation'
+      )
     }
     if (this.reservationPending || [...this.runs.values()].some((run) => run.terminal === null)) {
       throw new IpcError(chemsmartStudioErrorCodes.RUN_ACTIVE, 'Another controlled calculation is active')
@@ -955,18 +984,81 @@ export class CalculationRuntimeService extends BaseService {
   }
 
   private async getStudioContext(sessionId: string): Promise<StudioControlledCalculationContext> {
-    const document = await application.get('MoleculeWorkspaceService').getMoleculeDocument()
+    const workspace = application.get('MoleculeWorkspaceService')
+    const document = await workspace.getMoleculeDocument()
+    const draft = workspace.getMoleculeDraft()
+    const openDocuments = workspace.listOpenDocuments()
+    const activeProject = openDocuments.documents.find(({ projectId }) => projectId === openDocuments.activeProjectId)
+    if (!activeProject) {
+      throw new IpcError(chemsmartStudioErrorCodes.SCHEMA_INVALID, 'Active project identity is unavailable')
+    }
     const active = [...this.runs.values()].find(
       (run) => run.reservation.binding.sessionId === sessionId && run.terminal === null
     )
+    const view: StudioWorkspaceViewState = this.workspaceViewStates.get(sessionId) ?? {
+      editorMode: 'build',
+      panes: ['explorer', 'agent']
+    }
+    const committedGeometryHash = moleculeGeometryHash(document)
+    const draftGeometryHash = draft ? moleculeGeometryHash(draft.document) : null
+    const trustedDisplay = application.get('StudioControlService').getTrustedRenderBinding(sessionId)
+    const display =
+      trustedDisplay?.displayState === 'replay'
+        ? {
+            state: 'replay' as const,
+            documentId: trustedDisplay.documentId,
+            inputRevision: trustedDisplay.inputRevision,
+            runId: trustedDisplay.runId,
+            frameIndex: trustedDisplay.frameIndex
+          }
+        : trustedDisplay?.displayState === 'run'
+          ? {
+              state: 'run' as const,
+              documentId: trustedDisplay.documentId,
+              inputRevision: trustedDisplay.inputRevision,
+              runId: trustedDisplay.runId,
+              frameIndex: trustedDisplay.frameIndex
+            }
+          : draft?.dirty
+            ? {
+                state: 'draft' as const,
+                documentId: draft.documentId,
+                baseRevision: draft.baseRevision,
+                draftId: draft.draftId,
+                geometryHash: draftGeometryHash!
+              }
+            : {
+                state: 'committed' as const,
+                documentId: document.documentId,
+                revision: document.revision,
+                geometryHash: committedGeometryHash
+              }
+    const visibleDocument = display.state === 'draft' && draft ? draft.document : document
     return {
       type: 'studio_context',
       sessionId,
+      project: {
+        projectHandleId: activeProject.projectId,
+        projectName: activeProject.projectName
+      },
       document: {
         documentId: document.documentId,
         revision: document.revision,
-        geometryHash: moleculeGeometryHash(document)
+        geometryHash: committedGeometryHash
       },
+      display,
+      draft: draft
+        ? {
+            draftId: draft.draftId,
+            baseRevision: draft.baseRevision,
+            geometryHash: draftGeometryHash!,
+            changeCount: draft.cursor,
+            dirty: draft.dirty
+          }
+        : null,
+      selection: { atomIds: [...visibleDocument.selections], bondIds: [] },
+      editorMode: view.editorMode,
+      panes: [...view.panes],
       activeRun: active
         ? {
             runId: active.reservation.runId,
@@ -983,16 +1075,34 @@ export class CalculationRuntimeService extends BaseService {
     request: ControlledCalculationAgentToolRequest
   ): Promise<CurrentMoleculeAnalysis> {
     const argumentsValue = request.arguments as { expected_revision?: number; geometry_hash?: string }
-    const document = await application.get('MoleculeWorkspaceService').getMoleculeDocument()
+    const workspace = application.get('MoleculeWorkspaceService')
+    const committed = await workspace.getMoleculeDocument()
+    const draft = workspace.getMoleculeDraft()
+    const document = draft?.dirty ? draft.document : committed
+    const geometryHash = moleculeGeometryHash(document)
+    const binding: CurrentMoleculeBinding = draft?.dirty
+      ? {
+          state: 'draft',
+          documentId: draft.documentId,
+          baseRevision: draft.baseRevision,
+          draftId: draft.draftId,
+          geometryHash
+        }
+      : {
+          state: 'committed',
+          documentId: committed.documentId,
+          revision: committed.revision,
+          geometryHash
+        }
+    const boundRevision = binding.state === 'draft' ? binding.baseRevision : binding.revision
     if (
       argumentsValue.expected_revision !== undefined &&
-      (document.revision !== argumentsValue.expected_revision ||
-        moleculeGeometryHash(document) !== argumentsValue.geometry_hash)
+      (boundRevision !== argumentsValue.expected_revision || geometryHash !== argumentsValue.geometry_hash)
     ) {
       throw new IpcError(chemsmartStudioErrorCodes.REVISION_CONFLICT, 'Molecule analysis binding is stale')
     }
     if (!sessionId) throw new IpcError(chemsmartStudioErrorCodes.SCHEMA_INVALID, 'Session identity is missing')
-    return currentMoleculeAnalysis(document)
+    return currentMoleculeAnalysis(document, binding)
   }
 
   private prepareFromHostRequest(
@@ -1041,6 +1151,12 @@ export class CalculationRuntimeService extends BaseService {
       throw new IpcError(
         chemsmartStudioErrorCodes.SCHEMA_INVALID,
         'Historical native optimization plans are unsupported for execution'
+      )
+    }
+    if (plan.binding.source === 'draft') {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.APPROVAL_REQUIRED,
+        'Apply the molecule draft before starting this calculation'
       )
     }
     const localRuntime = this.xtbRuntime
@@ -1485,6 +1601,22 @@ export class CalculationRuntimeService extends BaseService {
     const configured = this.executables.get(plan.engine)
     if (!configured || canonicalJson(configured) !== canonicalJson(plan.executable)) {
       throw new IpcError(chemsmartStudioErrorCodes.SCHEMA_INVALID, 'Calculation executable identity has changed')
+    }
+    if (plan.binding.source === 'draft') {
+      const draft = application.get('MoleculeWorkspaceService').getMoleculeDraft()
+      if (
+        !draft?.dirty ||
+        draft.draftId !== plan.binding.draftId ||
+        draft.documentId !== plan.binding.documentId ||
+        draft.baseRevision !== plan.binding.expectedRevision ||
+        moleculeGeometryHash(draft.document) !== plan.binding.geometryHash
+      ) {
+        throw new IpcError(
+          chemsmartStudioErrorCodes.REVISION_CONFLICT,
+          'Molecule draft no longer matches the controlled calculation binding'
+        )
+      }
+      return draft.document
     }
     return this.assertCurrentReservationBinding({ binding: plan.binding })
   }

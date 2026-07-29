@@ -55,6 +55,7 @@ import {
 import { JsonRpcFault } from './JsonRpcPeer'
 import { LocalRpcProcess } from './LocalRpcProcess'
 import { validateImportFile } from './projectFiles'
+import { StudioAgentTraceChannel } from './StudioAgentTraceChannel'
 import { generateStudioModelResponse } from './StudioModelAdapter'
 import { type StudioUiDelivery, StudioUiEventChannel } from './StudioUiEventChannel'
 
@@ -178,6 +179,9 @@ export class ChemSmartAgentService extends BaseService {
   private readonly importCapabilities = new Map<string, ImportCapability>()
   private readonly activeModelOperations = new Map<string, ActiveModelOperation>()
   private readonly studioUiRestores = new Map<string, Promise<void>>()
+  private readonly agentTrace = new StudioAgentTraceChannel((event) =>
+    application.get('IpcApiService').broadcast('chemsmart_studio.agent.trace', event)
+  )
   private readonly studioUiEvents = new StudioUiEventChannel(
     (event) => application.get('IpcApiService').broadcast('chemsmart_studio.studio_ui.event', event),
     (event) => this.applyTransientFocus(event)
@@ -538,6 +542,13 @@ export class ChemSmartAgentService extends BaseService {
       case 'agent.event':
         this.authorizedCallbackPayload(params, 'agent_turn')
         return { accepted: true }
+      case 'agent.trace': {
+        const value = this.objectParams(params)
+        const operation = this.authorizedOperation(value, 'agent_turn')
+        const payload = { ...value }
+        delete payload.operationId
+        return this.agentTrace.emit(operation.operationId, payload)
+      }
       case 'studio_ui.event':
         return this.studioUiEvents.enqueueLive(this.authorizedCallbackPayload(params, 'agent_turn'))
       case 'studio_ui.replay_event':

@@ -51,11 +51,12 @@ describe('SettingsPage', () => {
     navigateMock.mockReset()
   })
 
-  it('shows only the four Studio settings surfaces', () => {
+  it('shows only the five Studio settings surfaces', () => {
     render(<SettingsPage />)
 
     expect(screen.getByText('title.settings').closest('header')).toHaveClass('mb-1')
-    expect(screen.getAllByTestId('menu-item')).toHaveLength(4)
+    expect(screen.getAllByTestId('menu-item')).toHaveLength(5)
+    expect(screen.getByRole('button', { name: 'settings.model' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Models & Providers' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Execution Readiness' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Appearance & Accessibility' })).toBeInTheDocument()

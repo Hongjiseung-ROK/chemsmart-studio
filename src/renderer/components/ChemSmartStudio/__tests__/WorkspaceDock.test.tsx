@@ -1,28 +1,52 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { StudioLayoutTier } from '../useContainerTier'
 import { reconcilePanel, WorkspaceDock } from '../WorkspaceDock'
+
+const { usePersistCacheMock } = vi.hoisted(() => ({
+  usePersistCacheMock: vi.fn(() => [null, vi.fn()])
+}))
 
 // The dock invariants depend on the real panel primitives (`data-panel`, `data-separator`), so opt out
 // of the blanket `@cherrystudio/ui` stub the renderer setup installs.
 vi.mock('@cherrystudio/ui', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()) }))
 
 vi.mock('@renderer/data/hooks/useCache', () => ({
-  usePersistCache: () => [null, vi.fn()]
+  usePersistCache: usePersistCacheMock
 }))
 
-function renderDock(overrides: { bottomOpen?: boolean; inspectorOpen?: boolean; tier?: StudioLayoutTier } = {}) {
+function dock(
+  overrides: {
+    bottom?: ReactNode
+    bottomActivatedAt?: number
+    bottomOpen?: boolean
+    center?: ReactNode
+    inspector?: ReactNode
+    inspectorActivatedAt?: number
+    inspectorOpen?: boolean
+    tier?: StudioLayoutTier
+  } = {}
+) {
   const bottomOpen = overrides.bottomOpen ?? true
   const inspectorOpen = overrides.inspectorOpen ?? true
-  return render(
+  return (
     <WorkspaceDock
-      bottom={<p>bottom content</p>}
-      bottomIntent={{ open: bottomOpen, normalizedSize: 0.3, lastActivatedAt: 1 }}
+      bottom={overrides.bottom ?? <p>bottom content</p>}
+      bottomIntent={{
+        open: bottomOpen,
+        normalizedSize: 0.3,
+        lastActivatedAt: overrides.bottomActivatedAt ?? 1
+      }}
       bottomPresentation={bottomOpen && overrides.tier !== 'viewport-only' ? 'docked' : 'hidden'}
-      center={<p>center content</p>}
-      inspector={<p>inspector content</p>}
-      inspectorIntent={{ open: inspectorOpen, normalizedSize: 0.28, lastActivatedAt: 2 }}
+      center={overrides.center ?? <p>center content</p>}
+      inspector={overrides.inspector ?? <p>inspector content</p>}
+      inspectorIntent={{
+        open: inspectorOpen,
+        normalizedSize: 0.28,
+        lastActivatedAt: overrides.inspectorActivatedAt ?? 2
+      }}
       inspectorPresentation={inspectorOpen && overrides.tier !== 'viewport-only' ? 'docked' : 'hidden'}
       rail={<p>rail content</p>}
       railExpanded
@@ -38,9 +62,31 @@ function renderDock(overrides: { bottomOpen?: boolean; inspectorOpen?: boolean; 
   )
 }
 
+function renderDock(overrides: Parameters<typeof dock>[0] = {}) {
+  return render(dock(overrides))
+}
+
 const regionIds = ['workspace-dock-rail', 'workspace-dock-center', 'workspace-dock-inspector', 'workspace-dock-bottom']
 
 describe('WorkspaceDock', () => {
+  it('keeps the bottom workbench inside the center column instead of spanning both sidebars', () => {
+    renderDock()
+
+    const centerColumn = screen.getByTestId('studio-dock-center-vertical-v2')
+    expect(centerColumn).toContainElement(screen.getByTestId('workspace-dock-center'))
+    expect(centerColumn).toContainElement(screen.getByTestId('workspace-dock-bottom'))
+    expect(centerColumn).not.toContainElement(screen.getByTestId('workspace-dock-rail'))
+    expect(centerColumn).not.toContainElement(screen.getByTestId('workspace-dock-inspector'))
+  })
+
+  it('uses a versioned splitter cache so the old full-width bottom geometry is not restored', () => {
+    renderDock()
+
+    expect(usePersistCacheMock).toHaveBeenCalledWith('ui.studio.layout.horizontal')
+    expect(usePersistCacheMock).toHaveBeenCalledWith('ui.studio.layout.center_vertical_v2')
+    expect(usePersistCacheMock).not.toHaveBeenCalledWith('ui.studio.layout.vertical')
+  })
+
   it('docks every region inside a resizable panel instead of overlaying it', () => {
     renderDock()
 
@@ -52,6 +98,46 @@ describe('WorkspaceDock', () => {
       expect(region.closest('[data-panel]')).not.toBeNull()
     }
     expect(screen.getByText('center content')).toBeInTheDocument()
+  })
+
+  it('marks only the most recently activated open auxiliary dock', () => {
+    const { rerender } = renderDock({ bottomActivatedAt: 3, inspectorActivatedAt: 2 })
+
+    expect(screen.getByTestId('workspace-dock-bottom')).toHaveAttribute('data-active', 'true')
+    expect(screen.getByTestId('workspace-dock-inspector')).not.toHaveAttribute('data-active')
+
+    rerender(dock({ bottomActivatedAt: 3, inspectorActivatedAt: 4 }))
+    expect(screen.getByTestId('workspace-dock-bottom')).not.toHaveAttribute('data-active')
+    expect(screen.getByTestId('workspace-dock-inspector')).toHaveAttribute('data-active', 'true')
+  })
+
+  it('preserves focused center and bottom controls while pane presentation changes', () => {
+    const { rerender } = renderDock({
+      bottom: <input aria-label="console input" />,
+      center: <input aria-label="stage input" />
+    })
+    const stageInput = screen.getByRole('textbox', { name: 'stage input' })
+    stageInput.focus()
+
+    rerender(
+      dock({
+        bottom: <input aria-label="console input" />,
+        center: <input aria-label="stage input" />,
+        inspectorOpen: false
+      })
+    )
+    expect(stageInput).toHaveFocus()
+
+    const consoleInput = screen.getByRole('textbox', { name: 'console input' })
+    consoleInput.focus()
+    rerender(
+      dock({
+        bottom: <input aria-label="console input" />,
+        center: <input aria-label="stage input" />,
+        inspectorOpen: true
+      })
+    )
+    expect(consoleInput).toHaveFocus()
   })
 
   it('keeps a closed dock inert and hidden from the accessibility tree', () => {

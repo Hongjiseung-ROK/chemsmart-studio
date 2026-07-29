@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 from chemsmart.agent.permissions import ApprovalDecision
 from chemsmart.agent.provider_adapter import ToolRequest
+from chemsmart.agent.registry import ToolRegistry, build_tool_spec
 from chemsmart_studio_bridge.rpc import RpcFault
 from chemsmart_studio_bridge.runtime import (
     CherryModelProvider,
@@ -59,13 +60,33 @@ class HostProviderBoundaryTest(unittest.TestCase):
                 requests.append((method, params))
                 if method == "approval.request":
                     return {"decision": "allow_once"}
+                if method == "agent.trace":
+                    return {"accepted": True}
                 if method == "molecule.request":
                     return {"documentId": "molecule-1", "revision": 0}
                 if method == "calculation.request":
                     return {
                         "type": "studio_context",
                         "sessionId": "session-1",
-                        "document": None,
+                        "project": {
+                            "projectHandleId": "project-1",
+                            "projectName": "Water",
+                        },
+                        "document": {
+                            "documentId": "molecule-1",
+                            "revision": 0,
+                            "geometryHash": f"sha256:{'1' * 64}",
+                        },
+                        "display": {
+                            "state": "committed",
+                            "documentId": "molecule-1",
+                            "revision": 0,
+                            "geometryHash": f"sha256:{'1' * 64}",
+                        },
+                        "draft": None,
+                        "selection": {"atomIds": [], "bondIds": []},
+                        "editorMode": "build",
+                        "panes": ["explorer", "agent"],
                         "activeRun": None,
                         "extensions": {},
                     }
@@ -112,6 +133,7 @@ class HostProviderBoundaryTest(unittest.TestCase):
             self.assertEqual(
                 [method for method, _params in requests],
                 [
+                    "agent.trace",
                     "approval.request",
                     "molecule.request",
                     "calculation.request",
@@ -185,6 +207,11 @@ class HostProviderBoundaryTest(unittest.TestCase):
             session_root = Path(directory)
             runtime = StudioAgentRuntime(session_root)
             peer = Mock()
+            peer.request.side_effect = lambda method, _params, **_kwargs: (
+                {"accepted": True}
+                if method == "agent.trace"
+                else {"choices": [{"message": {"content": "ok"}}]}
+            )
             runtime.bind_peer(peer)
             provider = Mock()
             command_session = Mock()
@@ -267,7 +294,9 @@ class HostProviderBoundaryTest(unittest.TestCase):
                     }
 
             runtime = StudioAgentRuntime(session_root)
-            runtime.bind_peer(Mock())
+            peer = Mock()
+            peer.request.return_value = {"accepted": True}
+            runtime.bind_peer(peer)
             runtime._sessions["session-1"] = FailedAgentSession()  # type: ignore[assignment]
             runtime._provider_and_command_session = Mock(  # type: ignore[method-assign]
                 return_value=(Mock(), Mock())
@@ -286,6 +315,59 @@ class HostProviderBoundaryTest(unittest.TestCase):
                         "request": "Inspect the current molecule.",
                     },
                 )
+
+    def test_tool_trace_projects_only_public_keys_and_trusted_lifecycle(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            requests: list[tuple[str, dict]] = []
+
+            def host_response(
+                method: str,
+                params: dict,
+                timeout: float = 120.0,
+            ) -> dict:
+                del timeout
+                requests.append((method, params))
+                return {"accepted": True}
+
+            peer = Mock()
+            peer.request.side_effect = host_response
+            runtime = StudioAgentRuntime(Path(directory)).bind_peer(peer)
+
+            def inspect_snapshot(document_id: str) -> dict[str, object]:
+                return {"ok": True, "documentId": document_id}
+
+            registry = runtime._trace_registry(
+                "session-1",
+                ToolRegistry([build_tool_spec(inspect_snapshot)]),
+            )
+            with runtime._operation_scope("session-1", OPERATION_ID):
+                result = registry.call(
+                    "inspect_snapshot",
+                    {"document_id": "private-value"},
+                )
+
+            self.assertEqual(result["documentId"], "private-value")
+            trace_params = [
+                params for method, params in requests if method == "agent.trace"
+            ]
+            self.assertEqual(
+                [params["kind"] for params in trace_params],
+                ["tool_started", "tool_succeeded"],
+            )
+            self.assertEqual(
+                trace_params[0]["detail"]["argumentKeys"],
+                ["document_id"],
+            )
+            self.assertEqual(
+                trace_params[1]["detail"]["resultKeys"],
+                ["documentId", "ok"],
+            )
+            self.assertNotIn("private-value", repr(trace_params))
+            self.assertTrue(
+                all(params["operationId"] == OPERATION_ID for params in trace_params)
+            )
 
     def test_session_directory_symlink_is_rejected_without_touching_target(
         self,

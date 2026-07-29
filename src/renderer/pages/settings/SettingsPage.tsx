@@ -8,7 +8,7 @@ import {
 } from '@renderer/pages/settings/settingsStyles'
 import { cn } from '@renderer/utils/style'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { Cloud, Info, Palette, ShieldCheck } from 'lucide-react'
+import { Bot, Cloud, Info, Palette, ShieldCheck } from 'lucide-react'
 import type { FC } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -33,6 +33,14 @@ const SettingsPage: FC = () => {
           <PageHeader title={t('title.settings')} className="mb-1" />
           <Scrollbar className="min-h-0 flex-1 select-none">
             <MenuList className={settingsSubmenuListClassName}>
+              <MenuItem
+                className={settingsSubmenuItemClassName}
+                labelClassName={settingsSubmenuItemLabelClassName}
+                icon={<Bot />}
+                label={t('settings.model')}
+                active={isActive('/settings/model')}
+                onClick={() => go('/settings/model')}
+              />
               <MenuItem
                 className={settingsSubmenuItemClassName}
                 labelClassName={settingsSubmenuItemLabelClassName}

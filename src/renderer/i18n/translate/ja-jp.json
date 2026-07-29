@@ -1900,6 +1900,15 @@
       "execute_description": "[to be translated]:Reversible actions run without asking for this session. Calculations always ask.",
       "label": "[to be translated]:Agent mode"
     },
+    "agent_trace": {
+      "current": "[to be translated]:Current",
+      "elapsed": "[to be translated]:{{duration}} ms",
+      "input": "[to be translated]:Validated input",
+      "output": "[to be translated]:Result",
+      "rules": "[to be translated]:Gate rules",
+      "turn": "[to be translated]:Agent turn {{index}}",
+      "verdict": "[to be translated]:Verdict"
+    },
     "approval": {
       "affected_atoms": "[to be translated]:Affected atoms",
       "affected_bonds": "[to be translated]:Affected bonds",
@@ -2444,10 +2453,6 @@
     },
     "tabs": {
       "label": "[to be translated]:Open projects"
-    },
-    "thoughts": {
-      "advisory": "[to be translated]:advisory · not evidence",
-      "title": "[to be translated]:Thinking ({{count}})"
     },
     "title": "[to be translated]:ChemSmart Studio",
     "toolkit": {

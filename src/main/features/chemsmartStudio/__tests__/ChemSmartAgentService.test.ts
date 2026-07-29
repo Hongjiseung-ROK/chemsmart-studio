@@ -565,6 +565,38 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     await expect(synthesis).rejects.toMatchObject({ code: -32003, message: 'Host model request was cancelled' })
   })
 
+  it('requests high reasoning effort for a DeepSeek Studio agent turn', async () => {
+    modelGetByKeyMock.mockReturnValue({ apiModelId: 'deepseek-v4-pro' })
+    processMessageMock.mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: 'Ready.' } }] }), { status: 200 })
+    )
+    localProcessRequestMock.mockImplementation(async (method: string, params: unknown) => {
+      if (method === 'studio_ui.replay') return { replayed: 0, nextSequence: 0 }
+      if (method === 'agent.run_turn') {
+        await internals.handleSidecarRequest('model.generate', {
+          sessionId: 'session-1',
+          modelId: 'deepseek::deepseek-v4-pro',
+          operationId: (params as { operationId: string }).operationId,
+          messages: [{ role: 'user', content: 'Inspect the visible molecule.' }],
+          tools: []
+        })
+      }
+      return { accepted: true }
+    })
+
+    await service.runTurn('session-1', 'deepseek::deepseek-v4-pro', 'Inspect the visible molecule.', 'window-1')
+
+    expect(processMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          model: 'deepseek:deepseek-v4-pro',
+          reasoning_effort: 'high',
+          stream: false
+        })
+      })
+    )
+  })
+
   it('refuses a project answer that is open-shaped or carries a filesystem path', async () => {
     localProcessRequestMock.mockResolvedValue({
       schemaVersion: '1',
@@ -827,20 +859,24 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(appGetMock).not.toHaveBeenCalledWith('ApiGatewayService')
   })
 
-  it.each(['approval.request', 'molecule.request', 'calculation.request', 'agent.event', 'studio_ui.event'])(
-    'rejects an unbound %s callback before delegation',
-    async (method) => {
-      await expect(
-        internals.handleSidecarRequest(method, {
-          sessionId: 'session-1',
-          operationId: 'stale-operation'
-        })
-      ).rejects.toMatchObject({
-        code: -32003,
-        message: 'Host model request is not bound to an active Studio operation'
+  it.each([
+    'approval.request',
+    'molecule.request',
+    'calculation.request',
+    'agent.event',
+    'agent.trace',
+    'studio_ui.event'
+  ])('rejects an unbound %s callback before delegation', async (method) => {
+    await expect(
+      internals.handleSidecarRequest(method, {
+        sessionId: 'session-1',
+        operationId: 'stale-operation'
       })
-    }
-  )
+    ).rejects.toMatchObject({
+      code: -32003,
+      message: 'Host model request is not bound to an active Studio operation'
+    })
+  })
 
   it('does not authorize agent-only callbacks with a command-synthesis token', async () => {
     localProcessRequestMock.mockImplementation(async (method: string, params: unknown) => {

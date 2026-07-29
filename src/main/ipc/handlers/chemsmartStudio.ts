@@ -198,6 +198,12 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
     await agentRequest(() => application.get('ChemSmartAgentService').runTurn(sessionId, modelId, request, senderId))
     return { completed: true }
   },
+  'chemsmart_studio.agent.update_workspace_view': async ({ sessionId, view }, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    application.get('StudioControlService').claimSessionControl(sessionId, senderId)
+    application.get('CalculationRuntimeService').setWorkspaceViewState(sessionId, view)
+    return { accepted: true }
+  },
   'chemsmart_studio.agent.replay_studio_ui': async ({ sessionId, afterSequence }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     return agentRequest(() =>

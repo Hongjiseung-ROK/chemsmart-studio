@@ -1,0 +1,13 @@
+{
+  "eventId": "trace-2",
+  "sessionId": "session-1",
+  "turnId": "turn-1",
+  "sequence": 3,
+  "timestamp": "2026-07-29T02:30:01Z",
+  "kind": "reasoning_summary",
+  "status": "running",
+  "title": "Reasoning",
+  "summary": "Checking the molecule binding.",
+  "reasoning_content": "Private provider chain of thought",
+  "extensions": {}
+}

@@ -77,7 +77,12 @@ describe('controlled calculation sidecar integration', () => {
     let activeRunId: string | null = null
     let mutationLockOwner: string | null = null
     const editor = {
-      getMoleculeDocument: vi.fn().mockResolvedValue(structuredClone(document))
+      getMoleculeDocument: vi.fn().mockResolvedValue(structuredClone(document)),
+      getMoleculeDraft: vi.fn(() => null),
+      listOpenDocuments: vi.fn(() => ({
+        activeProjectId: 'project-sidecar-fixture',
+        documents: [{ projectId: 'project-sidecar-fixture', projectName: 'Water fixture' }]
+      }))
     }
     const moleculeDocuments = {
       getDocument: vi.fn(() => structuredClone(document)),
@@ -189,6 +194,7 @@ describe('controlled calculation sidecar integration', () => {
     const validatedPlan: { value: { planId: string; planDigest: string } | null } = { value: null }
     const calculationRequests: unknown[] = []
     const calculationResponses: unknown[] = []
+    const agentTraceEvents: unknown[] = []
     sidecar = new LocalRpcProcess({
       name: 'controlled-sidecar-test',
       command: 'uv',
@@ -233,6 +239,10 @@ describe('controlled calculation sidecar integration', () => {
           }
           return response
         }
+        if (method === 'agent.trace') {
+          agentTraceEvents.push(structuredClone(params))
+          return { accepted: true }
+        }
         if (method === 'agent.event') return { accepted: true }
         throw new Error(`Unexpected sidecar callback: ${method}`)
       },
@@ -252,7 +262,6 @@ describe('controlled calculation sidecar integration', () => {
       assistant_output: string
       tool_outcomes: Array<{ status: string }>
     }
-
     const currentMoleculeAnalysis = calculationResponses.find(
       (response) =>
         response !== null &&
@@ -283,6 +292,15 @@ describe('controlled calculation sidecar integration', () => {
       { request: { tool: 'validate_prepared_optimization' } }
     ])
     expect(approvalCount).toBe(0)
+    expect(agentTraceEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'turn_started' }),
+        expect.objectContaining({ kind: 'reasoning_summary' }),
+        expect.objectContaining({ kind: 'tool_started' }),
+        expect.objectContaining({ kind: 'tool_succeeded' }),
+        expect.objectContaining({ kind: 'turn_completed' })
+      ])
+    )
     const xTBPlan = validatedPlan.value
     if (!xTBPlan) throw new Error('The deterministic xTB plan was not validated')
 

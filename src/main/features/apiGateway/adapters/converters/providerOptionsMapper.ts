@@ -195,6 +195,18 @@ export function mapReasoningEffortToProviderOptions(
     }
   }
 
+  // DeepSeek V4 thinking mode uses its OpenAI-compatible wire parameters, but
+  // the provider is neither OpenAI nor OpenRouter. Keep both controls explicit:
+  // the official API accepts only high/max effort while `thinking` owns the mode.
+  if (provider.id === SystemProviderIds.deepseek) {
+    return {
+      [SystemProviderIds.deepseek]: {
+        thinking: { type: 'enabled' },
+        reasoning_effort: 'high'
+      }
+    } satisfies ProviderOptions
+  }
+
   // OpenRouter: Map to reasoning.effort
   if (provider.id === SystemProviderIds.openrouter) {
     return {

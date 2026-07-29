@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from copy import deepcopy
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, is_dataclass, replace
 from enum import Enum
 import hashlib
 import json
@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import stat
 import threading
+from time import perf_counter
 from typing import Any, Iterator, Literal
 from uuid import uuid4
 
@@ -710,6 +711,23 @@ def _agent_wire_value(value: Any) -> Any:
     return agent_json_safe(value)
 
 
+_TRACE_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,127}$")
+
+
+def _safe_public_keys(value: Any) -> list[str]:
+    """Return only schema-like field names, never argument or result values."""
+
+    if not isinstance(value, dict):
+        return []
+    keys: list[str] = []
+    for key in sorted(str(item) for item in value):
+        if _TRACE_KEY.fullmatch(key) and key not in keys:
+            keys.append(key)
+        if len(keys) == 64:
+            break
+    return keys
+
+
 def _public_agent_result(value: Any) -> dict[str, Any]:
     """Remove sidecar-owned filesystem coordinates from a turn result."""
 
@@ -971,6 +989,7 @@ class StudioAgentRuntime:
         self._providers: dict[str, CherryModelProvider] = {}
         self._command_sessions: dict[str, CommandSynthesisSession] = {}
         self._studio_ui_emitters: dict[str, StudioUiEventEmitter] = {}
+        self._trace_tool_call_ids: dict[tuple[str, str], list[str]] = {}
         self._studio_approval_grants: set[
             tuple[str, str | None, str, str]
         ] = set()
@@ -1105,6 +1124,21 @@ class StudioAgentRuntime:
                 )
                 provider.bind_model(model_id)
                 provider.bind_operation(operation_id)
+                self._publish_agent_trace(
+                    session_id,
+                    kind="turn_started",
+                    title="ChemSmart Agent",
+                    summary="Understanding the current research request.",
+                )
+                self._publish_agent_trace(
+                    session_id,
+                    kind="reasoning_summary",
+                    title="Reasoning",
+                    summary=(
+                        "Selecting a bounded tool path and validating the visible "
+                        "molecule binding."
+                    ),
+                )
                 session = self._sessions.get(session_id)
                 emitter = self._studio_ui_emitter(session_id)
                 if session is None:
@@ -1130,21 +1164,30 @@ class StudioAgentRuntime:
                     self._sessions[session_id] = session
                 session.bind_provider(provider)
 
-                raw_result = session.run_loop(
-                    request,
-                    policy=studio_permission_policy(),
-                    approver=lambda tool_request: self._approve(
-                        session_id,
-                        session.registry,
-                        tool_request,
-                    ),
-                    on_session_created=lambda agent_session_id: (
-                        self._persist_agent_session_binding(
+                try:
+                    raw_result = session.run_loop(
+                        request,
+                        policy=studio_permission_policy(),
+                        approver=lambda tool_request: self._approve(
                             session_id,
-                            agent_session_id,
-                        )
-                    ),
-                )
+                            session.registry,
+                            tool_request,
+                        ),
+                        on_session_created=lambda agent_session_id: (
+                            self._persist_agent_session_binding(
+                                session_id,
+                                agent_session_id,
+                            )
+                        ),
+                    )
+                except Exception:
+                    self._publish_agent_trace(
+                        session_id,
+                        kind="turn_blocked",
+                        title="ChemSmart Agent",
+                        summary="The turn stopped before a trusted result was available.",
+                    )
+                    raise
                 internal_session_id = raw_result.get("session_id")
                 if not isinstance(internal_session_id, str):
                     raise RpcFault(
@@ -1157,6 +1200,12 @@ class StudioAgentRuntime:
                 )
                 limit_reason = raw_result.get("limit_reason")
                 if isinstance(limit_reason, str) and limit_reason:
+                    self._publish_agent_trace(
+                        session_id,
+                        kind="turn_blocked",
+                        title="ChemSmart Agent",
+                        summary="The turn reached a bounded runtime limit.",
+                    )
                     raise RpcFault(
                         -32603,
                         f"ChemSmart agent turn stopped before completion ({limit_reason})",
@@ -1165,6 +1214,12 @@ class StudioAgentRuntime:
                 assistant_output = result.get("assistant_output")
                 if isinstance(assistant_output, str) and assistant_output.strip():
                     emitter.emit_runtime_notice(assistant_output)
+                self._publish_agent_trace(
+                    session_id,
+                    kind="turn_completed",
+                    title="ChemSmart Agent",
+                    summary="The turn completed.",
+                )
                 event = {
                     "sessionId": session_id,
                     "type": "turn_completed",
@@ -1185,6 +1240,15 @@ class StudioAgentRuntime:
         arguments = self._normalized_approval_arguments(registry, request)
         if arguments is None:
             return ApprovalDecision.DENY
+        self._publish_agent_trace(
+            session_id,
+            kind="permission_waiting",
+            tool_call_id=request.request_id,
+            tool_name=request.name,
+            title=request.name,
+            summary="Waiting for an exact trusted decision.",
+            detail={"argumentKeys": _safe_public_keys(arguments)},
+        )
         try:
             approval_request = {
                 "sessionId": session_id,
@@ -1202,6 +1266,15 @@ class StudioAgentRuntime:
             )
         except RpcFault:
             # Missing renderer authority must never widen mutation permission.
+            self._publish_agent_trace(
+                session_id,
+                kind="tool_failed",
+                tool_call_id=request.request_id,
+                tool_name=request.name,
+                title=request.name,
+                summary="The trusted decision was unavailable.",
+                detail={"verdict": "denied"},
+            )
             return ApprovalDecision.DENY
         value = result.get("decision") if isinstance(result, dict) else None
         try:
@@ -1223,8 +1296,35 @@ class StudioAgentRuntime:
                         arguments,
                     )
                 )
+            if decision in (
+                ApprovalDecision.ALLOW_ONCE,
+                ApprovalDecision.ALLOW_SESSION,
+            ):
+                self._trace_tool_call_ids.setdefault(
+                    (session_id, request.name),
+                    [],
+                ).append(request.request_id)
+            else:
+                self._publish_agent_trace(
+                    session_id,
+                    kind="tool_failed",
+                    tool_call_id=request.request_id,
+                    tool_name=request.name,
+                    title=request.name,
+                    summary="The requested tool was denied.",
+                    detail={"verdict": "denied"},
+                )
             return decision
         except (TypeError, ValueError):
+            self._publish_agent_trace(
+                session_id,
+                kind="tool_failed",
+                tool_call_id=request.request_id,
+                tool_name=request.name,
+                title=request.name,
+                summary="The trusted decision was invalid.",
+                detail={"verdict": "denied"},
+            )
             return ApprovalDecision.DENY
 
     @staticmethod
@@ -1569,6 +1669,135 @@ class StudioAgentRuntime:
         if not isinstance(result, dict):
             raise RpcFault(-32603, "studio_ui.event returned a non-object response")
         return result
+
+    def _publish_agent_trace(
+        self,
+        session_id: str,
+        *,
+        kind: str,
+        title: str,
+        summary: str,
+        tool_call_id: str | None = None,
+        tool_name: str | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Send a public trace seed to main, where identity and ordering are assigned."""
+
+        if self._peer is None:
+            raise RpcFault(-32603, "RPC peer is not bound")
+        event: dict[str, Any] = {
+            "sessionId": session_id,
+            "kind": kind,
+            "title": _public_text(title, "ChemSmart Agent", limit=256),
+            "summary": _public_text(
+                summary,
+                "The Agent updated its trusted execution state.",
+            ),
+        }
+        if tool_call_id is not None:
+            event["toolCallId"] = tool_call_id
+        if tool_name is not None:
+            event["toolName"] = tool_name
+        if detail:
+            event["detail"] = detail
+        result = self._peer.request(
+            "agent.trace",
+            self._operation_callback(session_id, event),
+            timeout=30,
+        )
+        if not isinstance(result, dict):
+            raise RpcFault(-32603, "agent.trace returned a non-object response")
+        return result
+
+    def _next_trace_tool_call_id(self, session_id: str, tool_name: str) -> str:
+        key = (session_id, tool_name)
+        pending = self._trace_tool_call_ids.get(key)
+        if pending:
+            tool_call_id = pending.pop(0)
+            if not pending:
+                self._trace_tool_call_ids.pop(key, None)
+            return tool_call_id
+        return f"tool-{uuid4().hex}"
+
+    def _trace_registry(
+        self,
+        session_id: str,
+        registry: ToolRegistry,
+    ) -> ToolRegistry:
+        traced_specs = []
+        for source in registry.list_tools():
+            tool_name = source.name
+            original = source.func
+
+            def traced_tool(
+                *args: Any,
+                _tool_name: str = tool_name,
+                _original: Any = original,
+                **arguments: Any,
+            ) -> Any:
+                tool_call_id = self._next_trace_tool_call_id(
+                    session_id,
+                    _tool_name,
+                )
+                self._publish_agent_trace(
+                    session_id,
+                    kind="tool_started",
+                    tool_call_id=tool_call_id,
+                    tool_name=_tool_name,
+                    title=_tool_name,
+                    summary="Using a validated ChemSmart tool.",
+                    detail={"argumentKeys": _safe_public_keys(arguments)},
+                )
+                started_at = perf_counter()
+                try:
+                    result = _original(*args, **arguments)
+                except Exception:
+                    self._publish_agent_trace(
+                        session_id,
+                        kind="tool_failed",
+                        tool_call_id=tool_call_id,
+                        tool_name=_tool_name,
+                        title=_tool_name,
+                        summary="The tool failed before producing a trusted result.",
+                        detail={
+                            "durationMs": max(
+                                0,
+                                round((perf_counter() - started_at) * 1000),
+                            )
+                        },
+                    )
+                    raise
+                wire_result = _agent_wire_value(result)
+                failed = (
+                    isinstance(wire_result, dict)
+                    and (
+                        wire_result.get("ok") is False
+                        or isinstance(wire_result.get("error"), dict)
+                    )
+                )
+                self._publish_agent_trace(
+                    session_id,
+                    kind="tool_failed" if failed else "tool_succeeded",
+                    tool_call_id=tool_call_id,
+                    tool_name=_tool_name,
+                    title=_tool_name,
+                    summary=(
+                        "The tool returned a validated failure."
+                        if failed
+                        else "The tool completed."
+                    ),
+                    detail={
+                        "resultKeys": _safe_public_keys(wire_result),
+                        "durationMs": max(
+                            0,
+                            round((perf_counter() - started_at) * 1000),
+                        ),
+                    },
+                )
+                return result
+
+            traced_specs.append(replace(source, func=traced_tool))
+        return ToolRegistry(traced_specs)
 
     def _publish_studio_ui_replay_event(
         self,
@@ -1933,7 +2162,10 @@ class StudioAgentRuntime:
                 )
             ]
         )
-        return base_registry.with_tools(studio_specs)
+        return self._trace_registry(
+            session_id,
+            base_registry.with_tools(studio_specs),
+        )
 
     @staticmethod
     def _validate_studio_session_id(session_id: str) -> None:

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
@@ -53,9 +54,9 @@ interface ActiveRun {
  * through the approval-gated tool path, and nothing in this service is exposed to the tool loop.
  *
  * The shell is started as a login shell so the researcher's own profile supplies the chemistry
- * environment a real run needs (`GAUSS_EXEDIR`, ORCA on `PATH`, a conda activation). Main's own
- * environment is deliberately *not* inherited: those variables belong to the researcher's dotfiles,
- * while main's may carry provider credentials that no typed command should be able to read.
+ * environment a real run needs (`GAUSS_EXEDIR`, ORCA on `PATH`, a conda activation). The trusted
+ * bundled ChemSmart CLI directory is prepended after login; main's remaining environment is
+ * deliberately *not* inherited because it may carry provider credentials.
  */
 @Injectable('StudioConsoleService')
 @ServicePhase(Phase.WhenReady)
@@ -76,7 +77,9 @@ export class StudioConsoleService extends BaseService {
 
     const runId = randomUUID()
     const shell = process.env.SHELL ?? '/bin/sh'
-    const child = crossPlatformSpawn(shell, ['-l', '-c', line], {
+    const bridgeBin = path.dirname(application.getPath('feature.chemsmart_studio.bridge.python_file'))
+    const shellLine = `export PATH="$CHEMSMART_STUDIO_BRIDGE_BIN:$PATH"\n${line}`
+    const child = crossPlatformSpawn(shell, ['-l', '-c', shellLine], {
       cwd: application.getPath('feature.chemsmart_studio.projects'),
       // Only what a login shell needs to find the researcher's own profile; everything else comes
       // from that profile rather than from this process.
@@ -84,7 +87,8 @@ export class StudioConsoleService extends BaseService {
         ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
         ...(process.env.USER ? { USER: process.env.USER } : {}),
         ...(process.env.LANG ? { LANG: process.env.LANG } : {}),
-        ...(process.env.TERM ? { TERM: process.env.TERM } : { TERM: 'dumb' })
+        ...(process.env.TERM ? { TERM: process.env.TERM } : { TERM: 'dumb' }),
+        CHEMSMART_STUDIO_BRIDGE_BIN: bridgeBin
       },
       // Its own process group, so cancelling reaches the whole tree rather than only the shell —
       // a Gaussian child must not survive the command that started it.

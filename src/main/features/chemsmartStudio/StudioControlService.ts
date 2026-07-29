@@ -396,9 +396,9 @@ export class StudioControlService extends BaseService {
    * Never sent to a renderer. Returns null when main holds no trusted answer, which
    * fails the caller closed rather than letting the helper's own claim stand alone.
    */
-  getTrustedRenderBinding(): TrustedRenderBinding | null {
+  getTrustedRenderBinding(sessionId?: string): TrustedRenderBinding | null {
     const replay = this.replayLease
-    if (replay) {
+    if (replay && (sessionId === undefined || replay.sessionId === sessionId)) {
       return {
         displayState: 'replay',
         documentId: replay.documentId,
@@ -408,7 +408,7 @@ export class StudioControlService extends BaseService {
       }
     }
     const owner = this.optimizationOwner
-    if (owner) {
+    if (owner && (sessionId === undefined || owner === sessionId)) {
       // The session's own optimization state covers native and controlled runs alike, so
       // this needs no engine-specific branch. latestFrame comes from the durable ledger,
       // which is written before the helper is ever notified.

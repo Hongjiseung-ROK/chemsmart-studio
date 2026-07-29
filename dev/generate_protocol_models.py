@@ -358,6 +358,7 @@ def typescript(
     optimization_trajectory_runtime_schema: dict,
     studio_ui_event_schema: dict,
     studio_ui_event_runtime_schema: dict,
+    studio_agent_trace_event_runtime_schema: dict,
     studio_ui_delivery_schema: dict,
     studio_control_schema: dict,
     studio_control_runtime_schema: dict,
@@ -440,6 +441,11 @@ def typescript(
     )
     runtime_schema_literal = json.dumps(
         studio_ui_event_runtime_schema,
+        indent=2,
+        ensure_ascii=False,
+    )
+    agent_trace_runtime_schema_literal = json.dumps(
+        studio_agent_trace_event_runtime_schema,
         indent=2,
         ensure_ascii=False,
     )
@@ -553,6 +559,10 @@ export type StageGestureKind = 'insert_atom' | 'insert_fragment' | 'insert_ring'
 export interface StageGestureIntent {{ gestureId: StableId; kind: StageGestureKind; atomicNumber?: number; fragmentName?: 'water' | 'methane' | 'benzene'; anchorAtomId?: StableId; position?: Vector3; bondOrder?: 1 | 2 | 3; createdAt: string; extensions: Extensions }}
 export interface StudioDraftEntry {{ entryId: StableId; actor: 'human' | 'agent'; mode: 'build' | 'inspect' | 'measure' | 'constrain'; operations: MoleculeOperation[]; summary: StudioPreviewSummary; beforeHash: string; afterHash: string; gesture?: StageGestureIntent; createdAt: string; extensions: Extensions }}
 export interface StudioDraftSnapshot {{ draftId: StableId; documentId: StableId; baseRevision: number; document: MoleculeDocument; entries: StudioDraftEntry[]; cursor: number; dirty: boolean; canUndo: boolean; canRedo: boolean; createdAt: string; updatedAt: string; extensions: Extensions }}
+export type StudioAgentTraceKind = 'turn_started' | 'reasoning_summary' | 'tool_started' | 'permission_waiting' | 'tool_progress' | 'tool_succeeded' | 'tool_failed' | 'turn_completed' | 'turn_blocked'
+export type StudioAgentTraceStatus = 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'denied'
+export interface StudioAgentTraceDetail {{ argumentKeys?: string[]; resultKeys?: string[]; ruleIds?: string[]; verdict?: string; durationMs?: number }}
+export interface StudioAgentTraceEvent {{ eventId: StableId; sessionId: StableId; turnId: StableId; sequence: number; timestamp: string; kind: StudioAgentTraceKind; status: StudioAgentTraceStatus; toolCallId?: StableId; toolName?: string; title: string; summary: string; detail?: StudioAgentTraceDetail; extensions: Extensions }}
 export interface PreviewReceipt {{ previewId: StableId; operationId: StableId; baseRevision: number; affectedAtomIds: StableId[]; affectedBondIds: StableId[]; beforeHash: string; afterHash: string; diff: PreviewDiff; summary?: StudioPreviewSummary; createdAt: string; extensions: Extensions }}
 export interface MoleculeCommitReceipt {{ type: 'molecule_commit'; previewId: StableId; revision: number; timestamp: string; geometryHash: string; stateHash: string }}
 export interface OptimizationSettings {{ maxSteps?: number; forceThreshold?: number; charge?: number; multiplicity?: number; solvent?: string; extensions: Extensions }}
@@ -614,8 +624,17 @@ export interface ControlledCalculationArtifact {{ type: 'opaque_calculation_arti
 export interface ControlledCalculationArtifactList {{ type: 'controlled_calculation_artifact_list'; runId: StableId; artifacts: ControlledCalculationArtifact[]; nextAfterArtifactId: StableId | null; extensions: Extensions }}
 export interface ControlledCalculationArtifactChunk {{ artifact: ControlledCalculationArtifact; offset: number; encoding: 'utf8' | 'base64'; content: string; eof: boolean; extensions: Extensions }}
 export interface ControlledCalculationImportResult {{ type: 'controlled_calculation_import_result'; artifactId: StableId; runId: StableId; status: 'completed'; frameCount: number; outputGeometryHash: string; extensions: Extensions }}
-export interface StudioControlledCalculationContext {{ type: 'studio_context'; sessionId: StableId; document: {{ documentId: StableId; revision: number; geometryHash: string }} | null; activeRun: {{ runId: StableId; state: ControlledCalculationStatus['state']; frameCount: number }} | null; extensions: Extensions }}
-export interface CurrentMoleculeAnalysis {{ type: 'current_molecule_analysis'; molecule: MoleculeDocument; geometryHash: string; atomCount: number; bondCount: number; elementCounts: Array<{{ atomicNumber: number; count: number }}>; formula: string; charge: number; multiplicity: number; extensions: Extensions }}
+export type StudioWorkspacePane = 'explorer' | 'properties' | 'agent' | 'decisions' | 'console' | 'jobs' | 'problems'
+export type StudioWorkspaceDisplay =
+  | {{ state: 'committed'; documentId: StableId; revision: number; geometryHash: string }}
+  | {{ state: 'draft'; documentId: StableId; baseRevision: number; draftId: StableId; geometryHash: string }}
+  | {{ state: 'run' | 'replay'; documentId: StableId; inputRevision: number; runId: StableId; frameIndex: number | null }}
+export interface StudioWorkspaceContext {{ type: 'studio_context'; sessionId: StableId; project: {{ projectHandleId: StableId; projectName: string }}; document: {{ documentId: StableId; revision: number; geometryHash: string }} | null; display: StudioWorkspaceDisplay; draft: {{ draftId: StableId; baseRevision: number; geometryHash: string; changeCount: number; dirty: boolean }} | null; selection: {{ atomIds: StableId[]; bondIds: StableId[] }}; editorMode: 'build' | 'inspect' | 'measure' | 'constrain'; panes: StudioWorkspacePane[]; activeRun: {{ runId: StableId; state: ControlledCalculationStatus['state']; frameCount: number }} | null; extensions: Extensions }}
+export type StudioControlledCalculationContext = StudioWorkspaceContext
+export type CurrentMoleculeBinding =
+  | {{ state: 'committed'; documentId: StableId; revision: number; geometryHash: string }}
+  | {{ state: 'draft'; documentId: StableId; baseRevision: number; draftId: StableId; geometryHash: string }}
+export interface CurrentMoleculeAnalysis {{ type: 'current_molecule_analysis'; molecule: MoleculeDocument; geometryHash: string; binding: CurrentMoleculeBinding; atomCount: number; bondCount: number; elementCounts: Array<{{ atomicNumber: number; count: number }}>; formula: string; charge: number; multiplicity: number; extensions: Extensions }}
 export interface ControlledCalculationAgentToolRequest {{ type: 'studio_agent_tool_request'; tool: 'get_studio_context' | 'analyze_current_molecule' | 'prepare_molecule_optimization' | 'validate_prepared_optimization' | 'start_prepared_optimization' | 'get_optimization_status' | 'list_calculation_artifacts' | 'read_calculation_artifact' | 'get_optimization_replay' | 'compare_optimization_frames' | 'import_completed_calculation'; arguments: Record<string, unknown> }}
 export interface ControlledCalculationHostRequest {{ type: 'controlled_calculation_host_request'; sessionId: StableId; request: ControlledCalculationAgentToolRequest }}
 export type ControlledCalculationHostResponse = StudioControlledCalculationContext | CurrentMoleculeAnalysis | PreparedControlledCalculation | ControlledCalculationReservation | ControlledCalculationStatus | ControlledCalculationArtifactList | ControlledCalculationArtifactChunk | ControlledCalculationReplay | ControlledCalculationFrameComparison | ControlledCalculationImportResult
@@ -820,6 +839,7 @@ export const optimizationReplayRuntimeSchema = {optimization_replay_runtime_sche
 export const optimizationTrajectoryRuntimeSchema = {optimization_trajectory_runtime_schema_literal} as const
 export const studioUiEventSchema = {event_schema_literal} as const
 export const studioUiEventRuntimeSchema = {runtime_schema_literal} as const
+export const studioAgentTraceEventRuntimeSchema = {agent_trace_runtime_schema_literal} as const
 export const studioUiDeliverySchema = {delivery_schema_literal} as const
 export const studioControlSchema = {control_schema_literal} as const
 export const studioControlRuntimeSchema = {control_runtime_schema_literal} as const
@@ -856,6 +876,7 @@ def python_types(
     optimization_trajectory_runtime_schema: dict,
     studio_ui_event_schema: dict,
     studio_ui_event_runtime_schema: dict,
+    studio_agent_trace_event_runtime_schema: dict,
     studio_ui_delivery_schema: dict,
     studio_control_schema: dict,
     studio_control_runtime_schema: dict,
@@ -928,6 +949,11 @@ def python_types(
     )
     runtime_schema_literal = pprint.pformat(
         studio_ui_event_runtime_schema,
+        sort_dicts=False,
+        width=100,
+    )
+    agent_trace_runtime_schema_literal = pprint.pformat(
+        studio_agent_trace_event_runtime_schema,
         sort_dicts=False,
         width=100,
     )
@@ -1149,6 +1175,48 @@ class StudioDraftSnapshot(TypedDict):
     canRedo: bool
     createdAt: str
     updatedAt: str
+    extensions: Extensions
+
+StudioAgentTraceKind = Literal[
+    "turn_started",
+    "reasoning_summary",
+    "tool_started",
+    "permission_waiting",
+    "tool_progress",
+    "tool_succeeded",
+    "tool_failed",
+    "turn_completed",
+    "turn_blocked",
+]
+StudioAgentTraceStatus = Literal[
+    "queued",
+    "running",
+    "waiting",
+    "succeeded",
+    "failed",
+    "denied",
+]
+
+class StudioAgentTraceDetail(TypedDict):
+    argumentKeys: NotRequired[list[str]]
+    resultKeys: NotRequired[list[str]]
+    ruleIds: NotRequired[list[str]]
+    verdict: NotRequired[str]
+    durationMs: NotRequired[int]
+
+class StudioAgentTraceEvent(TypedDict):
+    eventId: str
+    sessionId: str
+    turnId: str
+    sequence: int
+    timestamp: str
+    kind: StudioAgentTraceKind
+    status: StudioAgentTraceStatus
+    toolCallId: NotRequired[str]
+    toolName: NotRequired[str]
+    title: str
+    summary: str
+    detail: NotRequired[StudioAgentTraceDetail]
     extensions: Extensions
 
 class PreviewReceipt(TypedDict):
@@ -2072,6 +2140,7 @@ OPTIMIZATION_REPLAY_RUNTIME_SCHEMA = {optimization_replay_runtime_schema_literal
 OPTIMIZATION_TRAJECTORY_RUNTIME_SCHEMA = {optimization_trajectory_runtime_schema_literal}
 STUDIO_UI_EVENT_SCHEMA = {event_schema_literal}
 STUDIO_UI_EVENT_RUNTIME_SCHEMA = {runtime_schema_literal}
+STUDIO_AGENT_TRACE_EVENT_RUNTIME_SCHEMA = {agent_trace_runtime_schema_literal}
 STUDIO_UI_DELIVERY_SCHEMA = {delivery_schema_literal}
 STUDIO_CONTROL_SCHEMA = {control_schema_literal}
 STUDIO_CONTROL_RUNTIME_SCHEMA = {control_runtime_schema_literal}
@@ -2097,6 +2166,9 @@ def main() -> int:
     tool = studio_ui_update_tool()
     studio_ui_event_schema = json.loads(
         (SCHEMAS / "studio-ui-event.schema.json").read_text()
+    )
+    studio_agent_trace_event_schema = json.loads(
+        (SCHEMAS / "studio-agent-trace-event.schema.json").read_text()
     )
     studio_ui_delivery_schema = json.loads(
         (SCHEMAS / "studio-ui-delivery.schema.json").read_text()
@@ -2176,6 +2248,10 @@ def main() -> int:
     )
     studio_ui_event_runtime_schema = bundle_studio_ui_event_schema(
         studio_ui_event_schema,
+        common_schema,
+    )
+    studio_agent_trace_event_runtime_schema = bundle_studio_ui_event_schema(
+        studio_agent_trace_event_schema,
         common_schema,
     )
     studio_control_runtime_schema = bundle_studio_control_schema(
@@ -2280,6 +2356,7 @@ def main() -> int:
             optimization_trajectory_runtime_schema,
             studio_ui_event_schema,
             studio_ui_event_runtime_schema,
+            studio_agent_trace_event_runtime_schema,
             studio_ui_delivery_schema,
             studio_control_schema,
             studio_control_runtime_schema,
@@ -2316,6 +2393,7 @@ def main() -> int:
             optimization_trajectory_runtime_schema,
             studio_ui_event_schema,
             studio_ui_event_runtime_schema,
+            studio_agent_trace_event_runtime_schema,
             studio_ui_delivery_schema,
             studio_control_schema,
             studio_control_runtime_schema,

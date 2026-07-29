@@ -1,4 +1,4 @@
-import type { StudioUiEvent } from '@chemsmart/studio-protocol'
+import type { StudioAgentTraceEvent, StudioUiEvent } from '@chemsmart/studio-protocol'
 import { Alert, Badge, Button, Scrollbar, Textarea } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { loggerService } from '@logger'
@@ -37,9 +37,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 
-import chemSmartLogo from '../../../../vendor/chemsmart/docs/source/_static/chemsmart_logo.png'
+import chemSmartLogo from '../../../../build/logo.png'
 import { type AgentMode, AgentModeSwitch } from './AgentModeSwitch'
-import { AgentThoughtStream } from './AgentThoughtStream'
+import { AgentTraceTimeline } from './AgentTraceTimeline'
 import { AllowNoticeDialog } from './AllowNoticeDialog'
 import { CommandConsole } from './CommandConsole'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel'
@@ -79,6 +79,7 @@ import { WorkspaceDock } from './WorkspaceDock'
 
 const logger = loggerService.withContext('ChemSmartWorkspace')
 const MAX_ACTIVITY_EVENTS = 100
+const MAX_AGENT_TRACE_EVENTS = 200
 const REPLAY_CATALOG_LIMIT = 50
 const REPLAY_TIMELINE_LIMIT = 500
 const REPLAY_STEP_DELAY_MS = 700
@@ -132,6 +133,15 @@ function mergeActivity(current: readonly StudioUiEvent[], event: StudioUiEvent):
   if (current.some((item) => item.eventId === event.eventId || item.sequence === event.sequence)) return [...current]
 
   return [...current, event].sort((left, right) => left.sequence - right.sequence).slice(-MAX_ACTIVITY_EVENTS)
+}
+
+function mergeAgentTrace(
+  current: readonly StudioAgentTraceEvent[],
+  event: StudioAgentTraceEvent
+): StudioAgentTraceEvent[] {
+  if (current.some((item) => item.eventId === event.eventId || item.sequence === event.sequence)) return [...current]
+
+  return [...current, event].sort((left, right) => left.sequence - right.sequence).slice(-MAX_AGENT_TRACE_EVENTS)
 }
 
 function classifyControlActionFailure(error: unknown): ControlActionFailure {
@@ -248,6 +258,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const [moleculeSummary, setMoleculeSummary] = useState<ChemSmartStudioMoleculeSummary | null>(null)
   const [documentName, setDocumentName] = useState<string | null>(null)
   const [activity, setActivity] = useState<StudioUiEvent[]>([])
+  const [agentTrace, setAgentTrace] = useState<StudioAgentTraceEvent[]>([])
   const [statusLoading, setStatusLoading] = useState(true)
   const [statusFailed, setStatusFailed] = useState(false)
   const [workspaceAction, setWorkspaceAction] = useState<WorkspaceAction>(null)
@@ -441,6 +452,11 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     if (status.state === 'failed') logger.warn('The ChemSmart agent reported a failed state')
   })
 
+  useIpcOn('chemsmart_studio.agent.trace', (event) => {
+    if (event.sessionId !== sessionId) return
+    setAgentTrace((current) => mergeAgentTrace(current, event))
+  })
+
   useIpcOn('chemsmart_studio.molecule.changed', (summary) => {
     setMoleculeSummary(summary)
   })
@@ -494,6 +510,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   useEffect(() => {
     activityRef.current = []
     setActivity([])
+    setAgentTrace([])
     setAgentStatus(null)
     setMoleculeSummary(null)
     setDocumentName(null)
@@ -822,6 +839,7 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     timeline: replayTimeline
   }
   const latestActivity = activity.at(-1) ?? null
+  const visibleActivity = activity.filter((event) => event.kind !== 'agent_thought')
   const agentWorkflow = controlSnapshot?.agent ?? null
   const agentWorkflowActive =
     agentWorkflow !== null &&
@@ -915,6 +933,34 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
     intent: bottomPane.intent,
     sheetActive: sheetPane !== null && isBottomPane(sheetPane)
   })
+  const workspaceEditorMode =
+    workbenchMode === 'run' || workbenchMode === 'replay' ? ('inspect' as const) : workbenchMode
+  useEffect(() => {
+    if (!active || controlLoading) return
+
+    const panes: StudioPaneId[] = []
+    if ((tier === 'wide' && explorerOpen) || sheetPane === 'explorer') panes.push('explorer')
+    if (inspectorPresentation !== 'hidden') panes.push(inspectorTab)
+    if (bottomPresentation !== 'hidden') panes.push(bottomTab)
+    void ipcApi
+      .request('chemsmart_studio.agent.update_workspace_view', {
+        sessionId,
+        view: { editorMode: workspaceEditorMode, panes }
+      })
+      .catch((error) => logger.error('Failed to update the path-free Agent workspace view', error as Error))
+  }, [
+    active,
+    bottomPresentation,
+    bottomTab,
+    controlLoading,
+    explorerOpen,
+    inspectorPresentation,
+    inspectorTab,
+    sessionId,
+    sheetPane,
+    tier,
+    workspaceEditorMode
+  ])
   const activePane: StudioPaneId | null =
     sheetPane ??
     (inspectorPresentation === 'docked' ? inspectorTab : null) ??
@@ -1011,6 +1057,17 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
   const inspectorExpanded = inspectorPresentation !== 'hidden'
   const bottomExpanded = bottomPresentation !== 'hidden'
   const lastFocusedControlIdRef = useRef<string | null>(null)
+  const activatePaneForTarget = useCallback(
+    (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return
+      if (target.closest('#chemsmart-inspector')) {
+        inspectorPane.activate()
+      } else if (target.closest('#chemsmart-workbench')) {
+        bottomPane.activate()
+      }
+    },
+    [bottomPane, inspectorPane]
+  )
   useLayoutEffect(() => {
     const controlId = lastFocusedControlIdRef.current
     if (!controlId || document.activeElement?.id === controlId) return
@@ -1026,9 +1083,11 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
       data-tier={tier}
       ref={workspaceRef}
       onFocusCapture={(event) => {
+        activatePaneForTarget(event.target)
         const target = event.target
         if (target instanceof HTMLElement && target.id) lastFocusedControlIdRef.current = target.id
-      }}>
+      }}
+      onPointerDownCapture={(event) => activatePaneForTarget(event.target)}>
       <header
         className={cn(
           'flex h-11 shrink-0 items-center justify-between gap-3 border-border border-b pr-3 [-webkit-app-region:drag]',
@@ -1377,19 +1436,19 @@ export function ChemSmartWorkspace({ active, sessionId }: ChemSmartWorkspaceProp
                   </Scrollbar>
                   <Scrollbar className="min-h-0 flex-1 p-3">
                     <section aria-labelledby="chemsmart-studio-activity-title" className="space-y-3">
-                      <AgentThoughtStream events={activity} />
+                      <AgentTraceTimeline events={agentTrace} />
                       <h3 id="chemsmart-studio-activity-title" className="font-medium text-foreground text-sm">
                         {t('chemsmart_studio.activity.title')}
                       </h3>
-                      {activity.length === 0 ? (
+                      {visibleActivity.length === 0 ? (
                         <p className="rounded-md border border-border border-dashed px-3 py-6 text-center text-foreground-muted text-sm leading-5">
                           {t('chemsmart_studio.activity.empty')}
                         </p>
                       ) : (
                         <ol className="space-y-2" data-testid="chemsmart-studio-activity">
-                          {activity.map((event, index) => (
+                          {visibleActivity.map((event, index) => (
                             <li data-event-id={event.eventId} key={event.eventId}>
-                              <StudioUiEventItem event={event} live={index === activity.length - 1} />
+                              <StudioUiEventItem event={event} live={index === visibleActivity.length - 1} />
                             </li>
                           ))}
                         </ol>

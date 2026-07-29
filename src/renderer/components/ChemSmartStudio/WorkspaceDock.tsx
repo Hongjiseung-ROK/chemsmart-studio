@@ -244,11 +244,13 @@ function useSizedPanel({
 }
 
 function DockRegion({
+  active,
   children,
   className,
   hidden,
   testId
 }: {
+  active?: boolean
   children: ReactNode
   className?: string
   hidden: boolean
@@ -260,6 +262,7 @@ function DockRegion({
       // `clip` rather than `hidden`: a hidden region is still a scroll container, so focusing a control near
       // its edge scrolls the region and nothing can scroll it back.
       className={cn('flex h-full min-h-0 min-w-0 flex-col overflow-clip', className)}
+      data-active={active || undefined}
       data-open={!hidden}
       data-testid={testId}
       hidden={hidden}
@@ -323,13 +326,17 @@ export function WorkspaceDock({
   const rootRef = useRef<HTMLDivElement>(null)
   const dragging = useSeparatorDragging(rootRef)
   const [horizontalLayout, setHorizontalLayout] = usePersistCache('ui.studio.layout.horizontal')
-  const [verticalLayout, setVerticalLayout] = usePersistCache('ui.studio.layout.vertical')
+  // The bottom dock used to be a sibling of the whole horizontal workbench and therefore spanned
+  // Explorer and Inspector. This versioned cache starts clean for the center-column-only layout.
+  const [centerVerticalLayout, setCenterVerticalLayout] = usePersistCache('ui.studio.layout.center_vertical_v2')
   // `defaultLayout` seeds the group once. Feeding later cache writes back into it would re-initialize the
   // group on every persisted resize and remount the docked regions.
   const [initialHorizontalLayout] = useState(() =>
     horizontalLayout ? normalizePanelLayout(horizontalLayout) : undefined
   )
-  const [initialVerticalLayout] = useState(() => (verticalLayout ? normalizePanelLayout(verticalLayout) : undefined))
+  const [initialCenterVerticalLayout] = useState(() =>
+    centerVerticalLayout ? normalizePanelLayout(centerVerticalLayout) : undefined
+  )
 
   const stacked = tier === 'viewport-only'
   const inspectorDocked = inspectorPresentation === 'docked'
@@ -368,6 +375,10 @@ export function WorkspaceDock({
         : sheetPane && isBottomPane(sheetPane)
           ? bottom
           : null
+  const inspectorActive =
+    inspectorDocked && bottomDocked && inspectorIntent.lastActivatedAt > bottomIntent.lastActivatedAt
+  const bottomActive =
+    inspectorDocked && bottomDocked && bottomIntent.lastActivatedAt >= inspectorIntent.lastActivatedAt
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid="workspace-dock" ref={rootRef}>
@@ -380,78 +391,89 @@ export function WorkspaceDock({
       ) : (
         <ResizablePanelGroup
           className={cn('min-h-0 flex-1', groupMotion)}
-          defaultLayout={initialVerticalLayout}
-          direction="vertical"
-          id="studio-dock-root"
-          onLayoutChanged={(layout) => setVerticalLayout(normalizePanelLayout(layout))}>
-          <ResizablePanel className="min-h-0 min-w-0" id="studio-dock-body" minSize="45%">
+          defaultLayout={initialHorizontalLayout}
+          direction="horizontal"
+          id="studio-dock-columns"
+          onLayoutChanged={(layout) => setHorizontalLayout(normalizePanelLayout(layout))}>
+          <ResizablePanel
+            className="min-h-0 min-w-0"
+            collapsedSize="0%"
+            collapsible
+            defaultSize={RAIL_SIZE}
+            id="studio-dock-rail"
+            maxSize="24%"
+            minSize={tier === 'wide' && railExpanded ? RAIL_EXPANDED_MIN_SIZE : RAIL_ICON_SIZE}
+            onResize={railPanel.onResize}
+            panelRef={railPanel.panelRef}>
+            <DockRegion hidden={false} testId="workspace-dock-rail">
+              {rail}
+            </DockRegion>
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel className="min-h-0 min-w-0" id="studio-dock-center" minSize="40%">
             <ResizablePanelGroup
               className={cn('min-h-0', groupMotion)}
-              defaultLayout={initialHorizontalLayout}
-              direction="horizontal"
-              id="studio-dock-columns"
-              onLayoutChanged={(layout) => setHorizontalLayout(normalizePanelLayout(layout))}>
-              <ResizablePanel
-                className="min-h-0 min-w-0"
-                collapsedSize="0%"
-                collapsible
-                defaultSize={RAIL_SIZE}
-                id="studio-dock-rail"
-                maxSize="24%"
-                minSize={tier === 'wide' && railExpanded ? RAIL_EXPANDED_MIN_SIZE : RAIL_ICON_SIZE}
-                onResize={railPanel.onResize}
-                panelRef={railPanel.panelRef}>
-                <DockRegion hidden={false} testId="workspace-dock-rail">
-                  {rail}
-                </DockRegion>
-              </ResizablePanel>
-              <ResizableHandle />
-              <ResizablePanel className="min-h-0 min-w-0" id="studio-dock-center" minSize="40%">
+              defaultLayout={initialCenterVerticalLayout}
+              direction="vertical"
+              id="studio-dock-center-vertical-v2"
+              onLayoutChanged={(layout) => setCenterVerticalLayout(normalizePanelLayout(layout))}>
+              <ResizablePanel className="min-h-0 min-w-0" id="studio-dock-stage" minSize="45%">
                 <DockRegion hidden={false} testId="workspace-dock-center">
                   {center}
                 </DockRegion>
               </ResizablePanel>
-              <ResizableHandle disabled={!inspectorDocked} />
+              <ResizableHandle disabled={!bottomDocked} />
               <ResizablePanel
                 className="min-h-0 min-w-0"
                 collapsedSize="0%"
                 collapsible
                 defaultSize={
-                  inspectorDocked
+                  bottomDocked
                     ? normalizedSizeToPercentage(
-                        inspectorIntent.normalizedSize,
-                        defaultStudioRelativeLayout.horizontal.inspector
+                        bottomIntent.normalizedSize,
+                        defaultStudioRelativeLayout.vertical.bottom
                       )
                     : '0%'
                 }
-                id="studio-dock-inspector"
-                maxSize="40%"
-                minSize="20%"
-                onResize={inspectorPanel.onResize}
-                panelRef={inspectorPanel.panelRef}>
-                <DockRegion hidden={!inspectorDocked} testId="workspace-dock-inspector">
-                  {inspector}
+                id="studio-dock-bottom"
+                maxSize="55%"
+                minSize="18%"
+                onResize={bottomPanel.onResize}
+                panelRef={bottomPanel.panelRef}>
+                <DockRegion
+                  className="outline-offset-[-1px] data-[active=true]:outline data-[active=true]:outline-1 data-[active=true]:outline-primary"
+                  hidden={!bottomDocked}
+                  testId="workspace-dock-bottom"
+                  active={bottomActive}>
+                  {bottom}
                 </DockRegion>
               </ResizablePanel>
             </ResizablePanelGroup>
           </ResizablePanel>
-          <ResizableHandle disabled={!bottomDocked} />
+          <ResizableHandle disabled={!inspectorDocked} />
           <ResizablePanel
             className="min-h-0 min-w-0"
             collapsedSize="0%"
             collapsible
             defaultSize={
-              bottomDocked
-                ? normalizedSizeToPercentage(bottomIntent.normalizedSize, defaultStudioRelativeLayout.vertical.bottom)
+              inspectorDocked
+                ? normalizedSizeToPercentage(
+                    inspectorIntent.normalizedSize,
+                    defaultStudioRelativeLayout.horizontal.inspector
+                  )
                 : '0%'
             }
-            id="studio-dock-bottom"
-            maxSize="55%"
-            minSize="18%"
-            onResize={bottomPanel.onResize}
-            panelRef={bottomPanel.panelRef}>
-            <DockRegion hidden={!bottomDocked} testId="workspace-dock-bottom">
-              {bottom}
+            id="studio-dock-inspector"
+            maxSize="40%"
+            minSize="20%"
+            onResize={inspectorPanel.onResize}
+            panelRef={inspectorPanel.panelRef}>
+            <DockRegion
+              className="outline-offset-[-1px] data-[active=true]:outline data-[active=true]:outline-1 data-[active=true]:outline-primary"
+              hidden={!inspectorDocked}
+              testId="workspace-dock-inspector"
+              active={inspectorActive}>
+              {inspector}
             </DockRegion>
           </ResizablePanel>
         </ResizablePanelGroup>

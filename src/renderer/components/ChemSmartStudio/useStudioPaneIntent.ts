@@ -2,6 +2,10 @@ import { type Dispatch, type SetStateAction, useCallback, useState } from 'react
 
 import { clampNormalizedSize, type StudioPaneIntent } from './studioLayout'
 
+function nextActivationTime(previous: number): number {
+  return Math.max(Date.now(), previous + 1)
+}
+
 interface StudioPaneIntentController {
   activate: () => void
   intent: StudioPaneIntent
@@ -27,7 +31,7 @@ export function useStudioPaneIntent(initialOpen: boolean, initialNormalizedSize:
       return {
         ...current,
         open,
-        lastActivatedAt: open ? Date.now() : current.lastActivatedAt
+        lastActivatedAt: open ? nextActivationTime(current.lastActivatedAt) : current.lastActivatedAt
       }
     })
   }, [])
@@ -36,7 +40,7 @@ export function useStudioPaneIntent(initialOpen: boolean, initialNormalizedSize:
     setIntent((current) => ({
       ...current,
       open: true,
-      lastActivatedAt: Date.now()
+      lastActivatedAt: nextActivationTime(current.lastActivatedAt)
     }))
   }, [])
 

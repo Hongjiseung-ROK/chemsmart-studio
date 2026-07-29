@@ -332,6 +332,7 @@ export type RendererPersistCacheSchema = {
   // written yet, so the dock applies its own default sizes.
   'ui.studio.layout.horizontal': Record<string, number> | null
   'ui.studio.layout.vertical': Record<string, number> | null
+  'ui.studio.layout.center_vertical_v2': Record<string, number> | null
   // Which ChemSmart command workbench tab was last open: inspect a command, synthesize one, set up the
   // method project, or the console. Losable — it reopens on 'command'.
   'ui.studio.workbench.tab': string | null
@@ -368,6 +369,7 @@ export const DefaultRendererPersistCache: RendererPersistCacheSchema = {
   'ui.emoji.recently_used': [],
   'ui.studio.layout.horizontal': null,
   'ui.studio.layout.vertical': null,
+  'ui.studio.layout.center_vertical_v2': null,
   'ui.studio.workbench.tab': null,
   'ui.studio.console.history': []
 }

@@ -7,15 +7,22 @@ import {
   DrawerHeader,
   DrawerTitle
 } from '@cherrystudio/ui'
-import { Accessibility, Activity, Info, ServerCog, X } from 'lucide-react'
+import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import type { SettingsPath } from '@shared/data/types/settingsPath'
+import { Accessibility, Activity, Bot, Info, ServerCog, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 const settingsSections = [
-  { icon: ServerCog, id: 'models' },
-  { icon: Activity, id: 'readiness' },
-  { icon: Accessibility, id: 'appearance' },
-  { icon: Info, id: 'about' }
-] as const
+  { icon: Bot, id: 'defaultModel', path: '/settings/model' },
+  { icon: ServerCog, id: 'models', path: '/settings/provider' },
+  { icon: Activity, id: 'readiness', path: '/settings/dependencies' },
+  { icon: Accessibility, id: 'appearance', path: '/settings/appearance' },
+  { icon: Info, id: 'about', path: '/settings/about' }
+] as const satisfies readonly {
+  icon: typeof ServerCog
+  id: 'defaultModel' | 'models' | 'readiness' | 'appearance' | 'about'
+  path: SettingsPath
+}[]
 
 interface StudioSettingsSheetProps {
   onOpenChange: (open: boolean) => void
@@ -48,15 +55,19 @@ export function StudioSettingsSheet({ onOpenChange, open }: StudioSettingsSheetP
             </Button>
           </DrawerClose>
         </DrawerHeader>
-        <div className="flex flex-col gap-2 p-4" role="list">
-          {settingsSections.map(({ icon: Icon, id }) => (
-            <div
-              className="flex min-h-11 items-center gap-3 rounded-md border border-border-subtle bg-background-subtle px-3 text-sm"
+        <div className="flex flex-col gap-2 p-4">
+          {settingsSections.map(({ icon: Icon, id, path }) => (
+            <Button
+              className="min-h-11 justify-start gap-3 border border-border-subtle bg-background-subtle px-3 text-sm"
               key={id}
-              role="listitem">
+              variant="ghost"
+              onClick={() => {
+                onOpenChange(false)
+                openSettingsTab(path)
+              }}>
               <Icon aria-hidden className="size-4 text-foreground-secondary" />
-              {t(`chemsmart_studio.ide.settings.${id}`)}
-            </div>
+              {id === 'defaultModel' ? t('settings.model') : t(`chemsmart_studio.ide.settings.${id}`)}
+            </Button>
           ))}
         </div>
       </DrawerContent>

@@ -113,11 +113,22 @@
       "additionalProperties": false,
       "properties": {
         "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
         "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
         "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
-        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "source": { "enum": ["committed", "draft"] }
       },
       "required": ["sessionId", "documentId", "expectedRevision", "geometryHash"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "draft" } },
+            "required": ["source"]
+          },
+          "then": { "required": ["draftId"] }
+        }
+      ],
       "type": "object"
     },
     "controlledCalculationReplay": {
@@ -179,6 +190,33 @@
         "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
         "formula": { "maxLength": 512, "minLength": 1, "pattern": "\\S", "type": "string" },
         "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "binding": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "revision", "geometryHash"],
+              "properties": {
+                "state": { "const": "committed" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "baseRevision", "draftId", "geometryHash"],
+              "properties": {
+                "state": { "const": "draft" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            }
+          ]
+        },
         "molecule": { "$ref": "molecule.schema.json" },
         "multiplicity": { "maximum": 256, "minimum": 1, "type": "integer" },
         "type": { "const": "current_molecule_analysis" }
@@ -187,6 +225,7 @@
         "type",
         "molecule",
         "geometryHash",
+        "binding",
         "atomCount",
         "bondCount",
         "elementCounts",
@@ -751,11 +790,121 @@
             { "type": "null" }
           ]
         },
+        "project": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["projectHandleId", "projectName"],
+          "properties": {
+            "projectHandleId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "projectName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^/\\\\]+$"
+            }
+          }
+        },
+        "display": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "revision", "geometryHash"],
+              "properties": {
+                "state": { "const": "committed" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "baseRevision", "draftId", "geometryHash"],
+              "properties": {
+                "state": { "const": "draft" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "inputRevision", "runId", "frameIndex"],
+              "properties": {
+                "state": { "enum": ["run", "replay"] },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "inputRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "frameIndex": {
+                  "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }]
+                }
+              }
+            }
+          ]
+        },
+        "draft": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["draftId", "baseRevision", "geometryHash", "changeCount", "dirty"],
+              "properties": {
+                "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+                "changeCount": { "type": "integer", "minimum": 0, "maximum": 128 },
+                "dirty": { "type": "boolean" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atomIds", "bondIds"],
+          "properties": {
+            "atomIds": {
+              "type": "array",
+              "maxItems": 100000,
+              "uniqueItems": true,
+              "items": { "$ref": "common.schema.json#/$defs/stableId" }
+            },
+            "bondIds": {
+              "type": "array",
+              "maxItems": 100000,
+              "uniqueItems": true,
+              "items": { "$ref": "common.schema.json#/$defs/stableId" }
+            }
+          }
+        },
+        "editorMode": { "enum": ["build", "inspect", "measure", "constrain"] },
+        "panes": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 7,
+          "items": { "enum": ["explorer", "properties", "agent", "decisions", "console", "jobs", "problems"] }
+        },
         "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
         "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
         "type": { "const": "studio_context" }
       },
-      "required": ["type", "sessionId", "document", "activeRun", "extensions"],
+      "required": [
+        "type",
+        "sessionId",
+        "project",
+        "document",
+        "display",
+        "draft",
+        "selection",
+        "editorMode",
+        "panes",
+        "activeRun",
+        "extensions"
+      ],
       "type": "object"
     },
     "terminal": {

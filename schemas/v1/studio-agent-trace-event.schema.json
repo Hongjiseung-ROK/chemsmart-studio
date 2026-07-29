@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/studio-agent-trace-event.schema.json",
+  "title": "StudioAgentTraceEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "sessionId",
+    "turnId",
+    "sequence",
+    "timestamp",
+    "kind",
+    "status",
+    "title",
+    "summary",
+    "extensions"
+  ],
+  "properties": {
+    "eventId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "turnId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "kind": {
+      "enum": [
+        "turn_started",
+        "reasoning_summary",
+        "tool_started",
+        "permission_waiting",
+        "tool_progress",
+        "tool_succeeded",
+        "tool_failed",
+        "turn_completed",
+        "turn_blocked"
+      ]
+    },
+    "status": { "enum": ["queued", "running", "waiting", "succeeded", "failed", "denied"] },
+    "toolCallId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "toolName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argumentKeys": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z][A-Za-z0-9._-]*$" }
+        },
+        "resultKeys": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z][A-Za-z0-9._-]*$" }
+        },
+        "ruleIds": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z][A-Za-z0-9._-]*$" }
+        },
+        "verdict": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z][A-Za-z0-9._-]*$" },
+        "durationMs": { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      }
+    },
+    "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": ["tool_started", "permission_waiting", "tool_progress", "tool_succeeded", "tool_failed"]
+          }
+        },
+        "required": ["kind"]
+      },
+      "then": { "required": ["toolCallId", "toolName"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "turn_started" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "const": "running" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "reasoning_summary" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "const": "running" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "tool_started" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "const": "running" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "permission_waiting" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "const": "waiting" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "tool_progress" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "enum": ["running", "waiting"] } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "tool_succeeded" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "const": "succeeded" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "tool_failed" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "enum": ["failed", "denied"] } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "turn_completed" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "const": "succeeded" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "turn_blocked" } }, "required": ["kind"] },
+      "then": { "properties": { "status": { "enum": ["failed", "denied"] } } }
+    }
+  ]
+}

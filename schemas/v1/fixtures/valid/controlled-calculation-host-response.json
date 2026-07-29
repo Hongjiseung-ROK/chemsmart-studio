@@ -1,11 +1,28 @@
 {
   "activeRun": null,
+  "display": {
+    "documentId": "ethanol",
+    "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "revision": 3,
+    "state": "committed"
+  },
   "document": {
     "documentId": "ethanol",
     "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
     "revision": 3
   },
+  "draft": null,
+  "editorMode": "build",
   "extensions": {},
+  "panes": ["explorer", "agent"],
+  "project": {
+    "projectHandleId": "project-ethanol",
+    "projectName": "Ethanol"
+  },
+  "selection": {
+    "atomIds": [],
+    "bondIds": []
+  },
   "sessionId": "session-1",
   "type": "studio_context"
 }

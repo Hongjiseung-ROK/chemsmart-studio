@@ -64,11 +64,14 @@ const executable: ControlledCalculationExecutableIdentity = {
 }
 describe('CalculationRuntimeService controlled fake execution', () => {
   const editor = {
-    getMoleculeDocument: vi.fn()
+    getMoleculeDocument: vi.fn(),
+    getMoleculeDraft: vi.fn(),
+    listOpenDocuments: vi.fn()
   }
   const studioControl = {
     consumePreparedCalculationGrant: vi.fn(),
-    commitControlledRunStart: vi.fn()
+    commitControlledRunStart: vi.fn(),
+    getTrustedRenderBinding: vi.fn()
   }
   const moleculeDocuments = {
     getDocument: vi.fn(),
@@ -109,6 +112,16 @@ describe('CalculationRuntimeService controlled fake execution', () => {
     BaseService.resetInstances()
     calculationsRoot = await mkdtemp(path.join(tmpdir(), 'chemsmart-calculation-runtime-'))
     editor.getMoleculeDocument.mockResolvedValue(structuredClone(document))
+    editor.getMoleculeDraft.mockReturnValue(null)
+    editor.listOpenDocuments.mockReturnValue({
+      activeProjectId: 'project-ethanol',
+      documents: [{ projectId: 'project-ethanol', projectName: 'Ethanol' }]
+    })
+    studioControl.getTrustedRenderBinding.mockReturnValue({
+      displayState: 'committed',
+      documentId: document.documentId,
+      revision: document.revision
+    })
     currentDocument = structuredClone(document)
     activeRunId = null
     mutationLockOwner = null
@@ -804,11 +817,24 @@ describe('CalculationRuntimeService controlled fake execution', () => {
     expect(context).toMatchObject({
       type: 'studio_context',
       sessionId: 'session-1',
+      project: {
+        projectHandleId: 'project-ethanol',
+        projectName: 'Ethanol'
+      },
       document: {
         documentId: document.documentId,
         revision: document.revision,
         geometryHash: documentGeometryHash
       },
+      display: {
+        state: 'committed',
+        documentId: document.documentId,
+        revision: document.revision,
+        geometryHash: documentGeometryHash
+      },
+      draft: null,
+      editorMode: 'build',
+      panes: ['explorer', 'agent'],
       activeRun: null
     })
 
@@ -827,6 +853,12 @@ describe('CalculationRuntimeService controlled fake execution', () => {
     expect(analysis).toMatchObject({
       type: 'current_molecule_analysis',
       geometryHash: documentGeometryHash,
+      binding: {
+        state: 'committed',
+        documentId: document.documentId,
+        revision: document.revision,
+        geometryHash: documentGeometryHash
+      },
       atomCount: 2,
       bondCount: 1,
       formula: 'CO'
@@ -845,6 +877,7 @@ describe('CalculationRuntimeService controlled fake execution', () => {
     ).resolves.toMatchObject({
       type: 'current_molecule_analysis',
       geometryHash: documentGeometryHash,
+      binding: { state: 'committed' },
       atomCount: 2,
       formula: 'CO'
     })
@@ -905,6 +938,169 @@ describe('CalculationRuntimeService controlled fake execution', () => {
         }
       })
     ).rejects.toMatchObject({ code: 'EDITOR_UNAVAILABLE' })
+  })
+
+  it('grounds context and analysis in the main-owned visible draft', async () => {
+    const draftDocument: MoleculeDocument = {
+      ...structuredClone(document),
+      atoms: [
+        { id: 'atom-o1', atomicNumber: 8, position: [0, 0, 0], formalCharge: 0, extensions: {} },
+        { id: 'atom-h1', atomicNumber: 1, position: [0.96, 0, 0], formalCharge: 0, extensions: {} },
+        { id: 'atom-h2', atomicNumber: 1, position: [-0.24, 0.93, 0], formalCharge: 0, extensions: {} }
+      ],
+      bonds: [
+        { id: 'bond-oh1', atomIds: ['atom-o1', 'atom-h1'], order: 1, extensions: {} },
+        { id: 'bond-oh2', atomIds: ['atom-o1', 'atom-h2'], order: 1, extensions: {} }
+      ],
+      selections: ['atom-o1']
+    }
+    const draftGeometryHash = `sha256:${createHash('sha256')
+      .update(
+        JSON.stringify(
+          draftDocument.atoms
+            .map((atom) => [atom.id, atom.atomicNumber, atom.position] as const)
+            .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        )
+      )
+      .digest('hex')}`
+    editor.getMoleculeDraft.mockReturnValue({
+      draftId: 'draft-water',
+      documentId: document.documentId,
+      baseRevision: document.revision,
+      document: draftDocument,
+      entries: [],
+      cursor: 2,
+      dirty: true,
+      canUndo: true,
+      canRedo: false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      extensions: {}
+    })
+
+    await expect(
+      service.handleHostRequest({
+        type: 'controlled_calculation_host_request',
+        sessionId: 'session-1',
+        request: { type: 'studio_agent_tool_request', tool: 'get_studio_context', arguments: {} }
+      })
+    ).resolves.toMatchObject({
+      display: {
+        state: 'draft',
+        draftId: 'draft-water',
+        geometryHash: draftGeometryHash
+      },
+      draft: {
+        draftId: 'draft-water',
+        baseRevision: document.revision,
+        geometryHash: draftGeometryHash,
+        changeCount: 2,
+        dirty: true
+      },
+      selection: { atomIds: ['atom-o1'], bondIds: [] }
+    })
+
+    await expect(
+      service.handleHostRequest({
+        type: 'controlled_calculation_host_request',
+        sessionId: 'session-1',
+        request: {
+          type: 'studio_agent_tool_request',
+          tool: 'analyze_current_molecule',
+          arguments: {
+            expected_revision: document.revision,
+            geometry_hash: draftGeometryHash
+          }
+        }
+      })
+    ).resolves.toMatchObject({
+      type: 'current_molecule_analysis',
+      atomCount: 3,
+      bondCount: 2,
+      formula: 'H2O',
+      geometryHash: draftGeometryHash,
+      binding: {
+        state: 'draft',
+        draftId: 'draft-water',
+        baseRevision: document.revision,
+        geometryHash: draftGeometryHash
+      }
+    })
+
+    const prepared = await service.handleHostRequest({
+      type: 'controlled_calculation_host_request',
+      sessionId: 'session-1',
+      request: {
+        type: 'studio_agent_tool_request',
+        tool: 'prepare_molecule_optimization',
+        arguments: {
+          document_id: document.documentId,
+          expected_revision: document.revision,
+          geometry_hash: draftGeometryHash,
+          engine: 'xtb',
+          method: 'GFN2-xTB',
+          settings: {
+            maxSteps: 20,
+            maxRuntimeSeconds: 30,
+            threads: 1,
+            charge: 0,
+            multiplicity: 1,
+            extensions: {}
+          }
+        }
+      }
+    })
+    expect(prepared).toMatchObject({
+      type: 'prepared_controlled_calculation',
+      state: 'prepared',
+      binding: {
+        source: 'draft',
+        draftId: 'draft-water',
+        documentId: document.documentId,
+        expectedRevision: document.revision,
+        geometryHash: draftGeometryHash
+      }
+    })
+    if (prepared.type !== 'prepared_controlled_calculation') throw new Error('Expected a prepared plan')
+    const validated = await service.validateCalculation(prepared.planId, prepared.planDigest)
+    expect(validated.state).toBe('validated')
+    await expect(service.reserveCalculation(validated.planId, validated.planDigest)).rejects.toMatchObject({
+      code: 'APPROVAL_REQUIRED',
+      message: 'Apply the molecule draft before starting this calculation'
+    })
+
+    editor.getMoleculeDraft.mockReturnValue({
+      ...editor.getMoleculeDraft(),
+      draftId: 'draft-replaced'
+    })
+    await expect(service.validateCalculation(prepared.planId, prepared.planDigest)).rejects.toMatchObject({
+      code: 'REVISION_CONFLICT'
+    })
+  })
+
+  it('does not let renderer view metadata forge the molecule display binding', async () => {
+    service.setWorkspaceViewState('session-1', {
+      editorMode: 'inspect',
+      panes: ['agent'],
+      displayState: 'replay'
+    } as never)
+
+    await expect(
+      service.handleHostRequest({
+        type: 'controlled_calculation_host_request',
+        sessionId: 'session-1',
+        request: { type: 'studio_agent_tool_request', tool: 'get_studio_context', arguments: {} }
+      })
+    ).resolves.toMatchObject({
+      display: {
+        state: 'committed',
+        documentId: document.documentId,
+        revision: document.revision,
+        geometryHash: documentGeometryHash
+      },
+      editorMode: 'inspect',
+      panes: ['agent']
+    })
   })
 
   it('requires and consumes an exact main-owned grant before deterministic controlled execution', async () => {

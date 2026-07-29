@@ -66,8 +66,13 @@ describe('StudioConsoleService', () => {
     service.run('chemsmart run gaussian opt -f water.xyz')
 
     const [command, args, options] = mocks.spawn.mock.calls[0]
-    expect(args).toEqual(['-l', '-c', 'chemsmart run gaussian opt -f water.xyz'])
+    expect(args).toEqual([
+      '-l',
+      '-c',
+      'export PATH="$CHEMSMART_STUDIO_BRIDGE_BIN:$PATH"\nchemsmart run gaussian opt -f water.xyz'
+    ])
     expect(command).toBe(process.env.SHELL ?? '/bin/sh')
+    expect(options.env.CHEMSMART_STUDIO_BRIDGE_BIN).toBe('/paths')
     // Its own process group, so cancelling reaches a Gaussian child and not just the shell.
     expect(options.detached).toBe(process.platform !== 'win32')
   })
@@ -81,7 +86,9 @@ describe('StudioConsoleService', () => {
     // The login shell rebuilds PATH and the chemistry variables from the researcher's own profile;
     // main's environment may carry provider credentials and must not be readable from the console.
     expect(passed).not.toContain('PATH')
-    expect(passed.every((key) => ['HOME', 'USER', 'LANG', 'TERM'].includes(key))).toBe(true)
+    expect(passed.every((key) => ['HOME', 'USER', 'LANG', 'TERM', 'CHEMSMART_STUDIO_BRIDGE_BIN'].includes(key))).toBe(
+      true
+    )
   })
 
   it('coalesces output into one event per stream per tick', async () => {

@@ -1900,6 +1900,15 @@
       "execute_description": "Reversible actions run without asking for this session. Calculations always ask.",
       "label": "Agent mode"
     },
+    "agent_trace": {
+      "current": "Current",
+      "elapsed": "{{duration}} ms",
+      "input": "Validated input",
+      "output": "Result",
+      "rules": "Gate rules",
+      "turn": "Agent turn {{index}}",
+      "verdict": "Verdict"
+    },
     "approval": {
       "affected_atoms": "Affected atoms",
       "affected_bonds": "Affected bonds",
@@ -2444,10 +2453,6 @@
     },
     "tabs": {
       "label": "Open projects"
-    },
-    "thoughts": {
-      "advisory": "advisory · not evidence",
-      "title": "Thinking ({{count}})"
     },
     "title": "ChemSmart Studio",
     "toolkit": {

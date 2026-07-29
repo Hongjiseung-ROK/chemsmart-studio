@@ -1,4 +1,5 @@
 const STUDIO_SETTINGS_PATHS = [
+  '/settings/model',
   '/settings/provider',
   '/settings/dependencies',
   '/settings/appearance',

@@ -12,7 +12,7 @@ import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
 import { useEffect } from 'react'
 
 import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNotification'
-import { StudioWorkbench } from './StudioWorkbench'
+import { StudioRouteHost } from './StudioRouteHost'
 
 const logger = loggerService.withContext('MainApp')
 
@@ -61,7 +61,7 @@ function MainApp(): React.ReactElement {
           <CommandContextKeyProvider>
             <CommandProvider>
               <TabsProvider includePinnedTabs={false}>
-                <StudioWorkbench />
+                <StudioRouteHost />
                 <MainWindowRuntime />
                 <PopupHost />
                 <ToastHost />

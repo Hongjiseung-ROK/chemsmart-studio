@@ -33,6 +33,7 @@ import {
   type ResearchRenameThreadRequest,
   type ResearchSelectThreadRequest,
   type StageGestureIntent,
+  type StudioAgentTraceEvent,
   studioControlRuntimeSchema,
   type StudioControlSnapshot,
   studioDraftRuntimeSchema,
@@ -57,6 +58,22 @@ const stableIdSchema = z
   .min(1)
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/)
+const studioWorkspacePaneSchema = z.enum([
+  'explorer',
+  'properties',
+  'agent',
+  'decisions',
+  'console',
+  'jobs',
+  'problems'
+])
+const studioWorkspaceViewStateSchema = z.strictObject({
+  editorMode: z.enum(['build', 'inspect', 'measure', 'constrain']),
+  panes: z
+    .array(studioWorkspacePaneSchema)
+    .max(7)
+    .refine((panes) => new Set(panes).size === panes.length)
+})
 const moleculeSummarySchema = z.object({
   documentId: stableIdSchema,
   revision: z.number().int().nonnegative()
@@ -292,6 +309,13 @@ export const chemsmartStudioRequestSchemas = {
     }),
     output: z.object({ completed: z.literal(true) })
   }),
+  'chemsmart_studio.agent.update_workspace_view': defineRoute({
+    input: z.strictObject({
+      sessionId: stableIdSchema,
+      view: studioWorkspaceViewStateSchema
+    }),
+    output: z.strictObject({ accepted: z.literal(true) })
+  }),
   'chemsmart_studio.agent.replay_studio_ui': defineRoute({
     input: z.object({
       sessionId: stableIdSchema,
@@ -517,6 +541,7 @@ export type ChemSmartStudioWorkspaceRoots = z.infer<
 
 export type ChemSmartStudioEventSchemas = {
   'chemsmart_studio.agent.state_changed': ChemSmartStudioProcessStatus
+  'chemsmart_studio.agent.trace': StudioAgentTraceEvent
   'chemsmart_studio.studio_ui.event': StudioUiEvent
   'chemsmart_studio.control.changed': {
     sessionId: string

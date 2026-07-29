@@ -38,6 +38,10 @@ export function resolveStudioModelTimeout(requested: unknown): number {
   return Math.min(Math.max(requested, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS)
 }
 
+export function studioReasoningEffort(providerId: string, apiModelId: string): 'high' | undefined {
+  return providerId.toLowerCase() === 'deepseek' || apiModelId.toLowerCase().includes('deepseek') ? 'high' : undefined
+}
+
 /**
  * Runs one non-streaming completion and returns the parsed OpenAI body.
  *
@@ -55,6 +59,7 @@ export async function generateStudioModelResponse(request: StudioModelRequest): 
         model: formatGatewayModelId(request.providerId, request.apiModelId),
         messages: [...request.messages],
         tools: request.tools && request.tools.length > 0 ? [...request.tools] : undefined,
+        reasoning_effort: studioReasoningEffort(request.providerId, request.apiModelId),
         stream: false
       },
       inputFormat: 'openai',

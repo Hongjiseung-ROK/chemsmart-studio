@@ -1,6 +1,7 @@
 import type {
   MoleculeDocument,
   MoleculeOperation,
+  StudioAgentTraceEvent,
   StudioControlSnapshot,
   StudioDraftSnapshot,
   StudioUiEvent
@@ -43,11 +44,12 @@ vi.mock('@renderer/ipc', () => ({
         return route === 'chemsmart_studio.molecule.draft_snapshot' && result === undefined ? null : result
       } catch (error) {
         if (
-          route === 'chemsmart_studio.molecule.draft_snapshot' &&
+          (route === 'chemsmart_studio.molecule.draft_snapshot' ||
+            route === 'chemsmart_studio.agent.update_workspace_view') &&
           error instanceof Error &&
           error.message.startsWith('Unexpected route:')
         ) {
-          return null
+          return route === 'chemsmart_studio.molecule.draft_snapshot' ? null : { accepted: true }
         }
         throw error
       }
@@ -459,6 +461,28 @@ function createEvent(sessionId: string, sequence: number, eventId = `event-${seq
   }
 }
 
+function createTraceEvent(
+  sessionId: string,
+  sequence: number,
+  overrides: Partial<StudioAgentTraceEvent> = {}
+): StudioAgentTraceEvent {
+  return {
+    eventId: `trace-${sequence}`,
+    sessionId,
+    turnId: 'turn-1',
+    sequence,
+    timestamp: '2026-07-29T00:00:00Z',
+    kind: 'tool_started',
+    status: 'running',
+    toolCallId: 'tool-call-1',
+    toolName: 'analyze_current_molecule',
+    title: 'Analyze visible molecule',
+    summary: 'Using the immutable draft snapshot.',
+    extensions: {},
+    ...overrides
+  }
+}
+
 function moleculeDocument(revision = 4): MoleculeDocument {
   return {
     documentId: 'molecule-1',
@@ -616,10 +640,41 @@ describe('ChemSmartStudioPanel', () => {
     const statusRequestIndex = ipcMocks.order.indexOf('request:chemsmart_studio.status')
     expect(statusRequestIndex).toBeGreaterThan(-1)
     expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.agent.state_changed')).toBeLessThan(statusRequestIndex)
+    expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.agent.trace')).toBeLessThan(statusRequestIndex)
     expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.studio_ui.event')).toBeLessThan(statusRequestIndex)
     expect(ipcMocks.order.indexOf('subscribe:chemsmart_studio.control.changed')).toBeLessThan(statusRequestIndex)
     expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.control.snapshot', { sessionId: 'topic-a' })
     expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.agent.start')
+  })
+
+  it('renders only session-bound trusted Agent trace events', async () => {
+    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
+    await screen.findByTestId('molecule-stage')
+
+    act(() => {
+      emit('chemsmart_studio.agent.trace', createTraceEvent('topic-other', 0))
+      emit('chemsmart_studio.agent.trace', createTraceEvent('topic-a', 0))
+    })
+
+    expect(screen.getByTestId('agent-trace-timeline')).toHaveTextContent('analyze_current_molecule')
+    expect(screen.getAllByText('Analyze visible molecule')).toHaveLength(1)
+  })
+
+  it('shares only path-free pane and editor metadata with the Agent context', async () => {
+    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
+    await screen.findByTestId('molecule-stage')
+
+    await waitFor(() =>
+      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.agent.update_workspace_view', {
+        sessionId: 'topic-a',
+        view: {
+          editorMode: 'build',
+          panes: ['explorer', 'agent']
+        }
+      })
+    )
+    const call = ipcMocks.request.mock.calls.find(([route]) => route === 'chemsmart_studio.agent.update_workspace_view')
+    expect(call?.[1]).not.toHaveProperty('view.displayState')
   })
 
   it('keeps the committed molecule when the Python sidecar stops', async () => {
@@ -818,7 +873,39 @@ describe('ChemSmartStudioPanel', () => {
     expect(screen.getByRole('button', { name: 'chemsmart_studio.ide.bottom.show' })).toBeInTheDocument()
   })
 
-  it('preserves Agent and Console intent, draft text, and focus across wide and compact presentations', async () => {
+  it('makes the focused Agent input the compact sheet and restores its draft and focus after resize', async () => {
+    const workspace = stubResizableWorkspace(1440, 900)
+    const user = userEvent.setup()
+    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
+    await screen.findByTestId('molecule-stage')
+
+    const agentInput = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
+    fireEvent.change(agentInput, { target: { value: 'preserve this draft while resizing' } })
+
+    // Opening Console makes it the most recently toggled pane. Focusing Agent must supersede that
+    // toggle, because the input the researcher is actually using owns the compact presentation.
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.ide.bottom.show' }))
+    agentInput.focus()
+    expect(agentInput).toHaveFocus()
+
+    act(() => workspace.resize(960, 600))
+    await waitFor(() => expect(screen.getByTestId('chemsmart-workspace')).toHaveAttribute('data-tier', 'viewport-only'))
+    expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
+    expect(screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })).toHaveValue(
+      'preserve this draft while resizing'
+    )
+    expect(screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'chemsmart_studio.inspector.hide' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'chemsmart_studio.ide.bottom.show' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  })
+
+  it('preserves Agent and Console intent, Console draft text, and focus across compact presentation', async () => {
     const workspace = stubResizableWorkspace(1440, 900)
     const user = userEvent.setup()
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
@@ -1271,7 +1358,7 @@ describe('ChemSmartStudioPanel', () => {
     )
   })
 
-  it('shows the Agent reasoning as advisory and marks what it points at', async () => {
+  it('withholds legacy model thoughts while preserving trusted molecule focus', async () => {
     const user = userEvent.setup()
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.status') {
@@ -1330,20 +1417,12 @@ describe('ChemSmartStudioPanel', () => {
     expect(touched).toHaveTextContent('chemsmart_studio.coordinates.agent_touched')
 
     await user.click(screen.getByRole('tab', { name: /chemsmart_studio.inspector.tab.agent/ }))
-    const thoughts = screen.getByTestId('agent-thought-stream')
-    // Reasoning is collapsed, labelled advisory, and kept away from the gate results.
-    expect(within(thoughts).getByText('chemsmart_studio.thoughts.advisory')).toBeInTheDocument()
-    expect(within(thoughts).getByRole('button')).toHaveAttribute('aria-expanded', 'false')
-    // Collapsed here, but still in the plain-text activity ledger below, so nothing is hidden.
-    expect(within(thoughts).queryByText('The O-H distance disagrees with the reference.')).toBeNull()
-    expect(
-      within(screen.getByTestId('chemsmart-studio-activity')).getByText(
-        'The O-H distance disagrees with the reference.'
-      )
-    ).toBeInTheDocument()
-
-    await user.click(within(thoughts).getByRole('button'))
-    expect(within(thoughts).getByText('The O-H distance disagrees with the reference.')).toBeInTheDocument()
+    // Legacy model-written thought text is not a trusted lifecycle event and is not rendered.
+    expect(screen.queryByTestId('agent-thought-stream')).toBeNull()
+    expect(screen.queryByText('The O-H distance disagrees with the reference.')).toBeNull()
+    expect(screen.getByTestId('chemsmart-studio-activity')).toHaveTextContent(
+      'Looking at the hydrogen it wants to move.'
+    )
   })
 
   it('keeps scientific tools on the viewport and reveals only the pane each tool owns', async () => {

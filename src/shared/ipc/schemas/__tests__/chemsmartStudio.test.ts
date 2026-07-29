@@ -344,6 +344,19 @@ describe('ChemSmart Studio trusted control schemas', () => {
     expect(performActionRoute.input.safeParse({ sessionId: 'session-1', actionId: '../action' }).success).toBe(false)
   })
 
+  it('keeps renderer workspace view updates presentation-only', () => {
+    const route = chemsmartStudioRequestSchemas['chemsmart_studio.agent.update_workspace_view']
+    const view = { editorMode: 'build', panes: ['explorer', 'agent'] }
+
+    expect(route.input.safeParse({ sessionId: 'session-1', view }).success).toBe(true)
+    expect(
+      route.input.safeParse({
+        sessionId: 'session-1',
+        view: { ...view, displayState: 'replay' }
+      }).success
+    ).toBe(false)
+  })
+
   it('rejects invalid or embellished snapshot outputs', () => {
     expect(snapshotRoute.output.safeParse({ ...validSnapshot, snapshotRevision: -1 }).success).toBe(false)
     expect(snapshotRoute.output.safeParse({ ...validSnapshot, payloadJson: '{}' }).success).toBe(false)

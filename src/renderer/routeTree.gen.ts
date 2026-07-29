@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as SettingsProviderRouteImport } from './routes/settings/provider'
+import { Route as SettingsModelRouteImport } from './routes/settings/model'
 import { Route as SettingsDependenciesRouteImport } from './routes/settings/dependencies'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as SettingsAboutRouteImport } from './routes/settings/about'
@@ -44,6 +45,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const SettingsProviderRoute = SettingsProviderRouteImport.update({
   id: '/provider',
   path: '/provider',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsModelRoute = SettingsModelRouteImport.update({
+  id: '/model',
+  path: '/model',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsDependenciesRoute = SettingsDependenciesRouteImport.update({
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/dependencies': typeof SettingsDependenciesRoute
+  '/settings/model': typeof SettingsModelRoute
   '/settings/provider': typeof SettingsProviderRoute
   '/app/': typeof AppIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/dependencies': typeof SettingsDependenciesRoute
+  '/settings/model': typeof SettingsModelRoute
   '/settings/provider': typeof SettingsProviderRoute
   '/app': typeof AppIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/dependencies': typeof SettingsDependenciesRoute
+  '/settings/model': typeof SettingsModelRoute
   '/settings/provider': typeof SettingsProviderRoute
   '/app/': typeof AppIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/appearance'
     | '/settings/dependencies'
+    | '/settings/model'
     | '/settings/provider'
     | '/app/'
     | '/settings/'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/appearance'
     | '/settings/dependencies'
+    | '/settings/model'
     | '/settings/provider'
     | '/app'
     | '/settings'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/appearance'
     | '/settings/dependencies'
+    | '/settings/model'
     | '/settings/provider'
     | '/app/'
     | '/settings/'
@@ -195,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/provider'
       fullPath: '/settings/provider'
       preLoaderRoute: typeof SettingsProviderRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/model': {
+      id: '/settings/model'
+      path: '/model'
+      fullPath: '/settings/model'
+      preLoaderRoute: typeof SettingsModelRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/dependencies': {
@@ -261,6 +280,7 @@ interface SettingsRouteChildren {
   SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsDependenciesRoute: typeof SettingsDependenciesRoute
+  SettingsModelRoute: typeof SettingsModelRoute
   SettingsProviderRoute: typeof SettingsProviderRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -270,6 +290,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAboutRoute: SettingsAboutRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsDependenciesRoute: SettingsDependenciesRoute,
+  SettingsModelRoute: SettingsModelRoute,
   SettingsProviderRoute: SettingsProviderRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }

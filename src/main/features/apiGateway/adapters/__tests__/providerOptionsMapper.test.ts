@@ -114,6 +114,15 @@ describe('mapReasoningEffortToProviderOptions', () => {
     })
   })
 
+  it('enables DeepSeek thinking with its supported high effort', () => {
+    expect(mapReasoningEffortToProviderOptions(provider(SystemProviderIds.deepseek), 'medium')).toEqual({
+      deepseek: {
+        thinking: { type: 'enabled' },
+        reasoning_effort: 'high'
+      }
+    })
+  })
+
   it('returns undefined for an unsupported provider', () => {
     expect(mapReasoningEffortToProviderOptions(provider('mystery'), 'high')).toBeUndefined()
   })

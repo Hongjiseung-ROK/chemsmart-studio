@@ -1,0 +1,17 @@
+{
+  "eventId": "trace-1",
+  "sessionId": "session-1",
+  "turnId": "turn-1",
+  "sequence": 2,
+  "timestamp": "2026-07-29T02:30:00Z",
+  "kind": "tool_started",
+  "status": "running",
+  "toolCallId": "call-1",
+  "toolName": "analyze_current_molecule",
+  "title": "Analyze current molecule",
+  "summary": "Inspecting the visible molecule snapshot.",
+  "detail": {
+    "argumentKeys": ["expected_revision", "geometry_hash"]
+  },
+  "extensions": {}
+}
