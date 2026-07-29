@@ -277,7 +277,7 @@ provides-extras = ["test", "dev", "docs", "agent-tui", "agent", "local-transform
 
 [[package]]
 name = "chemsmart-studio-bridge"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "chemsmart", extra = ["agent"] },

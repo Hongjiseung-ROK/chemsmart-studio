@@ -39,6 +39,7 @@ files:
   - "!local"
   - "!docs"
   - "!packages"
+  - "!vendor/**"
   - "!.swc"
   - "!.bin"
   - "!._*"
@@ -118,11 +119,14 @@ electronDownload:
 beforePack: scripts/before-pack.js
 releaseInfo:
   releaseNotes: |
-    ChemSmart Studio 0.1.0 Internal Stable for Zhang Lab.
+    ChemSmart Studio 0.1.1 Internal Stable for Zhang Lab.
 
     - Apple Silicon only.
     - Distributed as an ad-hoc-signed application ZIP.
     - Not notarized; use Finder's Open command on first launch.
     - Updates are installed manually from this private repository.
+    - Keeps the command console between Explorer and ChemSmart Agent.
+    - Adds trusted, expandable Agent tool activity and public reasoning summaries.
+    - Grounds Agent preflight in the visible molecule and supports xTB without a project YAML.
     - P6 protocol-v2 activation and P7 integrated acceptance remain open, so
       this internal build is not a public production-ready release.

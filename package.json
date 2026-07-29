@@ -1,6 +1,6 @@
 {
   "name": "chemsmart-studio",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "Agent-guided molecular editing and computational chemistry studio.",
@@ -118,6 +118,8 @@
     "tar": "^7.5.11",
     "tesseract.js": "6.0.1",
     "turndown": "7.2.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.21.0",
     "xxhash-wasm": "^1.1.0"
   },
@@ -425,8 +427,6 @@
     "vitest": "^3.2.7",
     "voyage-ai-provider": "^3.0.0",
     "webdav": "^5.9.0",
-    "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0",
     "word-extractor": "^1.0.4",
     "y-protocols": "^1.0.6",
     "yaml": "^2.8.1",

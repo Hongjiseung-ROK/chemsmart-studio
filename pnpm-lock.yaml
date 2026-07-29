@@ -165,6 +165,12 @@ importers:
       turndown:
         specifier: 7.2.0
         version: 7.2.0
+      winston:
+        specifier: ^3.17.0
+        version: 3.19.0
+      winston-daily-rotate-file:
+        specifier: ^5.0.0
+        version: 5.0.0(winston@3.19.0)
       ws:
         specifier: ^8.21.0
         version: 8.21.0
@@ -1081,12 +1087,6 @@ importers:
       webdav:
         specifier: ^5.9.0
         version: 5.9.0
-      winston:
-        specifier: ^3.17.0
-        version: 3.19.0
-      winston-daily-rotate-file:
-        specifier: ^5.0.0
-        version: 5.0.0(winston@3.19.0)
       word-extractor:
         specifier: ^1.0.4
         version: 1.0.4

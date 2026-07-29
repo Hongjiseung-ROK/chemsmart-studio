@@ -3,9 +3,11 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const projectRoot = path.join(__dirname, '..')
+const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'))
+const version = packageJson.version
 const appPath = path.join(projectRoot, 'dist', 'mac-arm64', 'ChemSmart Studio.app')
 const executablePath = path.join(appPath, 'Contents', 'MacOS', 'ChemSmart Studio')
-const zipPath = path.join(projectRoot, 'dist', 'ChemSmart-Studio-0.1.0-arm64.zip')
+const zipPath = path.join(projectRoot, 'dist', `ChemSmart-Studio-${version}-arm64.zip`)
 const packageExistingApp = process.argv.includes('--package-existing-app')
 
 function run(command, args, options = {}) {
@@ -24,7 +26,7 @@ function run(command, args, options = {}) {
 }
 
 if (process.platform !== 'darwin' || process.arch !== 'arm64') {
-  throw new Error('The internal v0.1.0 package must be built on Apple Silicon macOS')
+  throw new Error(`The internal v${version} package must be built on Apple Silicon macOS`)
 }
 
 if (!packageExistingApp) {
