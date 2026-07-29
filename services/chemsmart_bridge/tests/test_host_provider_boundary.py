@@ -230,6 +230,9 @@ class HostProviderBoundaryTest(unittest.TestCase):
                 def bind_provider(self, _: object) -> None:
                     pass
 
+                def bind_tool_profile(self, _: object) -> None:
+                    pass
+
                 def run_loop(self, _: str, **kwargs: object) -> dict[str, object]:
                     internal_directory = session_root / internal_session_id
                     internal_directory.mkdir()
@@ -330,6 +333,10 @@ class HostProviderBoundaryTest(unittest.TestCase):
             class FailedAgentSession:
                 @staticmethod
                 def bind_provider(_: object) -> None:
+                    pass
+
+                @staticmethod
+                def bind_tool_profile(_: object) -> None:
                     pass
 
                 @staticmethod
