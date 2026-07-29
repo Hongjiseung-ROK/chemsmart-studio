@@ -1,6 +1,6 @@
 {
   "$schema": "./schemas/upstreams-lock.schema.json",
-  "auditDate": "2026-07-28",
+  "auditDate": "2026-07-29",
   "excludedRuntimeSources": [
     "/Users/hongjiseung/developer/chemsmart-chat-interface",
     "/Users/hongjiseung/developer/chemsmart/frontend",
@@ -9,7 +9,7 @@
   "productLicense": "AGPL-3.0-only",
   "upstreams": {
     "chemSmart": {
-      "commit": "84243f892d7b16d3a9308a3cf5816ef1aee633fd",
+      "commit": "a93c6e62b897fd3b122c1edcb3ba4b8f81eacd81",
       "integration": "git-submodule:vendor/chemsmart",
       "license": "GPL-3.0-only",
       "patchState": "patched",
