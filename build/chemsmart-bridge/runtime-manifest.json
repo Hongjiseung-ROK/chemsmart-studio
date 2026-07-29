@@ -4,7 +4,7 @@
   "architecture": "arm64",
   "pythonVersion": "3.11.8",
   "pythonSha256": "47f5755d4096f9d503707bc1bc1103aa2e78d35bd3fcc85949c1825d294c1aa2",
-  "dependencyLockSha256": "910ec9002578faceba12843263c078458addc3ad6473d149208392807f565773",
+  "dependencyLockSha256": "2db1a01e390679afbcac7dc04a33215f95c25c39d5038815073fb9760044b4ac",
   "installationMode": "locked-non-editable",
   "portable": true,
   "absoluteSymlinks": 0
