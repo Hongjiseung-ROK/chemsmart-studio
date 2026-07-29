@@ -1907,6 +1907,11 @@
         "waiting": "等待中"
       },
       "artifacts": "产物与结果",
+      "control": {
+        "queue": "[to be translated]:Queue as the next turn",
+        "steer": "[to be translated]:Steer at the next safe boundary",
+        "stop": "[to be translated]:Stop the active turn"
+      },
       "current_session": "当前研究会话",
       "discovery": {
         "current_molecule": "当前分子",
@@ -1918,7 +1923,9 @@
         "inspect_description": "编写分子检查请求",
         "label": "智能体编辑器建议",
         "preflight": "准备 xTB 预检",
-        "preflight_description": "编写不会执行计算的安全预检请求"
+        "preflight_description": "编写不会执行计算的安全预检请求",
+        "remove": "[to be translated]:Remove {{label}}",
+        "selected": "[to be translated]:Selected Agent context"
       },
       "empty_description": "询问当前显示的分子、准备计算或检查结果。",
       "empty_title": "可以开始科研任务",
@@ -1926,6 +1933,8 @@
       "history": "对话历史",
       "history_description": "本会话中的公开推理摘要与宿主报告的工具活动。",
       "history_empty": "本会话尚未记录智能体回合。",
+      "history_no_results": "[to be translated]:No matching conversations",
+      "history_search": "[to be translated]:Search conversations",
       "imported": "导入的旧版对话",
       "more": "更多智能体操作",
       "new": "新建对话",

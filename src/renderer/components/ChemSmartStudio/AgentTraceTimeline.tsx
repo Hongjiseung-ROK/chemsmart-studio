@@ -174,7 +174,12 @@ function AgentTurnEventCard({ event, live }: { event: StudioAgentTurnEvent; live
           <span className="truncate">{event.tool.toolName}</span>
         </Badge>
       ) : null}
-      <span className="min-w-0 flex-1 truncate text-left font-medium text-foreground">{event.summary}</span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate font-medium text-foreground">{event.tool?.purpose ?? event.summary}</span>
+        {event.tool && event.tool.purpose !== event.summary ? (
+          <span className="block truncate text-foreground-muted text-xs">{event.summary}</span>
+        ) : null}
+      </span>
       {event.status === 'running' ? <RunningWave /> : null}
       {event.tool?.durationMs !== undefined ? (
         <span className="shrink-0 font-mono text-foreground-muted text-xs">

@@ -31,7 +31,7 @@ import {
   RotateCcw,
   TriangleAlert
 } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 
@@ -230,6 +230,7 @@ export function ChemSmartWorkspace({
   const [agentReviewRequestId, setAgentReviewRequestId] = useState(0)
   const [agentTurnBusy, setAgentTurnBusy] = useState(false)
   const [agentTurnFailed, setAgentTurnFailed] = useState(false)
+  const agentTurnControlRef = useRef<'stop' | 'steer' | null>(null)
   const [moleculeSummary, setMoleculeSummary] = useState<ChemSmartStudioMoleculeSummary | null>(null)
   const [documentName, setDocumentName] = useState<string | null>(null)
   const [agentCapabilities, setAgentCapabilities] = useState<StudioAgentCapability[]>([])
@@ -325,16 +326,47 @@ export function ChemSmartWorkspace({
 
     setAgentTurnBusy(true)
     setAgentTurnFailed(false)
+    agentTurnControlRef.current = null
     try {
       await ipcApi.request('chemsmart_studio.agent.run_turn', { sessionId, modelId, request, intent })
-      setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
+      setAgentComposer((current) =>
+        current.value.trim() === request ? { selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' } : current
+      )
     } catch (error) {
-      setAgentTurnFailed(true)
-      logger.error('ChemSmart Agent turn failed', error as Error)
+      if (agentTurnControlRef.current === null) {
+        setAgentTurnFailed(true)
+        logger.error('ChemSmart Agent turn failed', error as Error)
+      }
     } finally {
       setAgentTurnBusy(false)
+      agentTurnControlRef.current = null
     }
   }, [activeModelId, agentCapabilities, agentComposer.value, agentTurnBusy, onCreateThread, sessionId, t])
+
+  const controlAgentTurn = useCallback(
+    async (action: 'stop' | 'steer' | 'queue') => {
+      const request = agentComposer.value.trim()
+      if (action !== 'stop' && request.length === 0) return
+      const intent = action === 'stop' ? null : composerIntent(request, agentCapabilities)
+      if (intent?.capability === 'navigation') return
+      if (action === 'stop' || action === 'steer') agentTurnControlRef.current = action
+      setAgentTurnFailed(false)
+      try {
+        await ipcApi.request(
+          'chemsmart_studio.agent.control_turn',
+          action === 'stop' ? { sessionId, action } : { sessionId, action, request, intent }
+        )
+        if (action !== 'stop') {
+          setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
+        }
+      } catch (error) {
+        if (action === 'stop' || action === 'steer') agentTurnControlRef.current = null
+        setAgentTurnFailed(true)
+        logger.error('ChemSmart Agent turn control failed', error as Error)
+      }
+    },
+    [agentCapabilities, agentComposer.value, sessionId]
+  )
 
   const refreshControlSnapshot = useCallback(async () => {
     const requestId = ++controlRequestRef.current
@@ -431,6 +463,14 @@ export function ChemSmartWorkspace({
     if (event.threadId !== sessionId) return
     setAgentTurnEvents((current) => mergeAgentTurnEvent(current, event))
   })
+
+  const projectedAgentBusy = useMemo(() => {
+    const terminalTurns = new Set(
+      agentTurnEvents.filter((event) => event.kind === 'turn_terminal').map((event) => event.turnId)
+    )
+    return agentTurnEvents.some((event) => event.kind === 'user_message' && !terminalTurns.has(event.turnId))
+  }, [agentTurnEvents])
+  const agentBusy = agentTurnBusy || projectedAgentBusy
 
   useIpcOn('chemsmart_studio.molecule.changed', (summary) => {
     setMoleculeSummary(summary)
@@ -969,16 +1009,12 @@ export function ChemSmartWorkspace({
   useHotkeys(
     'escape',
     () => {
-      if (sheetPane !== null) {
-        if (sheetPane === 'agent') setInspectorOpen(false)
-        if (isBottomPane(sheetPane)) setBottomOpen(false)
-      }
       setSheetPane(null)
       setSettingsOpen(false)
       setPaletteOpen(false)
     },
     { enabled: active },
-    [active, setBottomOpen, setInspectorOpen, sheetPane]
+    [active]
   )
   // The molecule is owned by main, not by the helper process. It stays readable and editable when
   // the helper is stopped or has crashed — losing the structure because a renderer died was the
@@ -1272,8 +1308,6 @@ export function ChemSmartWorkspace({
         onInspectorSizeChange={inspectorPane.setNormalizedSize}
         onSheetOpenChange={(open) => {
           if (open || sheetPane === null) return
-          if (sheetPane === 'agent') setInspectorOpen(false)
-          if (isBottomPane(sheetPane)) setBottomOpen(false)
           setSheetPane(null)
         }}
         bottom={
@@ -1412,7 +1446,7 @@ export function ChemSmartWorkspace({
             activeThreadId={sessionId}
             artifacts={agentArtifacts}
             available={activeAgentModelId !== null}
-            busy={agentTurnBusy}
+            busy={agentBusy}
             capabilities={agentCapabilities}
             composer={agentComposer}
             failed={agentTurnFailed}
@@ -1433,7 +1467,7 @@ export function ChemSmartWorkspace({
             turnEvents={agentTurnEvents}
             onClose={() => {
               if (tier === 'viewport-only') setSheetPane(null)
-              setInspectorOpen(false)
+              else setInspectorOpen(false)
             }}
             onComposerChange={setAgentComposer}
             onCreateThread={() =>
@@ -1444,8 +1478,11 @@ export function ChemSmartWorkspace({
               )
             }
             onOpenProperties={() => openPane('properties')}
+            onQueue={() => void controlAgentTurn('queue')}
             onRenameThread={(threadId, title) => void onRenameThread?.(threadId, title)}
             onSelectThread={(threadId) => void onSelectThread?.(threadId)}
+            onSteer={() => void controlAgentTurn('steer')}
+            onStop={() => void controlAgentTurn('stop')}
             onSubmit={() => void runAgentTurn()}
           />
         }

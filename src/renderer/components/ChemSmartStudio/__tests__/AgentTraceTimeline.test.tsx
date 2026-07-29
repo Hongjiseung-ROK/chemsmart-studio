@@ -98,6 +98,8 @@ describe('AgentTraceTimeline', () => {
     render(<AgentTraceTimeline events={[turnEvent]} />)
 
     expect(screen.getByText('prepare_xtb')).toBeInTheDocument()
+    expect(screen.getByText('Prepare xTB preflight')).toBeInTheDocument()
+    expect(screen.getByText('Validating the immutable molecule snapshot')).toBeInTheDocument()
     expect(screen.getByTestId('agent-trace-running-wave')).toHaveAttribute('aria-hidden', 'true')
     fireEvent.click(screen.getByRole('button', { name: /prepare_xtb/i }))
     expect(screen.getByText('engine')).toBeInTheDocument()

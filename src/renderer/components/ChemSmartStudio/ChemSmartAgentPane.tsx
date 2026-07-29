@@ -24,11 +24,14 @@ import {
   Bot,
   ChevronRight,
   FilePlus2,
+  Forward,
   History,
+  ListPlus,
   MoreHorizontal,
   Plus,
   ShieldQuestion,
   Slash,
+  Square,
   X
 } from 'lucide-react'
 import {
@@ -108,8 +111,11 @@ interface ChemSmartAgentPaneProps {
   onComposerChange: (snapshot: AgentComposerSnapshot) => void
   onCreateThread: () => void
   onOpenProperties: () => void
+  onQueue: () => void
   onRenameThread: (threadId: string, title: string) => void
   onSelectThread: (threadId: string) => void
+  onSteer: () => void
+  onStop: () => void
   onSubmit: () => void
 }
 
@@ -153,8 +159,11 @@ export function ChemSmartAgentPane({
   onComposerChange,
   onCreateThread,
   onOpenProperties,
+  onQueue,
   onRenameThread,
   onSelectThread,
+  onSteer,
+  onStop,
   onSubmit
 }: ChemSmartAgentPaneProps) {
   const { t } = useTranslation()
@@ -164,6 +173,8 @@ export function ChemSmartAgentPane({
   const [reviewArtifactId, setReviewArtifactId] = useState<string | null>(null)
   const [reviewMode, setReviewMode] = useState<'artifact' | 'decisions' | 'history' | null>(null)
   const [activeSuggestion, setActiveSuggestion] = useState(0)
+  const [dismissedDiscoveryKey, setDismissedDiscoveryKey] = useState<string | null>(null)
+  const [historyQuery, setHistoryQuery] = useState('')
   const [renameTitle, setRenameTitle] = useState(threadTitle)
   const discovery = useMemo(
     () => findDiscovery(composer.value, composer.selectionStart),
@@ -184,15 +195,28 @@ export function ChemSmartAgentPane({
       }),
     [capabilities]
   )
+  const discoveryKey = discovery ? `${composer.value}:${composer.selectionStart}` : null
   const suggestions = useMemo(() => {
-    if (!discovery) return []
+    if (!discovery || discoveryKey === dismissedDiscoveryKey) return []
     return composerCapabilities.filter(
       (capability) =>
         capability.trigger === discovery.trigger &&
         (capability.insertText.toLocaleLowerCase().includes(discovery.query) ||
           capability.label.toLocaleLowerCase().includes(discovery.query))
     )
-  }, [composerCapabilities, discovery])
+  }, [composerCapabilities, discovery, discoveryKey, dismissedDiscoveryKey])
+  const selectedCapabilities = useMemo(
+    () =>
+      composerCapabilities.filter((capability) =>
+        composer.value.split(/\s+/).some((token) => token === capability.insertText)
+      ),
+    [composer.value, composerCapabilities]
+  )
+  const visibleThreads = useMemo(() => {
+    const query = historyQuery.trim().toLocaleLowerCase()
+    if (!query) return threads
+    return threads.filter((thread) => thread.title.toLocaleLowerCase().includes(query))
+  }, [historyQuery, threads])
   const selectedArtifact = artifacts.find((artifact) => artifact.id === reviewArtifactId) ?? null
   const reviewOpen = reviewMode !== null
 
@@ -212,7 +236,10 @@ export function ChemSmartAgentPane({
   }, [reviewRequestId])
 
   const updateComposer = useCallback(
-    (element: HTMLTextAreaElement) => onComposerChange(snapshotFromTextarea(element)),
+    (element: HTMLTextAreaElement) => {
+      setDismissedDiscoveryKey(null)
+      onComposerChange(snapshotFromTextarea(element))
+    },
     [onComposerChange]
   )
 
@@ -228,12 +255,34 @@ export function ChemSmartAgentPane({
         scrollTop: composer.scrollTop,
         value: nextValue
       })
+      setDismissedDiscoveryKey(null)
       requestAnimationFrame(() => {
         textareaRef.current?.focus()
         textareaRef.current?.setSelectionRange(nextCursor, nextCursor)
       })
     },
     [composer, discovery, onComposerChange]
+  )
+
+  const removeSelectedCapability = useCallback(
+    (capability: AgentComposerCapability) => {
+      const token = [...composer.value.matchAll(/\S+/g)].find((match) => match[0] === capability.insertText)
+      if (token?.index === undefined) return
+      let start = token.index
+      let end = start + token[0].length
+      if (end < composer.value.length && /\s/.test(composer.value[end])) end += 1
+      else if (start > 0 && /\s/.test(composer.value[start - 1])) start -= 1
+      const value = `${composer.value.slice(0, start)}${composer.value.slice(end)}`
+      const cursor = Math.min(start, value.length)
+      onComposerChange({
+        selectionEnd: cursor,
+        selectionStart: cursor,
+        scrollTop: composer.scrollTop,
+        value
+      })
+      requestAnimationFrame(() => textareaRef.current?.focus())
+    },
+    [composer, onComposerChange]
   )
 
   const openReview = (
@@ -409,10 +458,32 @@ export function ChemSmartAgentPane({
             {t('chemsmart_studio.workspace.agent_turn_failed')}
           </p>
         ) : null}
+        {selectedCapabilities.length > 0 ? (
+          <div
+            aria-label={t('chemsmart_studio.agent_workbench.discovery.selected')}
+            className="mb-2 flex flex-wrap gap-1.5">
+            {selectedCapabilities.map((capability) => (
+              <Button
+                aria-label={t('chemsmart_studio.agent_workbench.discovery.remove', {
+                  label: capability.label
+                })}
+                className="h-8 max-w-full gap-1.5 rounded-full px-2.5"
+                key={capability.id}
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => removeSelectedCapability(capability)}>
+                <span className="truncate">{capability.label}</span>
+                <X aria-hidden className="size-3.5 shrink-0" />
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {suggestions.length > 0 ? (
           <div
             aria-label={t('chemsmart_studio.agent_workbench.discovery.label')}
             className="absolute right-3 bottom-full left-3 z-20 mb-2 overflow-hidden rounded-lg border border-border bg-popover shadow-lg"
+            id="chemsmart-agent-suggestions"
             role="listbox">
             {suggestions.map((capability, index) => {
               const Icon = triggerIcons[capability.trigger]
@@ -424,6 +495,7 @@ export function ChemSmartAgentPane({
                     'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                     activeSuggestion === index && 'bg-accent'
                   )}
+                  id={`chemsmart-agent-suggestion-${index}`}
                   key={capability.id}
                   role="option"
                   type="button"
@@ -444,8 +516,11 @@ export function ChemSmartAgentPane({
           {t('chemsmart_studio.workspace.agent_request')}
         </label>
         <Textarea.Input
+          aria-activedescendant={suggestions.length > 0 ? `chemsmart-agent-suggestion-${activeSuggestion}` : undefined}
+          aria-controls={suggestions.length > 0 ? 'chemsmart-agent-suggestions' : undefined}
           aria-describedby="chemsmart-agent-composer-help"
-          disabled={busy}
+          aria-expanded={suggestions.length > 0}
+          aria-haspopup="listbox"
           id="chemsmart-agent-request"
           maxLength={100000}
           placeholder={t('chemsmart_studio.workspace.agent_request_placeholder')}
@@ -468,14 +543,8 @@ export function ChemSmartAgentPane({
               }
               if (event.key === 'Escape') {
                 event.preventDefault()
-                const cursor = event.currentTarget.selectionStart
-                const next = `${composer.value.slice(0, cursor)} ${composer.value.slice(cursor)}`
-                onComposerChange({
-                  selectionEnd: cursor + 1,
-                  selectionStart: cursor + 1,
-                  scrollTop: event.currentTarget.scrollTop,
-                  value: next
-                })
+                event.stopPropagation()
+                if (discoveryKey) setDismissedDiscoveryKey(discoveryKey)
                 return
               }
             }
@@ -491,20 +560,60 @@ export function ChemSmartAgentPane({
           <p className="min-w-0 truncate text-foreground-muted text-xs" id="chemsmart-agent-composer-help">
             {t('chemsmart_studio.agent_workbench.discovery.hint')}
           </p>
-          <Button
-            aria-label={t('chemsmart_studio.workspace.send_agent_request')}
-            className="size-8 shrink-0"
-            disabled={!available || composer.value.trim().length === 0}
-            loading={busy}
-            size="icon-sm"
-            type="submit">
-            <ArrowUp aria-hidden className="size-4" />
-          </Button>
+          {busy ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <Tooltip content={t('chemsmart_studio.agent_workbench.control.stop')}>
+                <Button
+                  aria-label={t('chemsmart_studio.agent_workbench.control.stop')}
+                  className="size-8"
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                  onClick={onStop}>
+                  <Square aria-hidden className="size-3.5 fill-current" />
+                </Button>
+              </Tooltip>
+              <Tooltip content={t('chemsmart_studio.agent_workbench.control.steer')}>
+                <Button
+                  aria-label={t('chemsmart_studio.agent_workbench.control.steer')}
+                  className="size-8"
+                  disabled={!available || composer.value.trim().length === 0}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                  onClick={onSteer}>
+                  <Forward aria-hidden className="size-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip content={t('chemsmart_studio.agent_workbench.control.queue')}>
+                <Button
+                  aria-label={t('chemsmart_studio.agent_workbench.control.queue')}
+                  className="size-8"
+                  disabled={!available || composer.value.trim().length === 0}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                  onClick={onQueue}>
+                  <ListPlus aria-hidden className="size-4" />
+                </Button>
+              </Tooltip>
+            </div>
+          ) : (
+            <Button
+              aria-label={t('chemsmart_studio.workspace.send_agent_request')}
+              className="size-8 shrink-0"
+              disabled={!available || composer.value.trim().length === 0}
+              size="icon-sm"
+              type="submit">
+              <ArrowUp aria-hidden className="size-4" />
+            </Button>
+          )}
         </div>
       </form>
 
       <Drawer
         direction="right"
+        handleOnly
         open={reviewOpen}
         onOpenChange={(open) => {
           if (!open) closeReview()
@@ -543,6 +652,12 @@ export function ChemSmartAgentPane({
                   <p className="text-foreground-muted text-sm">{t('chemsmart_studio.agent_workbench.history_empty')}</p>
                 ) : (
                   <>
+                    <Input
+                      aria-label={t('chemsmart_studio.agent_workbench.history_search')}
+                      autoComplete="off"
+                      value={historyQuery}
+                      onChange={(event) => setHistoryQuery(event.currentTarget.value)}
+                    />
                     <form
                       className="flex items-center gap-2"
                       onSubmit={(event) => {
@@ -560,31 +675,37 @@ export function ChemSmartAgentPane({
                         {t('common.save')}
                       </Button>
                     </form>
-                    <ol className="space-y-2">
-                      {threads.map((thread) => (
-                        <li key={thread.threadId}>
-                          <Button
-                            aria-current={thread.threadId === activeThreadId ? 'page' : undefined}
-                            className="h-auto min-h-10 w-full justify-start px-3 py-2 text-left"
-                            variant={thread.threadId === activeThreadId ? 'secondary' : 'ghost'}
-                            onClick={() => {
-                              onSelectThread(thread.threadId)
-                              closeReview()
-                            }}>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium text-sm">{thread.title}</span>
-                              <span className="block text-foreground-muted text-xs">
-                                {thread.imported
-                                  ? t('chemsmart_studio.agent_workbench.imported')
-                                  : t('chemsmart_studio.agent_workbench.turn_count', {
-                                      count: thread.activityCount
-                                    })}
+                    {visibleThreads.length === 0 ? (
+                      <p className="text-foreground-muted text-sm">
+                        {t('chemsmart_studio.agent_workbench.history_no_results')}
+                      </p>
+                    ) : (
+                      <ol className="space-y-2">
+                        {visibleThreads.map((thread) => (
+                          <li key={thread.threadId}>
+                            <Button
+                              aria-current={thread.threadId === activeThreadId ? 'page' : undefined}
+                              className="h-auto min-h-10 w-full justify-start px-3 py-2 text-left"
+                              variant={thread.threadId === activeThreadId ? 'secondary' : 'ghost'}
+                              onClick={() => {
+                                onSelectThread(thread.threadId)
+                                closeReview()
+                              }}>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium text-sm">{thread.title}</span>
+                                <span className="block text-foreground-muted text-xs">
+                                  {thread.imported
+                                    ? t('chemsmart_studio.agent_workbench.imported')
+                                    : t('chemsmart_studio.agent_workbench.turn_count', {
+                                        count: thread.activityCount
+                                      })}
+                                </span>
                               </span>
-                            </span>
-                          </Button>
-                        </li>
-                      ))}
-                    </ol>
+                            </Button>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
                   </>
                 )
               ) : reviewMode === 'decisions' ? (

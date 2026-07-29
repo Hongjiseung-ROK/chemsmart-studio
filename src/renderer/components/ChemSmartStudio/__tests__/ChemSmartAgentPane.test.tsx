@@ -39,13 +39,21 @@ function traceEvent(overrides: Partial<StudioAgentTurnEvent> = {}): StudioAgentT
 
 function PaneHarness({
   artifacts = [],
+  busy = false,
   pendingDecisionCount = 0,
   turnEvents = [],
+  onQueue = vi.fn(),
+  onSteer = vi.fn(),
+  onStop = vi.fn(),
   onSubmit = vi.fn()
 }: {
   artifacts?: readonly AgentWorkbenchArtifact[]
+  busy?: boolean
   pendingDecisionCount?: number
   turnEvents?: readonly StudioAgentTurnEvent[]
+  onQueue?: () => void
+  onSteer?: () => void
+  onStop?: () => void
   onSubmit?: () => void
 }) {
   const [composer, setComposer] = useState(initialComposer)
@@ -54,7 +62,7 @@ function PaneHarness({
       activeThreadId="thread-1"
       artifacts={artifacts}
       available
-      busy={false}
+      busy={busy}
       capabilities={[
         {
           capability: 'inspect',
@@ -94,8 +102,11 @@ function PaneHarness({
       onComposerChange={setComposer}
       onCreateThread={vi.fn()}
       onOpenProperties={vi.fn()}
+      onQueue={onQueue}
       onRenameThread={vi.fn()}
       onSelectThread={vi.fn()}
+      onSteer={onSteer}
+      onStop={onStop}
       onSubmit={onSubmit}
     />
   )
@@ -137,7 +148,61 @@ describe('ChemSmartAgentPane', () => {
     await user.keyboard('{Enter}')
 
     expect(composer).toHaveValue('@current_molecule ')
+    await user.click(
+      screen.getByRole('button', {
+        name: 'chemsmart_studio.agent_workbench.discovery.remove'
+      })
+    )
+    expect(composer).toHaveValue('')
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('closes discovery with Escape without mutating the composer and exposes combobox relationships', async () => {
+    const user = userEvent.setup()
+    render(<PaneHarness />)
+    const composer = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
+
+    await user.click(composer)
+    await user.type(composer, '/ins')
+    expect(composer).toHaveAttribute('aria-expanded', 'true')
+    expect(composer).toHaveAttribute('aria-controls', 'chemsmart-agent-suggestions')
+    expect(composer).toHaveAttribute('aria-activedescendant', 'chemsmart-agent-suggestion-0')
+
+    await user.keyboard('{Escape}')
+    expect(composer).toHaveValue('/ins')
+    expect(composer).toHaveFocus()
+    expect(composer).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('keeps the composer editable while busy and offers explicit Stop, Steer, and Queue actions', async () => {
+    const user = userEvent.setup()
+    const onQueue = vi.fn()
+    const onSteer = vi.fn()
+    const onStop = vi.fn()
+    render(<PaneHarness busy onQueue={onQueue} onSteer={onSteer} onStop={onStop} />)
+    const composer = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
+
+    await user.type(composer, 'Inspect the next frame')
+    expect(composer).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.control.steer' }))
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.control.queue' }))
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.control.stop' }))
+
+    expect(onSteer).toHaveBeenCalledOnce()
+    expect(onQueue).toHaveBeenCalledOnce()
+    expect(onStop).toHaveBeenCalledOnce()
+  })
+
+  it('searches project conversation history without changing the active thread', async () => {
+    const user = userEvent.setup()
+    render(<PaneHarness />)
+    fireEvent.click(screen.getByRole('button', { name: 'chemsmart_studio.agent_workbench.history' }))
+    const search = screen.getByRole('textbox', { name: 'chemsmart_studio.agent_workbench.history_search' })
+
+    await user.type(search, 'missing')
+    expect(screen.getByText('chemsmart_studio.agent_workbench.history_no_results')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Water optimization/ })).toBeNull()
   })
 
   it('shows trusted lifecycle summaries and never renders undeclared provider or path fields', () => {

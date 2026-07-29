@@ -1907,6 +1907,11 @@
         "waiting": "Waiting"
       },
       "artifacts": "Artifacts and results",
+      "control": {
+        "queue": "Queue as the next turn",
+        "steer": "Steer at the next safe boundary",
+        "stop": "Stop the active turn"
+      },
       "current_session": "Current research session",
       "discovery": {
         "current_molecule": "Current molecule",
@@ -1918,7 +1923,9 @@
         "inspect_description": "Compose an inspection request",
         "label": "Agent composer suggestions",
         "preflight": "Prepare xTB preflight",
-        "preflight_description": "Compose a safe preflight request without executing"
+        "preflight_description": "Compose a safe preflight request without executing",
+        "remove": "Remove {{label}}",
+        "selected": "Selected Agent context"
       },
       "empty_description": "Ask about the visible molecule, prepare a calculation, or inspect a result.",
       "empty_title": "Ready for a scientific task",
@@ -1926,6 +1933,8 @@
       "history": "Conversation history",
       "history_description": "Public reasoning summaries and host-reported tool activity for this session.",
       "history_empty": "No Agent turns have been recorded in this session.",
+      "history_no_results": "No matching conversations",
+      "history_search": "Search conversations",
       "imported": "Imported legacy conversation",
       "more": "More Agent actions",
       "new": "New conversation",

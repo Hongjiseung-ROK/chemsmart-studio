@@ -761,6 +761,27 @@ describe('ChemSmartStudioPanel', () => {
   it('keeps compact chrome and presents the active Agent intent in one relative Sheet', async () => {
     stubWorkspaceSize(760, 560)
     const user = userEvent.setup()
+    const baseRequest = ipcMocks.request.getMockImplementation()!
+    ipcMocks.request.mockImplementation(async (route: string, ...args: unknown[]) => {
+      if (route === 'chemsmart_studio.agent.capabilities') {
+        return {
+          extensions: {},
+          generatedAt: '2026-07-29T00:00:00Z',
+          items: [
+            {
+              capability: 'inspect',
+              description: 'Inspect the current scientific context.',
+              discovery: 'command',
+              key: 'inspect',
+              label: 'Inspect'
+            }
+          ],
+          projectId: 'project-1',
+          threadId: 'topic-a'
+        }
+      }
+      return baseRequest(route, ...args)
+    })
     render(<ChemSmartStudioPanel active sessionId="topic-a" />)
     await screen.findByTestId('molecule-stage')
 
@@ -781,6 +802,17 @@ describe('ChemSmartStudioPanel', () => {
       'aria-expanded',
       'false'
     )
+
+    const composer = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
+    await user.click(composer)
+    await user.type(composer, '/ins')
+    expect(
+      screen.getByRole('listbox', { name: 'chemsmart_studio.agent_workbench.discovery.label' })
+    ).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(composer).toHaveValue('/ins')
+    expect(composer).toHaveFocus()
+    expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
 
     await user.click(screen.getByRole('button', { name: 'chemsmart_studio.ide.open_views' }))
     expect(screen.getByRole('dialog', { name: 'chemsmart_studio.ide.palette.title' })).toBeInTheDocument()

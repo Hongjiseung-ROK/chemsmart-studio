@@ -1,7 +1,7 @@
 import { Button } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { X } from 'lucide-react'
-import { type KeyboardEvent, type ReactNode, useRef } from 'react'
+import { type KeyboardEvent, type ReactNode, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { compactStudioRelativeLayout, isBottomPane, type StudioPaneId } from './studioLayout'
@@ -20,15 +20,36 @@ interface StudioPaneSheetProps {
 export function StudioPaneSheet({ children, onOpenChange, open, pane }: StudioPaneSheetProps) {
   const { t } = useTranslation()
   const contentRef = useRef<HTMLDivElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
   const bottom = isBottomPane(pane)
   const titleId = `studio-pane-sheet-${pane}-title`
+  const labelledBy = pane === 'agent' ? 'chemsmart-agent-pane-title' : titleId
+
+  useEffect(() => {
+    if (!open) return
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    returnFocusRef.current = activeElement
+    if (activeElement && contentRef.current?.contains(activeElement)) return
+    const frame = requestAnimationFrame(() => {
+      const focusable = contentRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+      ;(focusable ?? contentRef.current)?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [open, pane])
 
   if (!open) return null
+
+  const close = () => {
+    onOpenChange(false)
+    requestAnimationFrame(() => returnFocusRef.current?.focus())
+  }
 
   const trapFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault()
-      onOpenChange(false)
+      close()
       return
     }
     if (event.key !== 'Tab') return
@@ -56,10 +77,10 @@ export function StudioPaneSheet({ children, onOpenChange, open, pane }: StudioPa
         className="absolute inset-0 cursor-default bg-black/35"
         tabIndex={-1}
         type="button"
-        onClick={() => onOpenChange(false)}
+        onClick={close}
       />
       <div
-        aria-labelledby={titleId}
+        aria-labelledby={labelledBy}
         aria-modal="false"
         className={cn(
           'absolute flex min-h-0 flex-col border-border bg-background shadow-xl',
@@ -70,25 +91,28 @@ export function StudioPaneSheet({ children, onOpenChange, open, pane }: StudioPa
         data-testid="studio-pane-sheet"
         ref={contentRef}
         role="dialog"
+        tabIndex={-1}
         style={
           bottom
             ? { height: `${compactStudioRelativeLayout.bottom * 100}%` }
             : { width: `${compactStudioRelativeLayout.inspector * 100}%` }
         }
         onKeyDown={trapFocus}>
-        <header className="flex shrink-0 items-center justify-between border-border border-b px-3 py-2">
-          <h2 className="font-semibold text-foreground" id={titleId}>
-            {t(`chemsmart_studio.ide.pane.${pane}`)}
-          </h2>
-          <Button
-            aria-label={t('common.close')}
-            className="size-8 text-foreground-muted hover:text-foreground"
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => onOpenChange(false)}>
-            <X aria-hidden className="size-4" />
-          </Button>
-        </header>
+        {pane !== 'agent' ? (
+          <header className="flex shrink-0 items-center justify-between border-border border-b px-3 py-2">
+            <h2 className="font-semibold text-foreground" id={titleId}>
+              {t(`chemsmart_studio.ide.pane.${pane}`)}
+            </h2>
+            <Button
+              aria-label={t('common.close')}
+              className="size-8 text-foreground-muted hover:text-foreground"
+              size="icon-sm"
+              variant="ghost"
+              onClick={close}>
+              <X aria-hidden className="size-4" />
+            </Button>
+          </header>
+        ) : null}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       </div>
     </div>

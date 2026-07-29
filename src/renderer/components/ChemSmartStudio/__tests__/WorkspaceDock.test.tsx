@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -26,6 +26,8 @@ function dock(
     inspector?: ReactNode
     inspectorActivatedAt?: number
     inspectorOpen?: boolean
+    onSheetOpenChange?: (open: boolean) => void
+    sheetPane?: 'agent' | null
     tier?: StudioLayoutTier
   } = {}
 ) {
@@ -52,12 +54,12 @@ function dock(
       railExpanded
       sheetContexts={{}}
       sheetExplorer={<p>explorer content</p>}
-      sheetPane={null}
+      sheetPane={overrides.sheetPane ?? null}
       onBottomOpenChange={vi.fn()}
       onBottomSizeChange={vi.fn()}
       onInspectorOpenChange={vi.fn()}
       onInspectorSizeChange={vi.fn()}
-      onSheetOpenChange={vi.fn()}
+      onSheetOpenChange={overrides.onSheetOpenChange ?? vi.fn()}
       tier={overrides.tier ?? 'wide'}
     />
   )
@@ -182,6 +184,31 @@ describe('WorkspaceDock', () => {
     expect(screen.queryByTestId('workspace-dock-inspector')).toBeNull()
     expect(screen.queryByTestId('workspace-dock-bottom')).toBeNull()
     expect(screen.getByTestId('workspace-dock-center')).toHaveAttribute('data-open', 'true')
+  })
+
+  it('moves focus into a compact Agent Sheet and returns it when Escape closes the presentation', async () => {
+    const onSheetOpenChange = vi.fn()
+    const { rerender } = renderDock({ inspector: <button>Agent composer</button>, tier: 'viewport-only' })
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Agent toggle'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    rerender(
+      dock({
+        inspector: <button>Agent composer</button>,
+        onSheetOpenChange,
+        sheetPane: 'agent',
+        tier: 'viewport-only'
+      })
+    )
+    const sheet = screen.getByTestId('studio-pane-sheet')
+    await waitFor(() => expect(sheet).toContainElement(document.activeElement as HTMLElement))
+
+    fireEvent.keyDown(sheet, { key: 'Escape' })
+    expect(onSheetOpenChange).toHaveBeenCalledWith(false)
+    await waitFor(() => expect(trigger).toHaveFocus())
+    trigger.remove()
   })
 
   it('keeps the rail docked from the dense tier upwards', () => {
