@@ -237,9 +237,7 @@ class HostProviderBoundaryTest(unittest.TestCase):
                     callback = kwargs["on_session_created"]
                     assert callable(callback)
                     callback(internal_session_id)
-                    binding = (
-                        session_root / "session-1" / "agent-session.json"
-                    )
+                    binding = session_root / "session-1" / "agent-session.json"
                     self.assert_binding(binding)
                     return {
                         "session_id": internal_session_id,
@@ -271,6 +269,55 @@ class HostProviderBoundaryTest(unittest.TestCase):
                 peer.notify.call_args.args[1]["operationId"],
                 OPERATION_ID,
             )
+            studio_session = session_root / "session-1"
+            self.assertEqual(stat.S_IMODE(studio_session.stat().st_mode), 0o700)
+            self.assertEqual(
+                stat.S_IMODE((studio_session / "agent-session.json").stat().st_mode),
+                0o600,
+            )
+
+    def test_project_threads_keep_distinct_private_agent_session_bindings(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            session_root = Path(directory)
+            first_agent_session = "20260726T000000Z-deadbeef"
+            second_agent_session = "20260726T000001Z-cafebabe"
+            for agent_session_id in (
+                first_agent_session,
+                second_agent_session,
+            ):
+                (session_root / agent_session_id).mkdir()
+            runtime = StudioAgentRuntime(session_root)
+
+            runtime._persist_agent_session_binding(
+                "thread-first",
+                first_agent_session,
+            )
+            runtime._persist_agent_session_binding(
+                "thread-second",
+                second_agent_session,
+            )
+
+            self.assertEqual(
+                runtime._read_agent_session_binding("thread-first"),
+                first_agent_session,
+            )
+            self.assertEqual(
+                runtime._read_agent_session_binding("thread-second"),
+                second_agent_session,
+            )
+            for studio_session_id in ("thread-first", "thread-second"):
+                studio_session = session_root / studio_session_id
+                binding = studio_session / "agent-session.json"
+                self.assertEqual(
+                    stat.S_IMODE(studio_session.stat().st_mode),
+                    0o700,
+                )
+                self.assertEqual(
+                    stat.S_IMODE(binding.stat().st_mode),
+                    0o600,
+                )
 
     def test_incomplete_agent_turn_fails_the_host_request(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

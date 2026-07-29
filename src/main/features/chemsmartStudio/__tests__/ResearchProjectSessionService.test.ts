@@ -120,6 +120,7 @@ describe('ResearchProjectSessionService', () => {
     expect(created.threads).toHaveLength(2)
     expect(created.activeThreadId).toBe(created.threads[1].threadId)
     const createdId = created.threads[1].threadId
+    expect(createdId).not.toBe(seeded.activeThreadId)
 
     const renamed = await service.renameThread(createdId, 'TS search, def2-SVP')
     expect(renamed.threads[1].title).toBe('TS search, def2-SVP')
@@ -147,6 +148,22 @@ describe('ResearchProjectSessionService', () => {
     const stored = await readFile(indexPath(), 'utf8')
     expect(stored).not.toContain('message')
     expect(stored).not.toContain('provider')
+    expect(stored).not.toContain('agentSessionId')
+
+    const storedIndex = await readIndex()
+    expect(Object.keys(storedIndex).sort()).toEqual(['activeThreadId', 'schemaVersion', 'threads'])
+    const storedThreads = storedIndex.threads as Record<string, unknown>[]
+    for (const thread of storedThreads) {
+      expect(Object.keys(thread).sort()).toEqual([
+        'activityCount',
+        'agentBound',
+        'createdAt',
+        'imported',
+        'threadId',
+        'title',
+        'updatedAt'
+      ])
+    }
   })
 
   it('refuses a blank, oversized, or control-character title', async () => {

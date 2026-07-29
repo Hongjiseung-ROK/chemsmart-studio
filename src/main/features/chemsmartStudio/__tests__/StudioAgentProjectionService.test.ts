@@ -21,6 +21,8 @@ describe('StudioAgentProjectionService', () => {
   let root: string
   let service: StudioAgentProjectionService
   const threadId = 'thread-1'
+  const secondThreadId = 'thread-2'
+  const importedThreadId = 'thread-imported'
   const projectId = 'project-1'
 
   beforeEach(async () => {
@@ -42,6 +44,24 @@ describe('StudioAgentProjectionService', () => {
                 activityCount: 0,
                 agentBound: false,
                 imported: false
+              },
+              {
+                threadId: secondThreadId,
+                title: 'Independent optimization',
+                createdAt: '2026-07-29T00:00:00Z',
+                updatedAt: '2026-07-29T00:00:00Z',
+                activityCount: 0,
+                agentBound: false,
+                imported: false
+              },
+              {
+                threadId: importedThreadId,
+                title: 'Imported legacy conversation',
+                createdAt: '2026-07-29T00:00:00Z',
+                updatedAt: '2026-07-29T00:00:00Z',
+                activityCount: 0,
+                agentBound: true,
+                imported: true
               }
             ]
           }),
@@ -131,6 +151,27 @@ describe('StudioAgentProjectionService', () => {
     const stored = await readFile(file, 'utf8')
     expect(stored).not.toContain('providerPayload')
     expect(stored).not.toContain('reasoning_content')
+  })
+
+  it('keeps project threads isolated and does not inject the legacy archive into a new projection', async () => {
+    expect((await service.getPage(importedThreadId, null, 20)).events).toEqual([])
+
+    const first = await service.beginTurn(threadId, 'Inspect the first molecule state.')
+    await service.terminalize(threadId, first.turnId, 'completed', 'First inspection completed.')
+    const second = await service.beginTurn(secondThreadId, 'Plan an independent optimization.')
+    await service.terminalize(secondThreadId, second.turnId, 'completed', 'Independent plan completed.')
+
+    const firstPage = await service.getPage(threadId, null, 20)
+    const secondPage = await service.getPage(secondThreadId, null, 20)
+    expect(firstPage.events.every((event) => event.threadId === threadId)).toBe(true)
+    expect(secondPage.events.every((event) => event.threadId === secondThreadId)).toBe(true)
+    expect(firstPage.events.map((event) => event.summary)).not.toContain('Plan an independent optimization.')
+    expect(secondPage.events.map((event) => event.summary)).not.toContain('Inspect the first molecule state.')
+
+    const directory = path.join(root, projectId)
+    expect((await stat(path.join(directory, `${threadId}.json`))).mode & 0o777).toBe(0o600)
+    expect((await stat(path.join(directory, `${secondThreadId}.json`))).mode & 0o777).toBe(0o600)
+    await expect(stat(path.join(directory, `${importedThreadId}.json`))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('tracks trusted tool order and rejects completion without an active tool', async () => {
