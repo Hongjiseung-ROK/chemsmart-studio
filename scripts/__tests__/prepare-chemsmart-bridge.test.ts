@@ -10,12 +10,14 @@ const {
   findAbsoluteSymlinks,
   normalizeRequirementsHeader,
   readPinnedPythonVersion,
-  removeLocalInstallMetadata
+  removeLocalInstallMetadata,
+  removeOptionalQtArtifacts
 }: {
   findAbsoluteSymlinks: (directory: string) => Array<{ path: string; target: string }>
   normalizeRequirementsHeader: (file: string) => void
   readPinnedPythonVersion: () => string
   removeLocalInstallMetadata: (directory: string) => void
+  removeOptionalQtArtifacts: (directory: string) => string[]
 } = require('../prepare-chemsmart-bridge.js')
 
 const temporaryDirectories: string[] = []
@@ -66,6 +68,27 @@ describe('portable ChemSmart bridge packaging', () => {
     expect(fs.existsSync(path.join(distInfo, 'direct_url.json'))).toBe(false)
     expect(fs.existsSync(cache)).toBe(false)
     expect(fs.existsSync(path.join(directory, 'module.py'))).toBe(true)
+  })
+
+  it('removes unused Qt backend artifacts from the portable runtime', () => {
+    const directory = makeTemporaryDirectory()
+    const sitePackages = path.join(directory, 'lib', 'python3.11', 'site-packages')
+    const matplotlibBackends = path.join(sitePackages, 'matplotlib', 'backends')
+    const rdkitSping = path.join(sitePackages, 'rdkit', 'sping')
+    fs.mkdirSync(path.join(matplotlibBackends, 'qt_editor'), { recursive: true })
+    fs.mkdirSync(path.join(rdkitSping, 'Qt'), { recursive: true })
+    fs.writeFileSync(path.join(matplotlibBackends, 'qt_compat.py'), '')
+    fs.writeFileSync(path.join(matplotlibBackends, 'quantity.py'), '')
+    fs.writeFileSync(path.join(rdkitSping, 'Qt', 'pidQt.py'), '')
+
+    expect(removeOptionalQtArtifacts(directory)).toEqual([
+      'lib/python3.11/site-packages/matplotlib/backends/qt_compat.py',
+      'lib/python3.11/site-packages/matplotlib/backends/qt_editor',
+      'lib/python3.11/site-packages/rdkit/sping/Qt'
+    ])
+    expect(fs.existsSync(path.join(matplotlibBackends, 'qt_compat.py'))).toBe(false)
+    expect(fs.existsSync(path.join(rdkitSping, 'Qt'))).toBe(false)
+    expect(fs.existsSync(path.join(matplotlibBackends, 'quantity.py'))).toBe(true)
   })
 
   it('removes checkout paths from the generated requirements header', () => {

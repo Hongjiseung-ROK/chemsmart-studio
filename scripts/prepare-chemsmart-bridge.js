@@ -53,6 +53,27 @@ function removeLocalInstallMetadata(directory) {
   }
 }
 
+function removeOptionalQtArtifacts(directory) {
+  const sitePackages = path.join(directory, 'lib', 'python3.11', 'site-packages')
+  const removed = []
+
+  function visit(currentDirectory) {
+    if (!fs.existsSync(currentDirectory)) return
+    for (const entry of fs.readdirSync(currentDirectory, { withFileTypes: true })) {
+      const candidate = path.join(currentDirectory, entry.name)
+      if (/^qt/i.test(entry.name)) {
+        removed.push(path.relative(directory, candidate))
+        fs.rmSync(candidate, { force: true, recursive: true })
+      } else if (entry.isDirectory()) {
+        visit(candidate)
+      }
+    }
+  }
+
+  visit(sitePackages)
+  return removed.sort()
+}
+
 function findAbsoluteSymlinks(directory) {
   const results = []
   if (!fs.existsSync(directory)) return results
@@ -142,6 +163,7 @@ function prepareChemSmartBridge() {
   copyPythonStandardLibrary(managedStandardLibrary, path.join(runtimeDirectory, 'lib', 'python3.11'))
   fs.rmSync(path.join(runtimeDirectory, 'pyvenv.cfg'), { force: true })
   removeLocalInstallMetadata(runtimeDirectory)
+  removeOptionalQtArtifacts(runtimeDirectory)
 
   const absoluteSymlinks = findAbsoluteSymlinks(runtimeDirectory)
   if (absoluteSymlinks.length > 0) {
@@ -184,7 +206,8 @@ module.exports = {
   prepareChemSmartBridge,
   normalizeRequirementsHeader,
   readPinnedPythonVersion,
-  removeLocalInstallMetadata
+  removeLocalInstallMetadata,
+  removeOptionalQtArtifacts
 }
 
 if (require.main === module) {
