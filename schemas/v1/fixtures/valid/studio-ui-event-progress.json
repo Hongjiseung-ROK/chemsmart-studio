@@ -1,0 +1,16 @@
+{
+  "eventId": "ui-evt-2",
+  "sessionId": "session-1",
+  "sequence": 1,
+  "timestamp": "2026-07-22T04:10:01Z",
+  "source": "model_tool",
+  "kind": "progress",
+  "payload": {
+    "message": "Optimization frame received.",
+    "runId": "run-1",
+    "stepIndex": 2,
+    "totalSteps": 20,
+    "progress": 0.1
+  },
+  "extensions": { "chemsmart.display": { "priority": "normal" } }
+}

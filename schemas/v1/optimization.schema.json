@@ -1,0 +1,239 @@
+{
+  "$defs": {
+    "cancellationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "status": { "const": "cancelled" },
+        "stepCount": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["runId", "status", "stepCount"],
+      "type": "object"
+    },
+    "completedLogFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "coordinateUnit": { "const": "angstrom" },
+        "energy": { "$ref": "common.schema.json#/$defs/energy" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "positions": {
+          "items": { "$ref": "common.schema.json#/$defs/vector3" },
+          "minItems": 1,
+          "type": "array"
+        },
+        "stepIndex": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["stepIndex", "positions", "coordinateUnit", "energy", "extensions"],
+      "type": "object"
+    },
+    "completedLogReplay": {
+      "additionalProperties": false,
+      "properties": {
+        "atomIds": {
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "atomicNumbers": {
+          "items": { "maximum": 118, "minimum": 1, "type": "integer" },
+          "minItems": 1,
+          "type": "array"
+        },
+        "completed": { "const": true },
+        "engine": { "enum": ["xtb", "gaussian", "orca"] },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "frames": {
+          "items": { "$ref": "#/$defs/completedLogFrame" },
+          "minItems": 1,
+          "type": "array"
+        },
+        "type": { "const": "completed_log_replay" }
+      },
+      "required": ["type", "engine", "completed", "atomIds", "atomicNumbers", "frames", "extensions"],
+      "type": "object"
+    },
+    "finalResponse": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+            "revision": { "$ref": "common.schema.json#/$defs/revision" },
+            "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "type": { "const": "optimization_final_commit" }
+          },
+          "required": ["type", "runId", "revision", "timestamp", "geometryHash"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "revision": { "$ref": "common.schema.json#/$defs/revision" },
+            "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "type": { "const": "optimization_final_rejected" }
+          },
+          "required": ["type", "runId", "revision", "timestamp"],
+          "type": "object"
+        }
+      ]
+    },
+    "gradientNorm": {
+      "additionalProperties": false,
+      "properties": {
+        "unit": { "enum": ["hartree/bohr", "eV/angstrom", "kJ/mol/angstrom"] },
+        "value": { "minimum": 0, "type": "number" }
+      },
+      "required": ["value", "unit"],
+      "type": "object"
+    },
+    "frame": {
+      "additionalProperties": false,
+      "properties": {
+        "atomIds": { "items": { "$ref": "common.schema.json#/$defs/stableId" }, "minItems": 1, "type": "array" },
+        "convergence": {
+          "additionalProperties": false,
+          "properties": {
+            "converged": { "type": "boolean" },
+            "energyChange": { "type": ["number", "null"] },
+            "maxDisplacement": { "minimum": 0, "type": ["number", "null"] },
+            "rmsDisplacement": { "minimum": 0, "type": ["number", "null"] },
+            "threshold": { "minimum": 0, "type": "number" }
+          },
+          "required": ["converged"],
+          "type": "object"
+        },
+        "energy": { "$ref": "common.schema.json#/$defs/energy" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "forceMetrics": {
+          "additionalProperties": false,
+          "properties": {
+            "max": { "type": "number" },
+            "rms": { "type": "number" },
+            "unit": { "enum": ["hartree/bohr", "eV/angstrom", "kJ/mol/angstrom"] }
+          },
+          "required": ["unit"],
+          "type": "object"
+        },
+        "positions": { "items": { "$ref": "common.schema.json#/$defs/vector3" }, "minItems": 1, "type": "array" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "stepIndex": { "minimum": 0, "type": "integer" },
+        "structureHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": [
+        "runId",
+        "stepIndex",
+        "atomIds",
+        "positions",
+        "energy",
+        "forceMetrics",
+        "convergence",
+        "structureHash",
+        "timestamp",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "frameSummary": {
+      "additionalProperties": false,
+      "anyOf": [{ "required": ["forceMetrics"] }, { "required": ["gradientNorm"] }],
+      "properties": {
+        "convergence": { "$ref": "#/$defs/frame/properties/convergence" },
+        "energy": { "$ref": "#/$defs/frame/properties/energy" },
+        "forceMetrics": { "$ref": "#/$defs/frame/properties/forceMetrics" },
+        "gradientNorm": { "$ref": "#/$defs/gradientNorm" },
+        "runId": { "$ref": "#/$defs/frame/properties/runId" },
+        "stepIndex": { "$ref": "#/$defs/frame/properties/stepIndex" },
+        "structureHash": { "$ref": "#/$defs/frame/properties/structureHash" },
+        "timestamp": { "$ref": "#/$defs/frame/properties/timestamp" }
+      },
+      "required": ["runId", "stepIndex", "energy", "structureHash", "timestamp"],
+      "type": "object"
+    },
+    "run": {
+      "additionalProperties": false,
+      "properties": {
+        "constraintIds": {
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "engine": { "enum": ["avogadro", "xtb", "gaussian", "orca"] },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "frozenAtomIds": {
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "inputRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "method": { "maxLength": 256, "minLength": 1, "pattern": "\\S", "type": "string" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "settings": {
+          "additionalProperties": false,
+          "properties": {
+            "charge": { "maximum": 64, "minimum": -64, "type": "integer" },
+            "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+            "forceThreshold": { "minimum": 0, "type": "number" },
+            "maxSteps": { "maximum": 100000, "minimum": 1, "type": "integer" },
+            "multiplicity": { "maximum": 128, "minimum": 1, "type": "integer" },
+            "solvent": { "maxLength": 128, "type": "string" }
+          },
+          "required": ["extensions"],
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "pending_approval",
+            "queued",
+            "running",
+            "completed",
+            "cancelled",
+            "failed",
+            "awaiting_final_geometry"
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "documentId",
+        "inputRevision",
+        "engine",
+        "method",
+        "settings",
+        "frozenAtomIds",
+        "constraintIds",
+        "status",
+        "createdAt",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "statusNotification": {
+      "additionalProperties": false,
+      "properties": {
+        "message": { "type": "string" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "status": { "enum": ["failed", "awaiting_final_geometry"] },
+        "stepCount": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["runId", "status", "message", "stepCount"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v1/optimization.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    { "$ref": "#/$defs/run" },
+    { "$ref": "#/$defs/frame" },
+    { "$ref": "#/$defs/statusNotification" },
+    { "$ref": "#/$defs/cancellationResponse" },
+    { "$ref": "#/$defs/finalResponse" },
+    { "$ref": "#/$defs/completedLogReplay" }
+  ],
+  "title": "Optimization contracts"
+}

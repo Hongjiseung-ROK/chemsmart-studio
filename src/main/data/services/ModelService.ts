@@ -1,0 +1,1094 @@
+/**
+ * Model Service - handles model CRUD operations
+ *
+ * Provides business logic for:
+ * - Model CRUD operations
+ * - Row to Model conversion
+ * - Registry import support
+ */
+
+import { application } from '@application'
+import type { ModelLookupResult } from '@cherrystudio/provider-registry'
+import type { InsertUserModelRow, UserModelRow } from '@data/db/schemas/userModel'
+import { isRegistryEnrichableField, userModelTable } from '@data/db/schemas/userModel'
+import { defaultHandlersFor, type SqliteErrorHandlers, withSqliteErrors } from '@data/db/sqliteErrors'
+import type { DbType } from '@data/db/types'
+import { pinService } from '@data/services/PinService'
+import { mergePresetModel, providerRegistryService } from '@data/services/ProviderRegistryService'
+import { insertManyWithOrderKey } from '@data/services/utils/orderKey'
+import { loggerService } from '@logger'
+import { DataApiErrorFactory } from '@shared/data/api/errors'
+import type { CreateModelDto, ListModelsQuery, UpdateModelDto } from '@shared/data/api/schemas/models'
+import {
+  CHERRYAI_DEFAULT_UNIQUE_MODEL_ID,
+  CHERRYAI_PROVIDER_ID,
+  isManagedCherryAiDefaultModel
+} from '@shared/data/presets/cherryai'
+import type {
+  EndpointType,
+  Modality,
+  Model,
+  ModelCapability,
+  RuntimeParameterSupport,
+  RuntimeReasoning
+} from '@shared/data/types/model'
+import { createUniqueModelId, MODEL_CAPABILITY } from '@shared/data/types/model'
+import type { ReasoningFormatType } from '@shared/data/types/provider'
+import { and, asc, eq, inArray, type SQL } from 'drizzle-orm'
+
+const logger = loggerService.withContext('DataApi:ModelService')
+const SQLITE_INARRAY_CHUNK = 500
+
+/** Reason string for DataApiError when deleting a model currently set as a user default */
+const MODEL_IN_USE_AS_DEFAULT_REASON = 'model is in use as the default model'
+
+/** Resolve the set of UniqueModelIds currently set as user defaults (chat / quick-assistant / translate). */
+function getUserDefaultModelIds(): Set<string> {
+  const preferenceService = application.get('PreferenceService')
+  const ids = [
+    preferenceService.get('chat.default_model_id'),
+    preferenceService.get('feature.quick_assistant.model_id'),
+    preferenceService.get('feature.translate.model_id')
+  ].filter((id): id is string => typeof id === 'string' && id.length > 0)
+  return new Set(ids)
+}
+
+/** Throw INVALID_OPERATION if the model is currently set as a user default. */
+function assertModelNotUsedAsDefaultModel(uniqueModelId: string, operation: string): void {
+  if (getUserDefaultModelIds().has(uniqueModelId)) {
+    throw DataApiErrorFactory.invalidOperation(operation, MODEL_IN_USE_AS_DEFAULT_REASON)
+  }
+}
+
+function assertManagedCherryAiDefaultModelPatchAllowed(providerId: string, modelId: string, dto: UpdateModelDto): void {
+  if (!isManagedCherryAiDefaultModel(providerId, modelId) || Object.keys(dto).length === 0) {
+    return
+  }
+
+  assertManagedCherryAiDefaultModelMutationAllowed(providerId, modelId, `update model ${providerId}/${modelId}`)
+}
+
+function assertManagedCherryAiDefaultModelMutationAllowed(
+  providerId: string,
+  modelId: string,
+  operation: string
+): void {
+  if (!isManagedCherryAiDefaultModel(providerId, modelId)) {
+    return
+  }
+
+  throw DataApiErrorFactory.invalidOperation(operation, 'managed CherryAI default model cannot be modified')
+}
+
+/**
+ * Resolve the effective capability set for a Model row at query-time.
+ *
+ * Anchored on the at-rest user-row capabilities so the user's explicit
+ * capability edits — including removals — survive each read. The ONLY preset
+ * capability unioned in is `image-generation`: the painting model filter must
+ * pick a model up even when the provider's `/models` endpoint shipped it
+ * untagged (e.g. cherryin returning `qwen/qwen-image-edit-2509(free)` with no
+ * capability field). Other preset capabilities are NOT re-added at read time —
+ * doing so would silently resurrect any capability the user removed. Registry
+ * `override.capabilities` still applies (force replaces; add unions; remove
+ * subtracts), matching `applyPresetAndOverride` add-time semantics.
+ */
+function resolveCapabilities(
+  presetCapabilities: readonly ModelCapability[] | undefined,
+  overrideCapabilities: { force?: ModelCapability[]; add?: ModelCapability[]; remove?: ModelCapability[] } | undefined,
+  userCapabilities: readonly ModelCapability[]
+): ModelCapability[] {
+  if (overrideCapabilities?.force) {
+    return [...overrideCapabilities.force]
+  }
+  const set = new Set<ModelCapability>(userCapabilities)
+  if (presetCapabilities?.includes(MODEL_CAPABILITY.IMAGE_GENERATION)) {
+    set.add(MODEL_CAPABILITY.IMAGE_GENERATION)
+  }
+  if (overrideCapabilities?.add) {
+    for (const c of overrideCapabilities.add) set.add(c)
+  }
+  if (overrideCapabilities?.remove) {
+    for (const c of overrideCapabilities.remove) set.delete(c)
+  }
+  return [...set]
+}
+
+/**
+ * Registry data for model creation.
+ * Must stay in sync with the return type of {@link ProviderRegistryService.lookupModel}.
+ * Defined explicitly (not via ReturnType) to avoid a circular import.
+ */
+type CreateModelRegistryData = ModelLookupResult & {
+  reasoningFormatTypes?: Partial<Record<EndpointType, ReasoningFormatType>>
+  defaultChatEndpoint?: EndpointType
+}
+
+type ReconcileRemovalFilterResult = {
+  toRemove: string[]
+  presetBackedRemovalIds: Set<string>
+}
+
+/**
+ * Subset of user-row fields that can override registry-derived baseline values.
+ *
+ * Status fields (`isEnabled`, `isHidden`) are intentionally excluded: they are
+ * user state managed via `PATCH /models/:id`, not preset baseline overrides.
+ * They flow through `...row` spread in the migrator and through the
+ * `mergedModelToNewUserModel` projection in `ModelService.buildCreateValues`.
+ */
+export interface UserModelOverlay {
+  name?: string | null
+  description?: string | null
+  group?: string | null
+  capabilities?: ModelCapability[] | null
+  inputModalities?: Modality[] | null
+  outputModalities?: Modality[] | null
+  endpointTypes?: EndpointType[] | null
+  contextWindow?: number | null
+  maxInputTokens?: number | null
+  maxOutputTokens?: number | null
+  supportsStreaming?: boolean | null
+  // Persisted reasoning rows may have optional fields the runtime type requires;
+  // applyUserOverlay narrows it via cast on copy.
+  reasoning?: Partial<RuntimeReasoning> | null
+}
+
+/**
+ * Apply user-row values on top of a registry-derived baseline Model.
+ *
+ * Composed with `providerRegistryService.mergePresetModel` to produce the
+ * final merged Model that gets persisted: the registry service handles
+ * preset → override resolution, and this overlay handles user precedence.
+ * Truthy/non-null user values win. Empty arrays and null are treated as
+ * "not set" so the registry baseline shows through.
+ */
+export function applyUserOverlay(baseline: Model, overlay: UserModelOverlay): Model {
+  const result: Model = { ...baseline }
+
+  if (overlay.capabilities && overlay.capabilities.length > 0) {
+    result.capabilities = [...overlay.capabilities]
+  }
+  if (overlay.endpointTypes && overlay.endpointTypes.length > 0) {
+    result.endpointTypes = [...overlay.endpointTypes]
+  }
+  if (overlay.inputModalities && overlay.inputModalities.length > 0) {
+    result.inputModalities = [...overlay.inputModalities]
+  }
+  if (overlay.outputModalities && overlay.outputModalities.length > 0) {
+    result.outputModalities = [...overlay.outputModalities]
+  }
+  if (overlay.name) {
+    result.name = overlay.name
+  }
+  if (overlay.description) {
+    result.description = overlay.description
+  }
+  if (overlay.contextWindow != null) {
+    result.contextWindow = overlay.contextWindow
+  }
+  if (overlay.maxInputTokens != null) {
+    result.maxInputTokens = overlay.maxInputTokens
+  }
+  if (overlay.maxOutputTokens != null) {
+    result.maxOutputTokens = overlay.maxOutputTokens
+  }
+  if (overlay.reasoning) {
+    result.reasoning = overlay.reasoning as RuntimeReasoning
+  }
+  if (overlay.supportsStreaming != null) {
+    result.supportsStreaming = overlay.supportsStreaming
+  }
+  if (overlay.group) {
+    result.group = overlay.group
+  }
+
+  return result
+}
+
+export interface CreateModelInput {
+  dto: CreateModelDto
+  registryData?: CreateModelRegistryData
+}
+
+type NewUserModelInput = Omit<InsertUserModelRow, 'orderKey'>
+
+function createModelsSqliteHandlers(values: NewUserModelInput[]): SqliteErrorHandlers {
+  const providerIds = [...new Set(values.map((value) => value.providerId))]
+  const identifier =
+    values.length === 1 ? `${values[0].providerId}/${values[0].modelId}` : `batch(${values.length} items)`
+  const uniqueMessage =
+    values.length === 1 ? `Model '${identifier}' already exists` : 'One or more models already exist'
+
+  return {
+    ...defaultHandlersFor('Model', identifier),
+    unique: () => DataApiErrorFactory.conflict(uniqueMessage, 'Model'),
+    foreignKey: () =>
+      DataApiErrorFactory.notFound('Provider', providerIds.length === 1 ? providerIds[0] : providerIds.join(', '))
+  }
+}
+
+function deleteModelsSqliteHandlers(identifier: string): SqliteErrorHandlers {
+  return {
+    foreignKey: () =>
+      DataApiErrorFactory.invalidOperation(`delete model ${identifier}`, 'model is in use by a knowledge base')
+  } satisfies SqliteErrorHandlers
+}
+
+/**
+ * Mapping from UpdateModelDto field → DB column for the update path.
+ * Entries are either a shared key name, or [dtoKey, dbColumn] when names differ.
+ * Exported for test coverage — ensures no DTO field is silently dropped.
+ */
+export const UPDATE_MODEL_FIELD_MAP: Array<keyof UpdateModelDto | [keyof UpdateModelDto, keyof InsertUserModelRow]> = [
+  'name',
+  'description',
+  'group',
+  'capabilities',
+  'inputModalities',
+  'outputModalities',
+  'endpointTypes',
+  ['parameterSupport', 'parameters'],
+  'supportsStreaming',
+  'contextWindow',
+  'maxInputTokens',
+  'maxOutputTokens',
+  'reasoning',
+  'pricing',
+  'isEnabled',
+  'isHidden',
+  'isDeprecated',
+  'notes'
+]
+
+/** Convert CreateModelDto to an InsertUserModelRow (shared by preset and custom paths). */
+function dtoToNewUserModel(dto: CreateModelDto): NewUserModelInput {
+  return {
+    id: createUniqueModelId(dto.providerId, dto.modelId),
+    providerId: dto.providerId,
+    modelId: dto.modelId,
+    presetModelId: null,
+    name: dto.name ?? dto.modelId,
+    description: dto.description ?? null,
+    group: dto.group ?? null,
+    capabilities: (dto.capabilities ?? []) as ModelCapability[],
+    inputModalities: (dto.inputModalities ?? null) as Modality[] | null,
+    outputModalities: (dto.outputModalities ?? null) as Modality[] | null,
+    endpointTypes: (dto.endpointTypes ?? null) as EndpointType[] | null,
+    contextWindow: dto.contextWindow ?? null,
+    maxInputTokens: dto.maxInputTokens ?? null,
+    maxOutputTokens: dto.maxOutputTokens ?? null,
+    supportsStreaming: dto.supportsStreaming ?? true,
+    reasoning: dto.reasoning ?? null,
+    parameters: dto.parameterSupport ?? null,
+    pricing: dto.pricing ?? null,
+    isEnabled: true,
+    isHidden: false
+  }
+}
+
+/** Convert a merged Model back to an InsertUserModelRow for DB insert. */
+function mergedModelToNewUserModel(
+  providerId: string,
+  modelId: string,
+  presetModelId: string,
+  merged: Model
+): NewUserModelInput {
+  return {
+    id: createUniqueModelId(providerId, modelId),
+    providerId,
+    modelId,
+    presetModelId,
+    name: merged.name,
+    description: merged.description ?? null,
+    group: merged.group ?? null,
+    capabilities: merged.capabilities,
+    inputModalities: merged.inputModalities ?? null,
+    outputModalities: merged.outputModalities ?? null,
+    endpointTypes: merged.endpointTypes ?? null,
+    contextWindow: merged.contextWindow ?? null,
+    maxInputTokens: merged.maxInputTokens ?? null,
+    maxOutputTokens: merged.maxOutputTokens ?? null,
+    supportsStreaming: merged.supportsStreaming,
+    reasoning: merged.reasoning ?? null,
+    parameters: merged.parameterSupport ?? null,
+    pricing: merged.pricing ?? null,
+    isEnabled: merged.isEnabled,
+    isHidden: merged.isHidden
+  }
+}
+
+/**
+ * Convert database row to Model entity
+ *
+ * Since user_model stores fully resolved data (merged at add-time),
+ * this is a direct field mapping with no runtime merge needed.
+ */
+function rowToRuntimeModel(row: UserModelRow): Model {
+  return {
+    id: createUniqueModelId(row.providerId, row.modelId),
+    providerId: row.providerId,
+    apiModelId: row.modelId,
+    presetModelId: row.presetModelId,
+    name: row.name,
+    description: row.description ?? undefined,
+    group: row.group ?? undefined,
+    capabilities: row.capabilities,
+    inputModalities: row.inputModalities ?? undefined,
+    outputModalities: row.outputModalities ?? undefined,
+    contextWindow: row.contextWindow ?? undefined,
+    maxInputTokens: row.maxInputTokens ?? undefined,
+    maxOutputTokens: row.maxOutputTokens ?? undefined,
+    endpointTypes: row.endpointTypes ?? undefined,
+    supportsStreaming: row.supportsStreaming,
+    reasoning: (row.reasoning ?? undefined) as RuntimeReasoning | undefined,
+    parameterSupport: (row.parameters ?? undefined) as RuntimeParameterSupport | undefined,
+    pricing: row.pricing ?? undefined,
+    isEnabled: row.isEnabled,
+    isHidden: row.isHidden,
+    isDeprecated: row.isDeprecated,
+    notes: row.notes ?? undefined
+  }
+}
+
+class ModelService {
+  private buildCreateValues(dto: CreateModelDto, registryData?: CreateModelRegistryData): NewUserModelInput {
+    const presetModel = registryData?.presetModel ?? null
+    const dtoValues = dtoToNewUserModel(dto)
+
+    if (presetModel) {
+      const baseline = mergePresetModel(
+        presetModel,
+        registryData?.registryOverride ?? null,
+        dto.providerId,
+        registryData?.reasoningFormatTypes,
+        registryData?.defaultChatEndpoint
+      )
+      const merged = applyUserOverlay(baseline, { ...dtoValues, name: dto.name ?? null })
+
+      return mergedModelToNewUserModel(dto.providerId, dto.modelId, presetModel.id, merged)
+    }
+
+    return { ...dtoValues, presetModelId: dto.presetModelId ?? null }
+  }
+
+  private filterReconcileRemovals(providerId: string, toRemove: string[], db: DbType): ReconcileRemovalFilterResult {
+    if (toRemove.length === 0) {
+      return { toRemove, presetBackedRemovalIds: new Set() }
+    }
+
+    const rows: { id: string; presetModelId: string | null }[] = []
+    for (let i = 0; i < toRemove.length; i += SQLITE_INARRAY_CHUNK) {
+      const chunk = toRemove.slice(i, i + SQLITE_INARRAY_CHUNK)
+      rows.push(
+        ...db
+          .select({
+            id: userModelTable.id,
+            presetModelId: userModelTable.presetModelId
+          })
+          .from(userModelTable)
+          .where(and(eq(userModelTable.providerId, providerId), inArray(userModelTable.id, chunk)))
+          .all()
+      )
+    }
+
+    const managedDefaultIds = new Set<string>()
+    const presetBackedRemovalIds = new Set<string>()
+    const customModelIds = new Set<string>()
+    for (const row of rows) {
+      if (providerId === CHERRYAI_PROVIDER_ID && row.id === CHERRYAI_DEFAULT_UNIQUE_MODEL_ID) {
+        managedDefaultIds.add(row.id)
+      } else if (row.presetModelId != null && row.presetModelId !== '') {
+        presetBackedRemovalIds.add(row.id)
+      } else {
+        customModelIds.add(row.id)
+      }
+    }
+
+    // Protect models currently set as user defaults (chat / quick-assistant / translate)
+    // from being deleted during pull-reconcile. Deleting the user's chosen model while
+    // the preference still points to it causes 404s on every readDefaultModel() call.
+    const userDefaultIds = new Set<string>()
+    const userDefaultsSet = getUserDefaultModelIds()
+    for (const row of rows) {
+      if (userDefaultsSet.has(row.id)) {
+        userDefaultIds.add(row.id)
+      }
+    }
+    if (userDefaultIds.size > 0) {
+      logger.warn('Skipped user-default model removal during reconcile', {
+        providerId,
+        skippedCount: userDefaultIds.size,
+        skippedIds: [...userDefaultIds]
+      })
+    }
+
+    const removableCustomModelIds = new Set([...customModelIds].filter((id) => !userDefaultIds.has(id)))
+
+    if (managedDefaultIds.size > 0) {
+      logger.warn('Skipped managed CherryAI default model removal during reconcile', {
+        providerId,
+        skippedCount: managedDefaultIds.size,
+        skippedIds: [...managedDefaultIds]
+      })
+    }
+
+    if (removableCustomModelIds.size > 0) {
+      logger.warn('Skipped custom model removal during reconcile', {
+        providerId,
+        skippedCount: removableCustomModelIds.size,
+        skippedIds: [...removableCustomModelIds]
+      })
+    }
+
+    return {
+      toRemove: toRemove.filter(
+        (id) => !managedDefaultIds.has(id) && !userDefaultIds.has(id) && !removableCustomModelIds.has(id)
+      ),
+      presetBackedRemovalIds
+    }
+  }
+
+  /**
+   * List models with optional filters
+   */
+  list(query: ListModelsQuery): Model[] {
+    const db = application.get('DbService').getDb()
+
+    const conditions: SQL[] = []
+
+    if (query.providerId) {
+      conditions.push(eq(userModelTable.providerId, query.providerId))
+    }
+
+    if (query.enabled !== undefined) {
+      conditions.push(eq(userModelTable.isEnabled, query.enabled))
+    }
+
+    const rows = db
+      .select()
+      .from(userModelTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(asc(userModelTable.providerId), asc(userModelTable.orderKey))
+      .all()
+
+    let models = rows.map(rowToRuntimeModel)
+    const capabilityOverrideModelIds = new Set(
+      rows.filter((row) => row.userOverrides?.includes('capabilities')).map((row) => row.id)
+    )
+
+    // Enrich with `imageGeneration` AND `capabilities` from the registry preset.
+    // imageGeneration is preset-only metadata (not stored on user_model).
+    // capabilities are unioned in unless the user explicitly overrode them: if registry says a model is `image-generation`
+    // but the provider's /models endpoint didn't tag it (cherryin returning
+    // `qwen/qwen-image-edit-2509(free)` with no capability field), the painting
+    // filter still picks it up. `override.capabilities.force` replaces; `add`
+    // adds; `remove` subtracts — matches `applyPresetAndOverride` semantics at
+    // add-time, so re-fetching models stays idempotent with the at-rest row.
+    // Memoize the per-provider reasoning config so a list of N models in the
+    // same provider resolves it once instead of issuing N identical
+    // `getByProviderId` reads (the painting model picker lists one provider).
+    const reasoningConfigCache = new Map<
+      string,
+      { defaultChatEndpoint?: EndpointType; reasoningFormatTypes?: Partial<Record<EndpointType, ReasoningFormatType>> }
+    >()
+    models = models.map((model) => {
+      const presetId = model.presetModelId ?? model.apiModelId
+      if (!presetId) return model
+      try {
+        const { presetModel, registryOverride } = providerRegistryService.lookupModel(
+          model.providerId,
+          presetId,
+          reasoningConfigCache
+        )
+        const imageGeneration = registryOverride?.imageGeneration ?? presetModel?.imageGeneration
+        const updates: Partial<Model> = {}
+        if (imageGeneration) updates.imageGeneration = imageGeneration
+        if (!capabilityOverrideModelIds.has(model.id)) {
+          const capabilities = resolveCapabilities(
+            presetModel?.capabilities,
+            registryOverride?.capabilities,
+            model.capabilities
+          )
+          const changed =
+            capabilities.length !== model.capabilities.length ||
+            capabilities.some((c: ModelCapability, i: number) => c !== model.capabilities[i])
+          if (changed) updates.capabilities = capabilities
+        }
+        return Object.keys(updates).length > 0 ? { ...model, ...updates } : model
+      } catch (error) {
+        // A registry-lookup failure must not silently strip a model's
+        // imageGeneration / capabilities — log so a real registry/IO fault
+        // is diagnosable rather than masquerading as "model isn't image-gen".
+        logger.warn('Registry enrichment failed; serving model without registry metadata', {
+          providerId: model.providerId,
+          modelId: presetId,
+          error
+        })
+        return model
+      }
+    })
+
+    // Post-filter by capability (JSON array column, can't filter in SQL easily)
+    if (query.capability !== undefined) {
+      const cap = query.capability as ModelCapability
+      models = models.filter((m) => m.capabilities.includes(cap))
+    }
+
+    return models
+  }
+
+  /**
+   * Nullable lookup by UniqueModelId (`providerId::modelId`).
+   *
+   * Foreign services call this inside their own transaction when they need a
+   * soft fallback instead of a thrown not-found error. The caller owns the
+   * domain-specific validation message; this method only returns the row.
+   */
+  findByIdTx(tx: Pick<DbType, 'select'>, id: string): Model | null {
+    const [row] = tx.select().from(userModelTable).where(eq(userModelTable.id, id)).limit(1).all()
+    return row ? rowToRuntimeModel(row) : null
+  }
+
+  /**
+   * Batch-resolve `Model.name` for a set of UniqueModelIds.
+   *
+   * Foreign services use this on read paths to embed `modelName` on their
+   * entity shape (e.g. `Assistant.modelName`) without N round-trips. Returns
+   * a Map keyed by UniqueModelId; missing entries are absent so callers can
+   * fall back to `null` without extra null-checks. Rows with `null` or empty
+   * `name` are intentionally omitted — `userModelTable.name` is nullable and
+   * a blank label is no more useful than a missing one for UI display.
+   *
+   * Input may include `null` / `undefined` / empty strings (convenient when
+   * caller passes `rows.map(r => r.modelId)` and modelId is nullable); these
+   * are filtered and the unique non-empty set is queried in a single
+   * `IN (...)`.
+   *
+   * The `Tx` suffix and tx-first argument match the service-layer convention
+   * for methods that may be composed inside another service's transaction.
+   */
+  getNamesByUniqueIdsTx(tx: Pick<DbType, 'select'>, uniqueIds: (string | null | undefined)[]): Map<string, string> {
+    const result = new Map<string, string>()
+    const ids = Array.from(new Set(uniqueIds.filter((id): id is string => typeof id === 'string' && id.length > 0)))
+    if (ids.length === 0) return result
+
+    const rows = tx
+      .select({ id: userModelTable.id, name: userModelTable.name })
+      .from(userModelTable)
+      .where(inArray(userModelTable.id, ids))
+      .all()
+
+    for (const row of rows) {
+      if (row.name) result.set(row.id, row.name)
+    }
+    return result
+  }
+
+  /**
+   * Get a model by composite key (providerId + modelId)
+   */
+  getByKey(providerId: string, modelId: string): Model {
+    const db = application.get('DbService').getDb()
+
+    const [row] = db
+      .select()
+      .from(userModelTable)
+      .where(and(eq(userModelTable.providerId, providerId), eq(userModelTable.modelId, modelId)))
+      .limit(1)
+      .all()
+
+    if (!row) {
+      throw DataApiErrorFactory.notFound('Model', `${providerId}/${modelId}`)
+    }
+
+    return rowToRuntimeModel(row)
+  }
+
+  /**
+   * Create one or more models under a single collection-oriented contract.
+   *
+   * Automatically enriches from registry preset data when a match is found.
+   * DTO values take priority over registry (user > registryOverride > preset).
+   *
+   * Design intent:
+   * - Service exposes one `create` entrypoint instead of separate single/batch variants.
+   * - Input is always an array so create semantics stay aligned with `POST /models`.
+   * - Transaction atomicity remains identical for single-item and multi-item calls.
+   * - Renderer and other callers can still offer single-item convenience by
+   *   wrapping one DTO into a one-element array before crossing the boundary.
+   *
+   * This is a deliberate service-boundary choice, not an implementation shortcut.
+   *
+   * @param items - Create inputs with optional pre-looked-up registry data so
+   * the handler can resolve registry metadata without introducing a circular
+   * dependency between ModelService and ProviderRegistryService.
+   */
+  create(items: CreateModelInput[]): Model[] {
+    if (items.length === 0) return []
+    for (const { dto } of items) {
+      assertManagedCherryAiDefaultModelMutationAllowed(
+        dto.providerId,
+        dto.modelId,
+        `create model ${dto.providerId}/${dto.modelId}`
+      )
+    }
+
+    const db = application.get('DbService').getDb()
+    const values = items.map(({ dto, registryData }) => this.buildCreateValues(dto, registryData))
+
+    const rows = withSqliteErrors(
+      () =>
+        db.transaction((tx) => {
+          const results: UserModelRow[] = []
+          for (const providerId of new Set(values.map((value) => value.providerId))) {
+            const scopedValues = values.filter((value) => value.providerId === providerId)
+            const inserted = insertManyWithOrderKey(tx, userModelTable, scopedValues, {
+              pkColumn: userModelTable.id,
+              scope: eq(userModelTable.providerId, providerId)
+            }) as UserModelRow[]
+            results.push(...inserted)
+          }
+          return results
+        }),
+      createModelsSqliteHandlers(values)
+    )
+
+    if (items.length === 1) {
+      const [{ dto, registryData }] = items
+      const firstValue = values[0]
+
+      if (registryData?.presetModel) {
+        logger.info('Created model with registry enrichment', {
+          providerId: dto.providerId,
+          modelId: dto.modelId,
+          presetModelId: firstValue?.presetModelId
+        })
+      } else {
+        logger.info('Created custom model (no registry match)', {
+          providerId: dto.providerId,
+          modelId: dto.modelId
+        })
+      }
+    } else {
+      logger.info('Created models', {
+        count: rows.length,
+        providers: [...new Set(values.map((value) => value.providerId))]
+      })
+    }
+
+    return rows.map(rowToRuntimeModel)
+  }
+
+  /**
+   * Update an existing model
+   */
+  update(providerId: string, modelId: string, dto: UpdateModelDto): Model {
+    assertManagedCherryAiDefaultModelPatchAllowed(providerId, modelId, dto)
+
+    const db = application.get('DbService').getDb()
+
+    // Fetch existing row (also verifies existence)
+    const [existing] = db
+      .select()
+      .from(userModelTable)
+      .where(and(eq(userModelTable.providerId, providerId), eq(userModelTable.modelId, modelId)))
+      .limit(1)
+      .all()
+
+    if (!existing) {
+      throw DataApiErrorFactory.notFound('Model', `${providerId}/${modelId}`)
+    }
+
+    const updates: Partial<InsertUserModelRow> = {}
+    for (const entry of UPDATE_MODEL_FIELD_MAP) {
+      const [dtoKey, dbKey] = Array.isArray(entry) ? entry : [entry, entry as keyof InsertUserModelRow]
+      if (dto[dtoKey] !== undefined) {
+        ;(updates as Record<string, unknown>)[dbKey] = dto[dtoKey]
+      }
+    }
+
+    // Track which registry-enrichable fields the user explicitly changed
+    // Map DTO keys to DB column names (e.g. parameterSupport → parameters)
+    const dtoToDbKey = (key: string): string => {
+      const mapping = UPDATE_MODEL_FIELD_MAP.find((entry) => (Array.isArray(entry) ? entry[0] === key : false))
+      return mapping && Array.isArray(mapping) ? mapping[1] : key
+    }
+    const changedEnrichableFields = Object.keys(dto).map(dtoToDbKey).filter(isRegistryEnrichableField)
+    if (changedEnrichableFields.length > 0) {
+      const existingOverrides = existing.userOverrides ?? []
+      updates.userOverrides = [...new Set([...existingOverrides, ...changedEnrichableFields])]
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return rowToRuntimeModel(existing)
+    }
+
+    const [row] = db
+      .update(userModelTable)
+      .set(updates)
+      .where(and(eq(userModelTable.providerId, providerId), eq(userModelTable.modelId, modelId)))
+      .returning()
+      .all()
+
+    logger.info('Updated model', { providerId, modelId, changes: Object.keys(dto) })
+
+    return rowToRuntimeModel(row)
+  }
+
+  /**
+   * Update many models atomically in a single transaction.
+   *
+   * Per-item semantics — field mapping via {@link UPDATE_MODEL_FIELD_MAP},
+   * `userOverrides` tracking, and the empty-patch short-circuit — exactly
+   * mirror the row-level {@link ModelService.update} path; only the I/O shape
+   * differs. Any not-found rolls the whole batch back so callers don't have
+   * to reason about partial failure.
+   *
+   * @param items handler-parsed (providerId, modelId, patch) tuples
+   */
+  bulkUpdate(items: Array<{ providerId: string; modelId: string; patch: UpdateModelDto }>): Model[] {
+    if (items.length === 0) return []
+
+    const db = application.get('DbService').getDb()
+
+    for (const { providerId, modelId, patch } of items) {
+      assertManagedCherryAiDefaultModelPatchAllowed(providerId, modelId, patch)
+    }
+
+    const dtoToDbKey = (key: string): string => {
+      const mapping = UPDATE_MODEL_FIELD_MAP.find((entry) => (Array.isArray(entry) ? entry[0] === key : false))
+      return mapping && Array.isArray(mapping) ? mapping[1] : key
+    }
+
+    return db.transaction((tx) => {
+      const results: Model[] = []
+
+      for (const { providerId, modelId, patch } of items) {
+        const [existing] = tx
+          .select()
+          .from(userModelTable)
+          .where(and(eq(userModelTable.providerId, providerId), eq(userModelTable.modelId, modelId)))
+          .limit(1)
+          .all()
+
+        if (!existing) {
+          throw DataApiErrorFactory.notFound('Model', `${providerId}/${modelId}`)
+        }
+
+        const updates: Partial<InsertUserModelRow> = {}
+        for (const entry of UPDATE_MODEL_FIELD_MAP) {
+          const [dtoKey, dbKey] = Array.isArray(entry) ? entry : [entry, entry as keyof InsertUserModelRow]
+          if (patch[dtoKey] !== undefined) {
+            ;(updates as Record<string, unknown>)[dbKey] = patch[dtoKey]
+          }
+        }
+
+        const changedEnrichableFields = Object.keys(patch).map(dtoToDbKey).filter(isRegistryEnrichableField)
+        if (changedEnrichableFields.length > 0) {
+          const existingOverrides = existing.userOverrides ?? []
+          updates.userOverrides = [...new Set([...existingOverrides, ...changedEnrichableFields])]
+        }
+
+        if (Object.keys(updates).length === 0) {
+          results.push(rowToRuntimeModel(existing))
+          continue
+        }
+
+        const [row] = tx
+          .update(userModelTable)
+          .set(updates)
+          .where(and(eq(userModelTable.providerId, providerId), eq(userModelTable.modelId, modelId)))
+          .returning()
+          .all()
+
+        results.push(rowToRuntimeModel(row))
+      }
+
+      logger.info('Bulk updated models', {
+        count: results.length,
+        providers: [...new Set(items.map((item) => item.providerId))]
+      })
+
+      return results
+    })
+  }
+
+  /**
+   * Apply a pull-reconcile diff atomically: remove the listed rows and insert
+   * the new ones inside one transaction, then return the full model list for
+   * the provider so the caller revalidates with the post-reconcile state.
+   *
+   * Removals are scoped by `providerId` so a caller cannot delete rows owned
+   * by a different provider even if it passes a `UniqueModelId` that mentions
+   * one. Pins for removed models are purged in the same transaction.
+   */
+  reconcileForProvider(providerId: string, payload: { toAdd: CreateModelInput[]; toRemove: string[] }): Model[] {
+    if (payload.toAdd.length === 0 && payload.toRemove.length === 0) {
+      return this.list({ providerId })
+    }
+
+    const db = application.get('DbService').getDb()
+    const values = payload.toAdd.map(({ dto, registryData }) => this.buildCreateValues(dto, registryData))
+    const removalFilter = this.filterReconcileRemovals(providerId, payload.toRemove, db)
+    const toRemove = removalFilter.toRemove
+
+    let actuallyDeleted = 0
+    const deletedIds: string[] = []
+    const rows = withSqliteErrors(
+      () =>
+        db.transaction((tx) => {
+          if (toRemove.length > 0) {
+            for (let i = 0; i < toRemove.length; i += SQLITE_INARRAY_CHUNK) {
+              const chunk = toRemove.slice(i, i + SQLITE_INARRAY_CHUNK)
+              const deletedRows = tx
+                .delete(userModelTable)
+                .where(and(eq(userModelTable.providerId, providerId), inArray(userModelTable.id, chunk)))
+                .returning({ id: userModelTable.id })
+                .all()
+              actuallyDeleted += deletedRows.length
+              deletedIds.push(...deletedRows.map((row) => row.id))
+
+              if (deletedRows.length > 0) {
+                pinService.purgeForEntitiesTx(
+                  tx,
+                  'model',
+                  deletedRows.map((row) => row.id)
+                )
+              }
+            }
+          }
+
+          if (values.length > 0) {
+            // Chunk per-INSERT to stay under SQLite's compound-statement parameter limit.
+            const INSERT_CHUNK_SIZE = 500
+            for (let offset = 0; offset < values.length; offset += INSERT_CHUNK_SIZE) {
+              insertManyWithOrderKey(tx, userModelTable, values.slice(offset, offset + INSERT_CHUNK_SIZE), {
+                pkColumn: userModelTable.id,
+                scope: eq(userModelTable.providerId, providerId)
+              })
+            }
+          }
+
+          return tx
+            .select()
+            .from(userModelTable)
+            .where(eq(userModelTable.providerId, providerId))
+            .orderBy(asc(userModelTable.orderKey))
+            .all() as UserModelRow[]
+        }),
+      createModelsSqliteHandlers(values)
+    )
+
+    if (actuallyDeleted < toRemove.length) {
+      // Stale renderer state — caller's toRemove referenced IDs that no longer
+      // exist (concurrent edit, second window, race with another sync). The
+      // transaction still succeeded but the renderer's diff was based on a
+      // stale snapshot. Warn so debugging can correlate; the next /models
+      // refetch will reconcile what the user actually sees.
+      logger.warn('Reconcile toRemove count mismatch', {
+        providerId,
+        requestedRemove: toRemove.length,
+        actuallyDeleted
+      })
+    }
+
+    const deletedPresetBackedIds = deletedIds.filter((id) => removalFilter.presetBackedRemovalIds.has(id))
+    if (deletedPresetBackedIds.length > 0) {
+      logger.info('Deleted preset-backed models during reconcile', {
+        providerId,
+        deletedCount: deletedPresetBackedIds.length,
+        deletedIds: deletedPresetBackedIds
+      })
+    }
+
+    logger.info('Reconciled provider models', {
+      providerId,
+      added: values.length,
+      removed: actuallyDeleted
+    })
+
+    return rows.map(rowToRuntimeModel)
+  }
+
+  /**
+   * Delete a model
+   */
+  delete(providerId: string, modelId: string): void {
+    assertManagedCherryAiDefaultModelMutationAllowed(providerId, modelId, `delete model ${providerId}/${modelId}`)
+
+    const uniqueModelId = createUniqueModelId(providerId, modelId)
+    assertModelNotUsedAsDefaultModel(uniqueModelId, `delete model ${uniqueModelId}`)
+
+    withSqliteErrors(
+      () =>
+        application.get('DbService').withWriteTx((tx) => {
+          const rows = tx
+            .delete(userModelTable)
+            .where(and(eq(userModelTable.providerId, providerId), eq(userModelTable.modelId, modelId)))
+            .returning({ id: userModelTable.id })
+            .all()
+
+          if (rows.length === 0) {
+            throw DataApiErrorFactory.notFound('Model', `${providerId}/${modelId}`)
+          }
+
+          pinService.purgeForEntityTx(tx, 'model', rows[0].id)
+        }),
+      deleteModelsSqliteHandlers(`${providerId}/${modelId}`)
+    )
+
+    logger.info('Deleted model', { providerId, modelId })
+  }
+
+  /**
+   * Delete multiple models atomically.
+   */
+  bulkDelete(items: { providerId: string; modelId: string }[]): void {
+    if (items.length === 0) return
+
+    const uniqueItems = new Map<string, { providerId: string; modelId: string }>()
+
+    for (const item of items) {
+      assertManagedCherryAiDefaultModelMutationAllowed(
+        item.providerId,
+        item.modelId,
+        `delete model ${item.providerId}/${item.modelId}`
+      )
+      uniqueItems.set(createUniqueModelId(item.providerId, item.modelId), item)
+    }
+
+    for (const [id, item] of uniqueItems) {
+      assertModelNotUsedAsDefaultModel(id, `delete model ${item.providerId}/${item.modelId}`)
+    }
+
+    const ids = [...uniqueItems.keys()]
+
+    withSqliteErrors(
+      () =>
+        application.get('DbService').withWriteTx((tx) => {
+          const existingIds = new Set<string>()
+          for (let i = 0; i < ids.length; i += SQLITE_INARRAY_CHUNK) {
+            const chunk = ids.slice(i, i + SQLITE_INARRAY_CHUNK)
+            const existingRows = tx
+              .select({ id: userModelTable.id })
+              .from(userModelTable)
+              .where(inArray(userModelTable.id, chunk))
+              .all()
+            for (const row of existingRows) existingIds.add(row.id)
+          }
+
+          const missingId = ids.find((id) => !existingIds.has(id))
+          if (missingId) {
+            throw DataApiErrorFactory.notFound('Model', missingId)
+          }
+
+          for (let i = 0; i < ids.length; i += SQLITE_INARRAY_CHUNK) {
+            const chunk = ids.slice(i, i + SQLITE_INARRAY_CHUNK)
+            const deletedRows = tx
+              .delete(userModelTable)
+              .where(inArray(userModelTable.id, chunk))
+              .returning({ id: userModelTable.id })
+              .all()
+
+            if (deletedRows.length > 0) {
+              pinService.purgeForEntitiesTx(
+                tx,
+                'model',
+                deletedRows.map((row) => row.id)
+              )
+            }
+          }
+        }),
+      deleteModelsSqliteHandlers(ids.length === 1 ? ids[0] : `batch(${ids.length} items)`)
+    )
+
+    logger.info('Bulk deleted models', {
+      count: ids.length,
+      providers: [...new Set([...uniqueItems.values()].map((item) => item.providerId))]
+    })
+  }
+
+  /**
+   * Batch upsert models for a provider (used by RegistryService).
+   * Inserts new models, updates existing ones.
+   * Respects `userOverrides`: fields the user has explicitly modified are not overwritten.
+   */
+  batchUpsert(models: InsertUserModelRow[]): void {
+    if (models.length === 0) return
+    const managedModel = models.find((model) => isManagedCherryAiDefaultModel(model.providerId, model.modelId))
+    if (managedModel) {
+      assertManagedCherryAiDefaultModelMutationAllowed(
+        managedModel.providerId,
+        managedModel.modelId,
+        `batch upsert model ${managedModel.providerId}/${managedModel.modelId}`
+      )
+    }
+
+    const db = application.get('DbService').getDb()
+
+    // Pre-fetch existing userOverrides for all affected models
+    const providerIds = [...new Set(models.map((m) => m.providerId))]
+    const existingRows = db
+      .select({
+        providerId: userModelTable.providerId,
+        modelId: userModelTable.modelId,
+        userOverrides: userModelTable.userOverrides
+      })
+      .from(userModelTable)
+      .where(inArray(userModelTable.providerId, providerIds))
+      .all()
+
+    const overridesMap = new Map<string, Set<string>>()
+    for (const row of existingRows) {
+      if (row.userOverrides && row.userOverrides.length > 0) {
+        overridesMap.set(`${row.providerId}:${row.modelId}`, new Set(row.userOverrides))
+      }
+    }
+
+    db.transaction((tx) => {
+      for (const model of models) {
+        const userOverrides = overridesMap.get(`${model.providerId}:${model.modelId}`)
+
+        // Build the update set, skipping user-overridden fields
+        const set: Partial<InsertUserModelRow> = {
+          presetModelId: model.presetModelId
+        }
+        const enrichableFields = {
+          name: model.name,
+          description: model.description,
+          group: model.group,
+          capabilities: model.capabilities,
+          inputModalities: model.inputModalities,
+          outputModalities: model.outputModalities,
+          endpointTypes: model.endpointTypes,
+          contextWindow: model.contextWindow,
+          maxInputTokens: model.maxInputTokens,
+          maxOutputTokens: model.maxOutputTokens,
+          supportsStreaming: model.supportsStreaming,
+          reasoning: model.reasoning,
+          parameters: model.parameters,
+          pricing: model.pricing
+        }
+
+        for (const [field, value] of Object.entries(enrichableFields)) {
+          if (!userOverrides?.has(field)) {
+            ;(set as Record<string, unknown>)[field] = value
+          }
+        }
+
+        tx.insert(userModelTable)
+          .values(model)
+          .onConflictDoUpdate({
+            target: [userModelTable.providerId, userModelTable.modelId],
+            set
+          })
+          .run()
+      }
+    })
+
+    logger.info('Batch upserted models', { count: models.length, providerId: models[0]?.providerId })
+  }
+}
+
+export const modelService = new ModelService()

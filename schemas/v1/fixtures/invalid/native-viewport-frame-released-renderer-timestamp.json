@@ -1,0 +1,13 @@
+{
+  "method": "viewport.frame_released",
+  "params": {
+    "viewportInstanceId": "viewport-main-1",
+    "viewportLeaseId": "viewport-lease-7",
+    "editorEpoch": 4,
+    "generation": 9,
+    "sequence": 42,
+    "surfaceSlot": 1,
+    "released": true,
+    "releasedAt": "2026-07-27T10:00:01Z"
+  }
+}

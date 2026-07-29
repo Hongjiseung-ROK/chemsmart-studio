@@ -1,0 +1,13 @@
+{
+  "artifactId": "artifact-1",
+  "createdAt": "2026-07-23T05:03:00Z",
+  "displayName": "optimization.log",
+  "extensions": {},
+  "kind": "log",
+  "mediaType": "text/plain",
+  "path": "/private/tmp/run-1/optimization.log",
+  "runId": "run-1",
+  "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+  "sizeBytes": 10,
+  "type": "opaque_calculation_artifact"
+}

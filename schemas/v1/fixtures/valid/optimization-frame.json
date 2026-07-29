@@ -1,0 +1,12 @@
+{
+  "runId": "run-1",
+  "stepIndex": 0,
+  "atomIds": ["a-1", "a-2", "a-3"],
+  "positions": [[0.0, 0.0, 0.0], [0.9572, 0.0, 0.0], [-0.239, 0.927, 0.0]],
+  "energy": { "value": -76.0, "unit": "hartree" },
+  "forceMetrics": { "max": 0.003, "rms": 0.001, "unit": "hartree/bohr" },
+  "convergence": { "converged": false },
+  "structureHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "timestamp": "2026-07-22T00:02:00Z",
+  "extensions": {}
+}

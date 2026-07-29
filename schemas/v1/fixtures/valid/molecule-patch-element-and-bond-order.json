@@ -1,0 +1,17 @@
+{
+  "operationId": "op-change-structure-types",
+  "baseRevision": 7,
+  "actor": "human",
+  "previewOnly": true,
+  "operations": [
+    {
+      "op": "set_atomic_numbers",
+      "atoms": [{ "atomId": "atom-1", "atomicNumber": 8 }]
+    },
+    {
+      "op": "set_bond_orders",
+      "bonds": [{ "bondId": "bond-1", "order": 2 }]
+    }
+  ],
+  "extensions": {}
+}

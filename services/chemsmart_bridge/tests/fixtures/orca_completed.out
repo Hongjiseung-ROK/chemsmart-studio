@@ -1,0 +1,20 @@
+         *                GEOMETRY OPTIMIZATION CYCLE   1            *
+---------------------------------
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+  O     -1.197000    0.000000    0.000000
+  C      0.000000    0.000000    0.000000
+  O      1.197000    0.000000    0.000000
+
+FINAL SINGLE POINT ENERGY      -188.363728668462
+         *                GEOMETRY OPTIMIZATION CYCLE   2            *
+---------------------------------
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+  O     -1.156195   -0.000000   -0.000000
+  C      0.000000    0.000000    0.000000
+  O      1.156195   -0.000000   -0.000000
+
+FINAL SINGLE POINT ENERGY      -188.370538039014
+                    ***        THE OPTIMIZATION HAS CONVERGED     ***
+                             ****ORCA TERMINATED NORMALLY****

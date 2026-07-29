@@ -1,0 +1,21 @@
+{
+  "inputSnapshotHash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "inputTopologyHash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+  "path": "/tmp/forbidden.cmsproj",
+  "run": {
+    "constraintIds": [],
+    "createdAt": "2026-07-28T12:00:00Z",
+    "documentId": "molecule-1",
+    "engine": "xtb",
+    "extensions": {},
+    "frozenAtomIds": [],
+    "inputRevision": 4,
+    "method": "GFN2-xTB",
+    "runId": "run-1",
+    "settings": {
+      "extensions": {}
+    },
+    "status": "running"
+  },
+  "timestamp": "2026-07-28T12:00:00Z"
+}

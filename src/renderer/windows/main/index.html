@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="initial-scale=1, width=device-width" />
+    <meta name="logger-window-source" content="mainWindow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src blob: *; script-src 'self' 'unsafe-eval' 'unsafe-inline' *; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' *; font-src 'self' data: *; img-src 'self' data: file: * blob:; media-src 'self' file:; frame-src * file:" />
+    <title>ChemSmart Studio</title>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+      }
+
+      #spinner {
+        position: fixed;
+        width: 100vw;
+        height: 100vh;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        display: flex;
+      }
+
+      #spinner svg {
+        width: 112px;
+        height: 112px;
+      }
+
+      /* The two nuclei ride the orbits they are drawn against; the shell turns slowly behind them. */
+      #spinner .cs-orbit-a,
+      #spinner .cs-orbit-b {
+        offset-path: path('M 18,60 A 42,18 0 1,1 102,60 A 42,18 0 1,1 18,60 Z');
+        offset-rotate: 0deg;
+        animation: cs-orbit 1.7s linear infinite;
+      }
+
+      #spinner .cs-orbit-b {
+        animation-delay: -0.85s;
+      }
+
+      #spinner .cs-shell {
+        transform-origin: 60px 60px;
+        animation: cs-shell 9s linear infinite;
+      }
+
+      @keyframes cs-orbit {
+        to {
+          offset-distance: 100%;
+        }
+      }
+
+      @keyframes cs-shell {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /*
+       * The app theme is not readable before its scripts run, so the boot canvas follows the system
+       * preference — the same proxy the main process already uses for the window background colour.
+       * The orbit stroke lightens with it, because deep navy is invisible on the dark canvas.
+       */
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #181818;
+        }
+
+        #spinner .cs-stroke {
+          stroke: #7fb2e5;
+        }
+      }
+
+      /* Reduced motion keeps the mark, drops the movement: each nucleus rests on its own orbit. */
+      @media (prefers-reduced-motion: reduce) {
+        #spinner .cs-orbit-a,
+        #spinner .cs-orbit-b,
+        #spinner .cs-shell {
+          animation: none;
+        }
+
+        #spinner .cs-orbit-b {
+          offset-distance: 50%;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <div id="spinner" role="status" aria-label="Loading ChemSmart Studio">
+      <svg aria-hidden="true" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="nucleusGrad" cx="42%" cy="38%" r="65%">
+            <stop offset="0%" stop-color="#9FF3FD" />
+            <stop offset="45%" stop-color="#2FCFEF" />
+            <stop offset="100%" stop-color="#0E9CC2" />
+          </radialGradient>
+          <filter id="glow" x="-120%" y="-120%" width="340%" height="340%">
+            <feGaussianBlur stdDeviation="1.8" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <circle
+          class="cs-shell cs-stroke"
+          cx="60"
+          cy="60"
+          r="51"
+          fill="none"
+          stroke="#1C3B63"
+          stroke-width="2"
+          stroke-dasharray="3.4 6.6"
+          stroke-linecap="round"
+          opacity="0.32" />
+
+        <g transform="rotate(60 60 60)">
+          <path
+            class="cs-stroke"
+            d="M 18,60 A 42,18 0 1,1 102,60 A 42,18 0 1,1 18,60 Z"
+            fill="none"
+            stroke="#1C3B63"
+            stroke-width="1.8"
+            opacity="0.8" />
+          <circle class="cs-orbit-a" r="4" fill="url(#nucleusGrad)" filter="url(#glow)" />
+        </g>
+
+        <g transform="rotate(-60 60 60)">
+          <path
+            class="cs-stroke"
+            d="M 18,60 A 42,18 0 1,1 102,60 A 42,18 0 1,1 18,60 Z"
+            fill="none"
+            stroke="#1C3B63"
+            stroke-width="1.8"
+            opacity="0.8" />
+          <circle class="cs-orbit-b" r="4" fill="url(#nucleusGrad)" filter="url(#glow)" />
+        </g>
+
+        <circle
+          class="cs-stroke"
+          cx="60"
+          cy="60"
+          r="9"
+          fill="url(#nucleusGrad)"
+          filter="url(#glow)"
+          stroke="#1C3B63"
+          stroke-width="1.1" />
+      </svg>
+    </div>
+    <script>
+      console.time('init')
+    </script>
+    <script type="module" src="/windows/main/entryPoint.tsx"></script>
+  </body>
+</html>

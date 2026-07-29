@@ -1,0 +1,16 @@
+{
+  "extensions": {},
+  "frames": [
+    {
+      "energy": { "unit": "hartree", "value": -4.2 },
+      "forceMetrics": { "max": 0.02, "rms": 0.01, "unit": "hartree/bohr" },
+      "runId": "run-external",
+      "stepIndex": 0,
+      "timestamp": "2026-07-23T12:02:00Z"
+    }
+  ],
+  "limit": 500,
+  "offset": 0,
+  "runId": "run-external",
+  "totalFrames": 1
+}

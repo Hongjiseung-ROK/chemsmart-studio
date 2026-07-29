@@ -1,0 +1,18 @@
+{
+  "documentId": "mol-water",
+  "revision": 0,
+  "atoms": [
+    { "id": "a-1", "atomicNumber": 8, "position": [0.0, 0.0, 0.0], "formalCharge": 0, "extensions": {} },
+    { "id": "a-2", "atomicNumber": 1, "position": [0.9572, 0.0, 0.0], "formalCharge": 0, "extensions": {} },
+    { "id": "a-3", "atomicNumber": 1, "position": [-0.239, 0.927, 0.0], "formalCharge": 0, "extensions": {} }
+  ],
+  "bonds": [
+    { "id": "b-1", "atomIds": ["a-1", "a-2"], "order": 1, "extensions": {} },
+    { "id": "b-2", "atomIds": ["a-1", "a-3"], "order": 1, "extensions": {} }
+  ],
+  "selections": ["a-1"],
+  "frozenAxes": { "a-1": [true, true, true] },
+  "constraints": [],
+  "properties": { "name": "water", "charge": 0, "multiplicity": 1, "extensions": {} },
+  "extensions": {}
+}

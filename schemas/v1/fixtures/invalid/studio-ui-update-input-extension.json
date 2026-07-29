@@ -1,0 +1,5 @@
+{
+  "kind": "status",
+  "message": "The extension namespace is not dot separated.",
+  "extensions": { "not_namespaced": {} }
+}

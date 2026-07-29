@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/common.schema.json",
+  "title": "ChemSmart Studio common definitions",
+  "$defs": {
+    "stableId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "vector3": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "axisMask": {
+      "type": "array",
+      "prefixItems": [{ "type": "boolean" }, { "type": "boolean" }, { "type": "boolean" }],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "geometryHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$" },
+      "additionalProperties": { "type": "object" }
+    },
+    "energy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": {
+        "value": { "type": "number" },
+        "unit": { "enum": ["hartree", "eV", "kJ/mol", "kcal/mol"] }
+      }
+    }
+  }
+}

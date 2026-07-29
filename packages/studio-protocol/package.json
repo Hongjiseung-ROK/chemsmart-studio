@@ -1,0 +1,12 @@
+{
+  "name": "@chemsmart/studio-protocol",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "python ../../dev/generate_protocol_models.py --check"
+  }
+}

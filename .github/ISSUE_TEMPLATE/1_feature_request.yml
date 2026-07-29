@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a computational-chemistry workflow improvement
+title: "[Feature]: "
+type: Feature
+body:
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing private issues for the same request.
+          required: true
+        - label: I excluded credentials, unpublished structures, and private researcher paths.
+          required: true
+  - type: textarea
+    id: research_need
+    attributes:
+      label: Research need
+      description: Which computational-chemistry task is currently difficult or unsafe?
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Desired workflow
+      description: Describe the researcher actions, trusted state, and expected evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Approval and scientific-safety boundary
+      description: Identify calculations, filesystem access, or irreversible effects that must remain gated.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

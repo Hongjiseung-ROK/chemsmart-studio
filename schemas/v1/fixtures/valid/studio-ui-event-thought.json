@@ -1,0 +1,14 @@
+{
+  "eventId": "ui-evt-10",
+  "extensions": {},
+  "kind": "agent_thought",
+  "payload": {
+    "message": "The O-H distance disagrees with the reference, so a preview that moves only H2 is proposed.",
+    "phase": "preparing_preview",
+    "toolName": "preview_molecule_patch"
+  },
+  "sequence": 9,
+  "sessionId": "session-1",
+  "source": "runtime",
+  "timestamp": "2026-07-25T05:10:00Z"
+}

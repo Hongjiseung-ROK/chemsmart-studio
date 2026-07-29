@@ -1,0 +1,18 @@
+{
+  "code": 200,
+  "data": {
+    "queryContext": {
+      "originalQuery": "hello"
+    },
+    "webPages": {
+      "value": [
+        {
+          "name": "Bocha Title",
+          "summary": "Bocha Content",
+          "url": "https://bocha.example/result"
+        }
+      ]
+    }
+  },
+  "msg": "ok"
+}

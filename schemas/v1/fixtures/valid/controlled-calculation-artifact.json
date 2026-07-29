@@ -1,0 +1,12 @@
+{
+  "artifactId": "artifact-log-1",
+  "createdAt": "2026-07-23T05:03:00Z",
+  "displayName": "optimization.log",
+  "extensions": {},
+  "kind": "log",
+  "mediaType": "text/plain",
+  "runId": "run-ethanol-1",
+  "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+  "sizeBytes": 2048,
+  "type": "opaque_calculation_artifact"
+}

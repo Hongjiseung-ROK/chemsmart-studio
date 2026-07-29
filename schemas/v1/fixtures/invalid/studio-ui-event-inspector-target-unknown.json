@@ -1,0 +1,13 @@
+{
+  "eventId": "ui-evt-13",
+  "extensions": {},
+  "kind": "inspector_target",
+  "payload": {
+    "message": "An unknown section cannot be requested.",
+    "target": "shell"
+  },
+  "sequence": 12,
+  "sessionId": "session-1",
+  "source": "runtime",
+  "timestamp": "2026-07-25T05:10:15Z"
+}

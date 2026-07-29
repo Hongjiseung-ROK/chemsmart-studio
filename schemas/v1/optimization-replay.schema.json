@@ -1,0 +1,400 @@
+{
+  "$defs": {
+    "catalogQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "afterRunId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "common.schema.json#/$defs/stableId"
+            }
+          ]
+        },
+        "limit": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": ["afterRunId", "limit"],
+      "type": "object"
+    },
+    "catalogResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "nextRunId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "common.schema.json#/$defs/stableId"
+            }
+          ]
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/replayRecord"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        "totalRuns": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["totalRuns", "runs", "nextRunId", "extensions"],
+      "type": "object"
+    },
+    "frameQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "$ref": "common.schema.json#/$defs/stableId"
+        },
+        "expectedRevision": {
+          "$ref": "common.schema.json#/$defs/revision"
+        },
+        "runId": {
+          "$ref": "common.schema.json#/$defs/stableId"
+        },
+        "stepIndex": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["runId", "stepIndex", "documentId", "expectedRevision"],
+      "type": "object"
+    },
+    "frameResponse": {
+      "additionalProperties": false,
+      "description": "A single recorded trajectory frame the host fetches to compose a replay selection. Carries the full computed frame — including the provenance that proves it came from the engine and was never interpolated — plus the run's frame count, so the host can complete the viewer state. The host projects the frame down to a frameSummary before it reaches the renderer.",
+      "properties": {
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "frame": {
+          "$ref": "controlled-calculation.schema.json#/$defs/externalFrame"
+        },
+        "frameCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "runId": {
+          "$ref": "common.schema.json#/$defs/stableId"
+        }
+      },
+      "required": ["runId", "frame", "frameCount", "extensions"],
+      "type": "object"
+    },
+    "frameSummary": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["forceMetrics"]
+        },
+        {
+          "required": ["gradientNorm"]
+        }
+      ],
+      "properties": {
+        "convergence": {
+          "$ref": "optimization.schema.json#/$defs/frame/properties/convergence"
+        },
+        "energy": {
+          "$ref": "optimization.schema.json#/$defs/frame/properties/energy"
+        },
+        "forceMetrics": {
+          "$ref": "optimization.schema.json#/$defs/frame/properties/forceMetrics"
+        },
+        "gradientNorm": {
+          "$ref": "optimization.schema.json#/$defs/gradientNorm"
+        },
+        "runId": {
+          "$ref": "optimization.schema.json#/$defs/frame/properties/runId"
+        },
+        "stepIndex": {
+          "$ref": "optimization.schema.json#/$defs/frame/properties/stepIndex"
+        },
+        "timestamp": {
+          "$ref": "optimization.schema.json#/$defs/frame/properties/timestamp"
+        }
+      },
+      "required": ["runId", "stepIndex", "energy", "timestamp"],
+      "type": "object"
+    },
+    "ledgerCatalogResponse": {
+      "additionalProperties": false,
+      "description": "A page of ledger records, before the host completes them.",
+      "properties": {
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "nextRunId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "common.schema.json#/$defs/stableId"
+            }
+          ]
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/ledgerReplayRecord"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        "totalRuns": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["totalRuns", "runs", "nextRunId", "extensions"],
+      "type": "object"
+    },
+    "ledgerReplayRecord": {
+      "additionalProperties": false,
+      "description": "A run as the trajectory ledger has it. Everything here is derivable from the recorded file. Absent on purpose: active and recovered, which describe what the host is doing now rather than what was recorded, and which the host composes onto this to make a replayRecord. An open ledger reports outcome \"running\" because it holds no terminal event; only the host can tell a live run from an interrupted one.",
+      "properties": {
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "frameCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "latestFrame": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/frameSummary"
+            }
+          ]
+        },
+        "message": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "replayable": {
+          "type": "boolean"
+        },
+        "run": {
+          "$ref": "optimization.schema.json#/$defs/run"
+        },
+        "updatedAt": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "required": ["run", "frameCount", "latestFrame", "outcome", "message", "updatedAt", "replayable", "extensions"],
+      "type": "object"
+    },
+    "outcome": {
+      "enum": ["running", "awaiting_final_geometry", "accepted", "rejected", "cancelled", "failed", "interrupted"]
+    },
+    "replayRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "type": "boolean"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "frameCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "latestFrame": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/frameSummary"
+            }
+          ]
+        },
+        "message": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "recovered": {
+          "type": "boolean"
+        },
+        "replayable": {
+          "type": "boolean"
+        },
+        "run": {
+          "$ref": "optimization.schema.json#/$defs/run"
+        },
+        "updatedAt": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "run",
+        "frameCount",
+        "latestFrame",
+        "outcome",
+        "message",
+        "updatedAt",
+        "active",
+        "recovered",
+        "replayable",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "selectionResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "$ref": "common.schema.json#/$defs/stableId"
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "frame": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/frameSummary"
+            }
+          ]
+        },
+        "frameCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "$ref": "common.schema.json#/$defs/revision"
+        },
+        "runId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "common.schema.json#/$defs/stableId"
+            }
+          ]
+        },
+        "stepIndex": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "minimum": 0,
+              "type": "integer"
+            }
+          ]
+        },
+        "viewing": {
+          "type": "boolean"
+        }
+      },
+      "required": ["viewing", "runId", "stepIndex", "frameCount", "documentId", "revision", "frame", "extensions"],
+      "type": "object"
+    },
+    "stopQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "$ref": "common.schema.json#/$defs/stableId"
+        },
+        "expectedRevision": {
+          "$ref": "common.schema.json#/$defs/revision"
+        }
+      },
+      "required": ["documentId", "expectedRevision"],
+      "type": "object"
+    },
+    "timelineQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "runId": {
+          "$ref": "common.schema.json#/$defs/stableId"
+        }
+      },
+      "required": ["runId", "offset", "limit"],
+      "type": "object"
+    },
+    "timelineResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "frames": {
+          "items": {
+            "$ref": "#/$defs/frameSummary"
+          },
+          "maxItems": 500,
+          "type": "array"
+        },
+        "limit": {
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "runId": {
+          "$ref": "common.schema.json#/$defs/stableId"
+        },
+        "totalFrames": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["runId", "offset", "limit", "totalFrames", "frames", "extensions"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v1/optimization-replay.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/catalogResponse"
+    },
+    {
+      "$ref": "#/$defs/timelineResponse"
+    },
+    {
+      "$ref": "#/$defs/selectionResponse"
+    }
+  ],
+  "title": "Optimization replay contracts"
+}

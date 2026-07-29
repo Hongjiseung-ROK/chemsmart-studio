@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "lastUpdated": 1785283200000,
+  "plugins": [
+    {
+      "filename": "chemsmart-agent-guide",
+      "type": "skill",
+      "metadata": {
+        "sourcePath": "skills/chemsmart-agent-guide",
+        "filename": "chemsmart-agent-guide",
+        "name": "chemsmart-agent-guide",
+        "description": "ChemSmart Studio 分子工作台、Provider 配置、研究工作流和故障排查指南。用户询问分子编辑、draft、计算审批、trajectory、replay、Agent、Console、Jobs、Provider 或日志时触发。",
+        "category": "skills",
+        "type": "skill",
+        "size": 4489,
+        "contentHash": "405448bd0e5c66590d34d8e051709d26c6a333a6ee0548784e743eb6816e8cfe"
+      }
+    },
+    {
+      "filename": "faq-collector",
+      "type": "skill",
+      "metadata": {
+        "sourcePath": "skills/faq-collector",
+        "filename": "faq-collector",
+        "name": "faq-collector",
+        "description": "将成功解决的用户问题收录到 FAQ 知识库。问题解决后自动判断是否收录。也可以在用户说\"收录到 FAQ\"、\"记录这个问题\"、\"add to FAQ\"时手动触发。",
+        "category": "skills",
+        "type": "skill",
+        "size": 1132,
+        "contentHash": "f72da6cb89b10780a04ae98f1f75f0d7896cd20b709724bd9bf02e099c23a2d6"
+      }
+    },
+    {
+      "filename": "issue-reporter",
+      "type": "skill",
+      "metadata": {
+        "sourcePath": "skills/issue-reporter",
+        "filename": "issue-reporter",
+        "name": "issue-reporter",
+        "description": "帮助用户提交 Bug Report 或 Feature Request。支持 GitHub Issue（有账户）和本地存档（无账户）两种模式。当诊断发现是代码 Bug 时主动提议，或当用户说\"帮我提 issue\"、\"这是个 bug\"、\"我想要这个功能\"、\"submit a bug\"、\"feature request\"时触发。",
+        "category": "skills",
+        "type": "skill",
+        "size": 1732,
+        "contentHash": "da5adcdd53f90864f610ec222d555229872546575047e5144c2aec89531b728e"
+      }
+    },
+    {
+      "filename": "skills-manager",
+      "type": "skill",
+      "metadata": {
+        "sourcePath": "skills/skills-manager",
+        "filename": "skills-manager",
+        "name": "skills-manager",
+        "description": "搜索、安装和创建 Claude Code Agent Skills。当用户想要搜索技能、安装工具、创建自定义 Skill，或者说\"find a skill\"、\"搜索技能\"、\"帮我做个 skill\"、\"create a skill\"时触发。也适用于用户说\"有没有做 X 的工具\"、\"我想扩展 Agent 能力\"的场景。",
+        "category": "skills",
+        "type": "skill",
+        "size": 1635,
+        "contentHash": "aec2f7fb3c3aed6da3ad53e48aff84a92b6e7c2eca720619ff2ca9388f9175be"
+      }
+    }
+  ]
+}

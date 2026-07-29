@@ -1,0 +1,24 @@
+{
+  "request": {
+    "arguments": {
+      "document_id": "ethanol",
+      "engine": "xtb",
+      "expected_revision": 3,
+      "geometry_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "method": "GFN2-xTB",
+      "settings": {
+        "charge": 0,
+        "extensions": {},
+        "maxRuntimeSeconds": 180,
+        "maxSteps": 100,
+        "multiplicity": 1,
+        "threads": 1
+      }
+    },
+    "sessionId": "forged-inner-session",
+    "tool": "prepare_molecule_optimization",
+    "type": "studio_agent_tool_request"
+  },
+  "sessionId": "session-1",
+  "type": "controlled_calculation_host_request"
+}

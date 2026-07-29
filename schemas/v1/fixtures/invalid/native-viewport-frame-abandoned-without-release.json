@@ -1,0 +1,14 @@
+{
+  "method": "viewport.frame_abandoned",
+  "params": {
+    "viewportInstanceId": "viewport-main-1",
+    "viewportLeaseId": "viewport-lease-7",
+    "editorEpoch": 4,
+    "generation": 9,
+    "sequence": 43,
+    "surfaceSlot": 2,
+    "abandoned": true,
+    "allReferencesReleased": false,
+    "reason": "renderer_replaced"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "sessionId": "session-1",
+  "modelId": "deepseek::deepseek-v4-pro",
+  "request": "Optimize neutral singlet water with GFN2-xTB.",
+  "extensions": {}
+}

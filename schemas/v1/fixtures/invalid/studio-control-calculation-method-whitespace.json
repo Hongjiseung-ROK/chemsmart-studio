@@ -1,0 +1,25 @@
+{
+  "activity": [],
+  "extensions": {},
+  "molecule": { "documentId": "mol-water", "revision": 2 },
+  "optimization": null,
+  "pendingApprovals": [
+    {
+      "allowActionId": "action-allow-run-1",
+      "approvalId": "approval-run-1",
+      "denyActionId": "action-deny-run-1",
+      "documentId": "mol-water",
+      "engine": "xtb",
+      "expectedRevision": 2,
+      "expiresAt": "2026-07-22T00:07:00Z",
+      "kind": "calculation_start",
+      "method": " ",
+      "requestId": "request-run-1",
+      "requestedAt": "2026-07-22T00:02:00Z",
+      "risk": "calculation_execution",
+      "settings": { "extensions": {} }
+    }
+  ],
+  "sessionId": "session-water",
+  "snapshotRevision": 1
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "progress",
+  "message": "Optimization frame received.",
+  "runId": "run-1",
+  "stepIndex": 2,
+  "totalSteps": 20,
+  "progress": 0.1,
+  "extensions": { "chemsmart.display": { "priority": "normal" } }
+}

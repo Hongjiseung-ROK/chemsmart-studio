@@ -1,0 +1,9 @@
+{
+  "accepted": false,
+  "eventId": "ui-stale",
+  "sequence": 1,
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "Transient focus targets a stale molecule revision"
+  }
+}

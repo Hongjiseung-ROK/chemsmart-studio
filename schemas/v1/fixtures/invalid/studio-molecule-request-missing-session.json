@@ -1,0 +1,4 @@
+{
+  "method": "molecule.get_snapshot",
+  "params": {}
+}

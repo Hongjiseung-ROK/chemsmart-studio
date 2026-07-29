@@ -1,0 +1,10 @@
+{
+  "arguments": {
+    "execute": true,
+    "job": "job_c3d4",
+    "server": "cluster-a"
+  },
+  "requestId": "request-submit-hpc",
+  "sessionId": "session-p4",
+  "tool": "submit_hpc"
+}

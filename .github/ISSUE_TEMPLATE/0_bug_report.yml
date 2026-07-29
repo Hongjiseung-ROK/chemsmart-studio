@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible ChemSmart Studio problem
+title: "[Bug]: "
+type: Bug
+body:
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed credentials, provider payloads, unpublished structures, and private filesystem paths.
+          required: true
+        - label: I searched existing private issues for the same problem.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build
+      options:
+        - Packaged Apple Silicon app
+        - Development
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the visible result and the molecule/run state without including sensitive research data.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      placeholder: |
+        1. Open…
+        2. Select…
+        3. Observe…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include only the smallest relevant, redacted error text.

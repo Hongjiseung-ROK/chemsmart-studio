@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1",
+  "synthesisId": "synthesis-path",
+  "sessionId": "session-1",
+  "status": "ready",
+  "command": "chemsmart run -f /private/research/water.xyz xtb -c 0 -m 1 opt",
+  "commandDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+  "explanation": "This must be rejected because the renderer-facing command exposes a path.",
+  "projectName": null,
+  "missingInfo": [],
+  "intent": {
+    "verdict": "ok",
+    "failedRuleIds": [],
+    "message": "The request appears preserved.",
+    "extensions": {}
+  },
+  "semantic": {
+    "verdict": "ok",
+    "failedRuleIds": [],
+    "message": "The command appears valid.",
+    "extensions": {}
+  },
+  "publicEvidence": [],
+  "executionPerformed": false,
+  "approvalRequiredForExecution": true,
+  "extensions": {}
+}

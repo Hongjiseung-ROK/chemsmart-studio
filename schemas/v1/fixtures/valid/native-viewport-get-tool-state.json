@@ -1,0 +1,7 @@
+{
+  "method": "viewport.get_tool_state",
+  "params": {
+    "viewportInstanceId": "viewport-1",
+    "generation": 3
+  }
+}

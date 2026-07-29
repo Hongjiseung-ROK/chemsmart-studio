@@ -1,0 +1,10 @@
+{
+  "activeCapability": "overlay",
+  "fallbackReason": "mutation_tool_requires_overlay",
+  "generation": 4,
+  "outstandingFrames": 0,
+  "producerSlotsInUse": 0,
+  "state": "fallback",
+  "stateSequence": 8,
+  "viewportInstanceId": "viewport-main-1"
+}

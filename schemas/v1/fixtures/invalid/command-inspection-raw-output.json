@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "1",
+  "inspectionId": "inspection-1",
+  "sessionId": "session-1",
+  "status": "rejected",
+  "commandDigest": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+  "parse": {
+    "accepted": false,
+    "action": null,
+    "program": null,
+    "job": null,
+    "project": null,
+    "inputName": null,
+    "charge": null,
+    "multiplicity": null,
+    "method": {
+      "functional": null,
+      "abInitio": null,
+      "basis": null,
+      "auxBasis": null,
+      "solventModel": null,
+      "solventId": null
+    }
+  },
+  "intent": {
+    "verdict": "unavailable",
+    "failedRuleIds": [],
+    "assertions": []
+  },
+  "semantic": {
+    "verdict": "reject",
+    "complete": false,
+    "failedRuleIds": ["cmd.semantic.strict_parser"],
+    "missingInfo": [],
+    "issues": [
+      {
+        "ruleId": "cmd.semantic.strict_parser",
+        "severity": "reject",
+        "message": "The strict parser rejected the command."
+      }
+    ]
+  },
+  "dryRun": {
+    "state": "required",
+    "processStarted": false
+  },
+  "executionPerformed": false,
+  "approvalRequiredForExecution": true,
+  "missingInfo": [],
+  "stdout": "/private/research/output",
+  "extensions": {}
+}

@@ -1,0 +1,22 @@
+{
+  "previewId": "preview-1",
+  "operationId": "op-move-hydrogen",
+  "baseRevision": 0,
+  "affectedAtomIds": ["a-2"],
+  "affectedBondIds": [],
+  "beforeHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "afterHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "diff": { "movedAtomCount": 1 },
+  "summary": {
+    "operationKinds": ["set_positions"],
+    "elementChanges": [],
+    "coordinateChangeCount": 1,
+    "bondChangeCount": 0,
+    "constraintChangeCount": 0,
+    "affectedAtomIds": ["a-2"],
+    "affectedBondIds": [],
+    "affectedConstraintIds": []
+  },
+  "createdAt": "2026-07-22T00:01:00Z",
+  "extensions": {}
+}

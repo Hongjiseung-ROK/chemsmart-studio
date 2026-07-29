@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+studio_python="python3"
+if [[ -x "$repo_root/services/chemsmart_bridge/.venv/bin/python" ]]; then
+  studio_python="$repo_root/services/chemsmart_bridge/.venv/bin/python"
+fi
+
+usage() {
+  printf '%s\n' \
+    'Usage: ./dev/studio doctor [--json]' \
+    '       ./dev/studio bootstrap --approve' \
+    '       ./dev/studio protocol-check'
+}
+
+doctor() {
+  local json_mode="${1:-}"
+  CHEMSMART_STUDIO_ROOT="$repo_root" "$studio_python" - "$json_mode" <<'PY'
+import json
+import os
+import pathlib
+import platform
+import shutil
+import stat
+import subprocess
+import sys
+
+root = pathlib.Path(os.environ["CHEMSMART_STUDIO_ROOT"])
+json_mode = sys.argv[1] == "--json"
+
+checks = []
+
+def record(name, status, detail, required=True):
+    checks.append({"name": name, "status": status, "required": required, "detail": detail})
+
+def version(name, args, required=True, predicate=None):
+    executable = shutil.which(args[0])
+    if not executable:
+        record(name, "missing", f"{args[0]} is not on PATH", required)
+        return
+    try:
+        result = subprocess.run(args, cwd=root, text=True, capture_output=True, timeout=10, check=False)
+        value = (result.stdout or result.stderr).strip().splitlines()[0]
+        ok = result.returncode == 0 and (predicate(value) if predicate else True)
+        record(name, "ok" if ok else "mismatch", value, required)
+    except Exception as exc:
+        record(name, "error", str(exc), required)
+
+version("git", ["git", "--version"])
+version("node", ["node", "--version"], predicate=lambda value: value.startswith("v24.14."))
+version("pnpm", ["pnpm", "--version"], predicate=lambda value: value == "11.8.0")
+version("python", [sys.executable, "--version"], predicate=lambda value: value.startswith("Python 3.11"))
+version("uv", ["uv", "--version"])
+
+record(
+    "platform",
+    "ok" if platform.system() == "Darwin" and platform.machine() == "arm64" else "mismatch",
+    f"{platform.system()} {platform.machine()}",
+)
+
+try:
+    lock = json.loads((root / "upstreams.lock.json").read_text())
+    record("upstreams.lock", "ok", f"auditDate={lock['auditDate']}")
+except Exception as exc:
+    lock = None
+    record("upstreams.lock", "error", str(exc))
+
+if lock:
+    expected_root = lock["upstreams"]["cherryStudio"]["commit"]
+    root_commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True).stdout.strip()
+    # A product branch may advance from the pinned Cherry base. The base must remain an ancestor.
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", expected_root, "HEAD"], cwd=root).returncode == 0
+    record("cherry-base", "ok" if ancestor else "mismatch", f"base={expected_root} head={root_commit}")
+    for key, rel in (("chemSmart", "vendor/chemsmart"),):
+        expected = lock["upstreams"][key]["commit"]
+        actual = subprocess.run(["git", "-C", str(root / rel), "rev-parse", "HEAD"], text=True, capture_output=True).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(root / rel), "status", "--porcelain"], text=True, capture_output=True).stdout.strip()
+        ok = expected == actual and not dirty
+        record(f"submodule:{key}", "ok" if ok else "mismatch", f"expected={expected} actual={actual} dirty={bool(dirty)}")
+
+native_residue = [
+    root / "native",
+    root / "vendor" / "avogadrolibs",
+    root / "CMakeLists.txt",
+    root / "CMakePresets.json",
+]
+present_residue = [str(path.relative_to(root)) for path in native_residue if path.exists()]
+record(
+    "native-floor-retired",
+    "ok" if not present_residue else "mismatch",
+    "no fork-owned native floor" if not present_residue else f"present={present_residue}",
+)
+
+secret = root / "api.env"
+if secret.exists():
+    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", "api.env"], cwd=root, capture_output=True).returncode == 0
+    mode = stat.S_IMODE(secret.stat().st_mode)
+    ok = not tracked and mode & 0o077 == 0
+    record("api.env-sealed", "ok" if ok else "unsafe", f"tracked={tracked} mode={oct(mode)}")
+else:
+    record("api.env-sealed", "ok", "not present", False)
+
+required_failures = [item for item in checks if item["required"] and item["status"] != "ok"]
+payload = {
+    "schemaVersion": 1,
+    "command": "doctor",
+    "readOnly": True,
+    "ok": not required_failures,
+    "checks": checks,
+}
+if json_mode:
+    print(json.dumps(payload, indent=2, sort_keys=True))
+else:
+    for item in checks:
+        print(f"[{item['status'].upper():8}] {item['name']}: {item['detail']}")
+    print(f"\nDoctor {'passed' if payload['ok'] else 'found blockers'}. No dependencies were installed.")
+sys.exit(0 if payload["ok"] else 1)
+PY
+}
+
+bootstrap() {
+  if [[ "${1:-}" != "--approve" ]]; then
+    printf '%s\n' 'Bootstrap changes the dependency state. Re-run with --approve after reviewing the pinned manifests.' >&2
+    exit 2
+  fi
+  if [[ -n "${2:-}" ]]; then
+    usage >&2
+    exit 2
+  fi
+  git -C "$repo_root" submodule update --init --recursive
+  pnpm --dir "$repo_root" install --frozen-lockfile
+  uv sync --project "$repo_root/services/chemsmart_bridge" --frozen --extra test
+  printf '%s\n' 'Project dependencies synchronized.'
+}
+
+case "${1:-}" in
+  doctor)
+    shift
+    doctor "${1:-}"
+    ;;
+  bootstrap)
+    shift
+    bootstrap "${1:-}" "${2:-}"
+    ;;
+  protocol-check)
+    exec "$studio_python" "$repo_root/dev/validate_protocol.py"
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

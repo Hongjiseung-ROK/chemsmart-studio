@@ -1,0 +1,20 @@
+{
+  "atomIds": ["atom-o1", "atom-h1", "atom-h2"],
+  "atomicNumbers": [8, 1, 1],
+  "coordinateUnit": "angstrom",
+  "energy": { "unit": "hartree", "value": -5.070544366861 },
+  "engineStepIndex": 3,
+  "extensions": {},
+  "frameIndex": 3,
+  "gradientNorm": { "unit": "hartree/bohr", "value": 0.000158527152 },
+  "positions": [[0.0, 0.0, -0.39], [0.76, 0.0, 0.2], [-0.76, 0.0, 0.2]],
+  "provenance": {
+    "atomOrder": "document_stable_id_order",
+    "coordinateSource": "engine",
+    "transformation": "none"
+  },
+  "runId": "run-water-xtb-1",
+  "structureHash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+  "timestamp": "2026-07-24T16:33:00Z",
+  "type": "controlled_calculation_frame"
+}

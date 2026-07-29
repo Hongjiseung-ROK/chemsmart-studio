@@ -1,0 +1,11 @@
+{
+  "arguments": {
+    "engine": "psi4",
+    "expected_revision": 7,
+    "method": "B3LYP",
+    "settings": { "extensions": {} }
+  },
+  "requestId": "request-calculation-1",
+  "sessionId": "session-1",
+  "tool": "start_molecule_optimization"
+}

@@ -1,0 +1,8 @@
+{
+  "method": "viewport.set_tool",
+  "params": {
+    "viewportInstanceId": "viewport-1",
+    "generation": 3,
+    "tool": "rotate"
+  }
+}

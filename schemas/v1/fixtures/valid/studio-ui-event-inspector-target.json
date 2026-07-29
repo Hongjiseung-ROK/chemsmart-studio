@@ -1,0 +1,13 @@
+{
+  "eventId": "ui-evt-11",
+  "extensions": {},
+  "kind": "inspector_target",
+  "payload": {
+    "message": "Showing the constraints it is about to change.",
+    "target": "constraints"
+  },
+  "sequence": 10,
+  "sessionId": "session-1",
+  "source": "runtime",
+  "timestamp": "2026-07-25T05:10:05Z"
+}

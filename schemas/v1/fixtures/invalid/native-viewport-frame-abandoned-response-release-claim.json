@@ -1,0 +1,12 @@
+{
+  "accepted": true,
+  "lifecycleState": "abandoned",
+  "viewportInstanceId": "viewport-main-1",
+  "viewportLeaseId": "viewport-lease-7",
+  "editorEpoch": 4,
+  "generation": 9,
+  "sequence": 43,
+  "surfaceSlot": 2,
+  "reason": "renderer_replaced",
+  "released": true
+}

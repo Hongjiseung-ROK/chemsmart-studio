@@ -1,0 +1,8 @@
+{
+  "method": "viewport.negotiate_transport",
+  "params": {
+    "generation": 1,
+    "preferredCapabilities": ["iosurface_bgra8", "cpu_bgra8", "overlay"],
+    "viewportInstanceId": "viewport-main-1"
+  }
+}

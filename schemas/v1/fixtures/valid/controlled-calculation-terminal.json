@@ -1,0 +1,9 @@
+{
+  "completedAt": "2026-07-23T05:03:00Z",
+  "extensions": {},
+  "frameCount": 5,
+  "outputGeometryHash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "runId": "run-ethanol-1",
+  "status": "completed",
+  "type": "controlled_calculation_terminal"
+}

@@ -1,0 +1,8 @@
+{
+  "operationId": "op-invalid",
+  "baseRevision": 0,
+  "actor": "agent",
+  "previewOnly": false,
+  "operations": [{ "op": "set_selection", "atomIds": [] }],
+  "extensions": {}
+}

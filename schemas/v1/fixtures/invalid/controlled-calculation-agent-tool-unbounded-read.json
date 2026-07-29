@@ -1,0 +1,9 @@
+{
+  "arguments": {
+    "artifact_id": "artifact-1",
+    "max_bytes": 1048576,
+    "offset": 0
+  },
+  "tool": "read_calculation_artifact",
+  "type": "studio_agent_tool_request"
+}

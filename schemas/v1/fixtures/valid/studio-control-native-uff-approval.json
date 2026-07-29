@@ -1,0 +1,35 @@
+{
+  "activity": [],
+  "extensions": {},
+  "molecule": { "documentId": "water", "revision": 3 },
+  "optimization": null,
+  "pendingApprovals": [
+    {
+      "allowActionId": "action-allow-water-uff",
+      "approvalId": "approval-water-uff",
+      "denyActionId": "action-deny-water-uff",
+      "documentId": "water",
+      "engine": "avogadro",
+      "expectedRevision": 3,
+      "expiresAt": "2026-07-24T16:05:00Z",
+      "kind": "controlled_calculation_start",
+      "method": "UFF",
+      "planDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "planId": "plan-water-uff",
+      "requestId": "request-water-uff",
+      "requestedAt": "2026-07-24T16:00:00Z",
+      "risk": "calculation_execution",
+      "runtimeFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "settings": {
+        "charge": 0,
+        "extensions": {},
+        "maxRuntimeSeconds": 120,
+        "maxSteps": 50,
+        "multiplicity": 1,
+        "threads": 1
+      }
+    }
+  ],
+  "sessionId": "session-water-uff",
+  "snapshotRevision": 1
+}

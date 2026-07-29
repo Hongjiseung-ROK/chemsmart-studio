@@ -1,0 +1,10 @@
+{
+  "arguments": {
+    "artifact_id": "artifact-1",
+    "max_bytes": 1024,
+    "offset": 0,
+    "path": "/private/tmp/run-1/optimization.log"
+  },
+  "tool": "read_calculation_artifact",
+  "type": "studio_agent_tool_request"
+}

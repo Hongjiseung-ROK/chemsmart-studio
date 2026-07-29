@@ -1,0 +1,475 @@
+{
+  "$defs": {
+    "agentWorkspaceState": {
+      "additionalProperties": false,
+      "properties": {
+        "activeTool": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          ]
+        },
+        "currentObject": {
+          "enum": ["session", "molecule", "selection", "preview", "calculation_plan", "trajectory", "artifact"]
+        },
+        "extensions": {
+          "$ref": "common.schema.json#/$defs/extensions"
+        },
+        "focus": {
+          "additionalProperties": false,
+          "properties": {
+            "atomIds": {
+              "items": {
+                "$ref": "common.schema.json#/$defs/stableId"
+              },
+              "maxItems": 100000,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "bondIds": {
+              "items": {
+                "$ref": "common.schema.json#/$defs/stableId"
+              },
+              "maxItems": 100000,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": ["atomIds", "bondIds"],
+          "type": "object"
+        },
+        "latestGate": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": ["pending", "passed", "failed", "denied"]
+            }
+          ]
+        },
+        "pendingTrustedAction": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": ["preview_commit", "calculation_start", "calculation_cancel", "final_geometry_decision"]
+            }
+          ]
+        },
+        "phase": {
+          "enum": [
+            "idle",
+            "understanding_request",
+            "inspecting_molecule",
+            "validating_intent",
+            "validating_semantics",
+            "preparing_preview",
+            "awaiting_preview_decision",
+            "preparing_calculation",
+            "awaiting_calculation_approval",
+            "running_calculation",
+            "reviewing_trajectory",
+            "awaiting_final_geometry_decision",
+            "completed",
+            "failed",
+            "recovering"
+          ]
+        },
+        "progress": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ]
+        },
+        "recoverySequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "requiresUserInput": {
+          "type": "boolean"
+        },
+        "statusSummary": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": "string"
+        },
+        "terminalResult": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": ["completed", "failed", "cancelled", "denied"]
+            }
+          ]
+        },
+        "updatedAt": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "phase",
+        "currentObject",
+        "activeTool",
+        "statusSummary",
+        "progress",
+        "focus",
+        "latestGate",
+        "pendingTrustedAction",
+        "requiresUserInput",
+        "terminalResult",
+        "recoverySequence",
+        "updatedAt",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "calculationStartApproval": {
+      "additionalProperties": false,
+      "properties": {
+        "allowActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "approvalId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "denyActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "documentId": { "$ref": "optimization.schema.json#/$defs/run/properties/documentId" },
+        "engine": { "$ref": "optimization.schema.json#/$defs/run/properties/engine" },
+        "expectedRevision": { "$ref": "optimization.schema.json#/$defs/run/properties/inputRevision" },
+        "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "kind": { "const": "calculation_start" },
+        "method": { "$ref": "optimization.schema.json#/$defs/run/properties/method" },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "requestedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "risk": { "const": "calculation_execution" },
+        "settings": { "$ref": "optimization.schema.json#/$defs/run/properties/settings" }
+      },
+      "required": [
+        "kind",
+        "requestId",
+        "approvalId",
+        "requestedAt",
+        "expiresAt",
+        "risk",
+        "documentId",
+        "expectedRevision",
+        "engine",
+        "method",
+        "settings",
+        "allowActionId",
+        "denyActionId"
+      ],
+      "type": "object"
+    },
+    "controlledCalculationStartApproval": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "engine": { "const": "avogadro" } }, "required": ["engine"] },
+          "then": { "properties": { "method": { "const": "UFF" } }, "required": ["method"] }
+        },
+        {
+          "if": { "properties": { "engine": { "const": "xtb" } }, "required": ["engine"] },
+          "then": { "properties": { "method": { "const": "GFN2-xTB" } }, "required": ["method"] }
+        }
+      ],
+      "properties": {
+        "allowActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "approvalId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "denyActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "engine": { "enum": ["avogadro", "xtb"] },
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "kind": { "const": "controlled_calculation_start" },
+        "method": { "enum": ["UFF", "GFN2-xTB"] },
+        "planDigest": { "$ref": "controlled-calculation.schema.json#/$defs/sha256Digest" },
+        "planId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "requestedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "risk": { "const": "calculation_execution" },
+        "runtimeFingerprint": { "$ref": "controlled-calculation.schema.json#/$defs/sha256Digest" },
+        "settings": { "$ref": "controlled-calculation.schema.json#/$defs/canonicalSettings" }
+      },
+      "required": [
+        "kind",
+        "requestId",
+        "approvalId",
+        "requestedAt",
+        "expiresAt",
+        "risk",
+        "documentId",
+        "expectedRevision",
+        "engine",
+        "method",
+        "settings",
+        "planId",
+        "planDigest",
+        "runtimeFingerprint",
+        "allowActionId",
+        "denyActionId"
+      ],
+      "type": "object"
+    },
+    "executionToolApproval": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "tool": { "const": "run_local" } }, "required": ["tool"] },
+          "then": {
+            "properties": {
+              "arguments": { "$ref": "studio-approval-request.schema.json#/$defs/runLocal/properties/arguments" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "tool": { "const": "submit_hpc" } }, "required": ["tool"] },
+          "then": {
+            "properties": {
+              "arguments": { "$ref": "studio-approval-request.schema.json#/$defs/submitHpc/properties/arguments" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "tool": { "const": "execute_chemsmart_command" } }, "required": ["tool"] },
+          "then": {
+            "properties": {
+              "arguments": {
+                "$ref": "studio-approval-request.schema.json#/$defs/executeChemsmartCommand/properties/arguments"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "allowActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "approvalId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "arguments": { "type": "object" },
+        "denyActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "kind": { "const": "execution_tool" },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "requestedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "risk": { "const": "calculation_execution" },
+        "tool": { "enum": ["run_local", "submit_hpc", "execute_chemsmart_command"] }
+      },
+      "required": [
+        "kind",
+        "requestId",
+        "approvalId",
+        "requestedAt",
+        "expiresAt",
+        "risk",
+        "tool",
+        "arguments",
+        "allowActionId",
+        "denyActionId"
+      ],
+      "type": "object"
+    },
+    "moleculeSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" }
+      },
+      "required": ["documentId", "revision"],
+      "type": "object"
+    },
+    "optimizationFrameSummary": {
+      "$ref": "optimization.schema.json#/$defs/frameSummary"
+    },
+    "optimizationStatus": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": { "properties": { "finalGeometry": { "type": "null" } } },
+          "if": {
+            "properties": {
+              "run": {
+                "properties": { "status": { "const": "awaiting_final_geometry" } }
+              }
+            }
+          },
+          "then": { "properties": { "finalGeometry": { "type": "object" } } }
+        },
+        {
+          "if": { "required": ["cancelActionId"] },
+          "then": {
+            "properties": {
+              "run": { "properties": { "status": { "const": "running" } } }
+            }
+          }
+        },
+        {
+          "else": {
+            "properties": {
+              "latestFrame": { "$ref": "#/$defs/optimizationFrameSummary" }
+            }
+          },
+          "if": { "properties": { "frameCount": { "const": 0 } } },
+          "then": { "properties": { "latestFrame": { "type": "null" } } }
+        }
+      ],
+      "properties": {
+        "cancelActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "finalGeometry": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "acceptActionId": {
+                  "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+                  "description": "Opaque one-shot action identifier issued by the trusted runtime."
+                },
+                "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "frame": { "$ref": "#/$defs/optimizationFrameSummary" },
+                "rejectActionId": {
+                  "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+                  "description": "Opaque one-shot action identifier issued by the trusted runtime."
+                },
+                "risk": { "const": "final_geometry_commit" }
+              },
+              "required": ["risk", "expectedRevision", "frame", "acceptActionId", "rejectActionId"],
+              "type": "object"
+            }
+          ]
+        },
+        "frameCount": { "minimum": 0, "type": "integer" },
+        "latestFrame": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/optimizationFrameSummary" }]
+        },
+        "run": { "$ref": "optimization.schema.json#/$defs/run" }
+      },
+      "required": ["run", "frameCount", "latestFrame", "finalGeometry", "extensions"],
+      "type": "object"
+    },
+    "previewCommitApproval": {
+      "additionalProperties": false,
+      "properties": {
+        "approvalId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "commitActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "discardActionId": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/stableId" }],
+          "description": "Opaque one-shot action identifier issued by the trusted runtime."
+        },
+        "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "kind": { "const": "preview_commit" },
+        "receipt": { "$ref": "preview-receipt.schema.json" },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "requestedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "risk": { "const": "molecule_mutation" }
+      },
+      "required": [
+        "kind",
+        "requestId",
+        "approvalId",
+        "requestedAt",
+        "expiresAt",
+        "risk",
+        "receipt",
+        "commitActionId",
+        "discardActionId"
+      ],
+      "type": "object"
+    },
+    "trustedToolActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "activityId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "kind": { "enum": ["intent_gate", "semantic_gate", "tool_call", "tool_result", "runtime"] },
+        "sequence": { "minimum": 0, "type": "integer" },
+        "status": { "enum": ["pending", "passed", "failed", "needs_user", "denied", "completed"] },
+        "summary": { "maxLength": 1024, "type": "string" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "title": { "maxLength": 256, "minLength": 1, "type": "string" },
+        "toolName": { "maxLength": 256, "minLength": 1, "type": "string" }
+      },
+      "required": ["activityId", "sequence", "timestamp", "kind", "status", "title", "summary", "extensions"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v1/studio-control.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent": {
+      "$ref": "#/$defs/agentWorkspaceState"
+    },
+    "activity": {
+      "items": { "$ref": "#/$defs/trustedToolActivity" },
+      "maxItems": 500,
+      "type": "array"
+    },
+    "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+    "molecule": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/moleculeSummary" }]
+    },
+    "optimization": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/optimizationStatus" }]
+    },
+    "pendingApprovals": {
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/previewCommitApproval" },
+          { "$ref": "#/$defs/calculationStartApproval" },
+          { "$ref": "#/$defs/controlledCalculationStartApproval" },
+          { "$ref": "#/$defs/executionToolApproval" }
+        ]
+      },
+      "maxItems": 100,
+      "type": "array"
+    },
+    "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "snapshotRevision": { "minimum": 0, "type": "integer" }
+  },
+  "required": [
+    "sessionId",
+    "snapshotRevision",
+    "molecule",
+    "pendingApprovals",
+    "activity",
+    "optimization",
+    "extensions"
+  ],
+  "title": "StudioControlSnapshot",
+  "type": "object"
+}

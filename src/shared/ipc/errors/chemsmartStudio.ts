@@ -1,0 +1,17 @@
+/** Stable ChemSmart Studio domain errors used across renderer, main, and helpers. */
+export const chemsmartStudioErrorCodes = {
+  SCHEMA_INVALID: 'SCHEMA_INVALID',
+  REVISION_CONFLICT: 'REVISION_CONFLICT',
+  APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
+  RUN_ACTIVE: 'RUN_ACTIVE',
+  EDITOR_UNAVAILABLE: 'EDITOR_UNAVAILABLE',
+  RUN_NOT_FOUND: 'RUN_NOT_FOUND',
+  AGENT_UNAVAILABLE: 'AGENT_UNAVAILABLE',
+  RPC_TIMEOUT: 'RPC_TIMEOUT',
+  EVENT_OUT_OF_ORDER: 'EVENT_OUT_OF_ORDER',
+  VIEWPORT_CAPTURE_BUSY: 'VIEWPORT_CAPTURE_BUSY',
+  VIEWPORT_RATE_LIMITED: 'VIEWPORT_RATE_LIMITED',
+  VIEWPORT_READ_ONLY: 'VIEWPORT_READ_ONLY'
+} as const
+
+export type ChemSmartStudioErrorCode = (typeof chemsmartStudioErrorCodes)[keyof typeof chemsmartStudioErrorCodes]

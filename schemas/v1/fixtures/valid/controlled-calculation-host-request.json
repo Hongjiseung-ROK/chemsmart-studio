@@ -1,0 +1,12 @@
+{
+  "request": {
+    "arguments": {
+      "plan_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "plan_id": "plan-ethanol-1"
+    },
+    "tool": "validate_prepared_optimization",
+    "type": "studio_agent_tool_request"
+  },
+  "sessionId": "session-1",
+  "type": "controlled_calculation_host_request"
+}

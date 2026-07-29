@@ -1,0 +1,16 @@
+{
+  "atomIds": ["atom-o1"],
+  "atomicNumbers": [8],
+  "completed": true,
+  "engine": "gaussian",
+  "extensions": {},
+  "frames": [
+    {
+      "energy": { "value": -75.0 },
+      "extensions": {},
+      "positions": [[0, 0, 0]],
+      "stepIndex": 0
+    }
+  ],
+  "type": "completed_log_replay"
+}

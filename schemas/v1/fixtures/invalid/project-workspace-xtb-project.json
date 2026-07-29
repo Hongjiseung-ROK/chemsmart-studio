@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1",
+  "programs": [
+    {
+      "program": "gaussian",
+      "projectRequired": true,
+      "projectNames": [],
+      "extensions": {}
+    },
+    {
+      "program": "orca",
+      "projectRequired": true,
+      "projectNames": [],
+      "extensions": {}
+    },
+    {
+      "program": "xtb",
+      "projectRequired": true,
+      "projectNames": ["not-supported"],
+      "extensions": {}
+    }
+  ],
+  "extensions": {}
+}

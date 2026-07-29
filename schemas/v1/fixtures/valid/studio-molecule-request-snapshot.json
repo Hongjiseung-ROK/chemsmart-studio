@@ -1,0 +1,5 @@
+{
+  "method": "molecule.get_snapshot",
+  "params": {},
+  "sessionId": "session-1"
+}

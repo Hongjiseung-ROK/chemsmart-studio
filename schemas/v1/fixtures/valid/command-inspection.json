@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1",
+  "inspectionId": "inspection-1",
+  "sessionId": "session-1",
+  "status": "ready_for_dry_run",
+  "commandDigest": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+  "parse": {
+    "accepted": true,
+    "action": "run",
+    "program": "xtb",
+    "job": "opt",
+    "project": null,
+    "inputName": "water.xyz",
+    "charge": "0",
+    "multiplicity": "1",
+    "method": {
+      "functional": null,
+      "abInitio": null,
+      "basis": null,
+      "auxBasis": null,
+      "solventModel": null,
+      "solventId": null
+    }
+  },
+  "intent": {
+    "verdict": "ok",
+    "failedRuleIds": [],
+    "assertions": [{ "id": "intent.program", "status": "pass" }, { "id": "intent.kind", "status": "pass" }]
+  },
+  "semantic": {
+    "verdict": "warn",
+    "complete": false,
+    "failedRuleIds": ["cmd.semantic.dry_run_required"],
+    "missingInfo": [],
+    "issues": [
+      {
+        "ruleId": "cmd.semantic.dry_run_required",
+        "severity": "warn",
+        "message": "Static preflight passed; isolated dry-run proof is still required."
+      }
+    ]
+  },
+  "dryRun": {
+    "state": "required",
+    "processStarted": false
+  },
+  "executionPerformed": false,
+  "approvalRequiredForExecution": true,
+  "missingInfo": [],
+  "extensions": {}
+}

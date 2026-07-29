@@ -1,0 +1,4 @@
+[submodule "vendor/chemsmart"]
+	path = vendor/chemsmart
+	url = https://github.com/Hongjiseung-ROK/chemsmart.git
+	branch = feat/agent-xtb-harness

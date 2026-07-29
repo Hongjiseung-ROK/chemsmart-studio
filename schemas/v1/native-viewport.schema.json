@@ -1,0 +1,1302 @@
+{
+  "$defs": {
+    "base64Url32Bytes": {
+      "description": "Canonical unpadded base64url encoding of exactly 32 nonzero bytes.",
+      "maxLength": 43,
+      "minLength": 43,
+      "not": { "const": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+      "type": "string"
+    },
+    "attachRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.attach" },
+        "params": { "additionalProperties": false, "type": "object" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "attachResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "attached": { "const": true },
+        "height": { "$ref": "#/$defs/extent" },
+        "scaleFactor": { "exclusiveMinimum": 0, "maximum": 8, "type": "number" },
+        "width": { "$ref": "#/$defs/extent" }
+      },
+      "required": ["attached", "scaleFactor", "width", "height"],
+      "type": "object"
+    },
+    "boundsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "height": { "$ref": "#/$defs/extent" },
+        "width": { "$ref": "#/$defs/extent" },
+        "x": { "$ref": "#/$defs/origin" },
+        "y": { "$ref": "#/$defs/origin" }
+      },
+      "required": ["x", "y", "width", "height"],
+      "type": "object"
+    },
+    "bootstrapGpuTransportRequest": {
+      "additionalProperties": false,
+      "description": "A main-to-helper JSON-RPC request sent only after system.authenticate. Its native transport capability never crosses into preload or renderer IPC.",
+      "properties": {
+        "method": { "const": "viewport.bootstrap_gpu_transport" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+            "generation": { "$ref": "#/$defs/generation" },
+            "inheritedPortSlot": { "$ref": "#/$defs/inheritedPortSlot" },
+            "nonce": { "$ref": "#/$defs/base64Url32Bytes" },
+            "transportEpoch": { "$ref": "#/$defs/transportEpoch" },
+            "viewportLeaseDigest": { "$ref": "#/$defs/base64Url32Bytes" }
+          },
+          "required": [
+            "nonce",
+            "transportEpoch",
+            "editorEpoch",
+            "inheritedPortSlot",
+            "viewportLeaseDigest",
+            "generation"
+          ],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "bootstrapGpuTransportResponse": {
+      "additionalProperties": false,
+      "description": "The native helper's closed receipt that the authenticated GPU transport reached Bootstrapped. Native capability material and the inherited slot are deliberately not echoed.",
+      "properties": {
+        "accepted": { "const": true },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "lifecycleState": { "const": "gpu_transport_bootstrapped" },
+        "transportEpoch": { "$ref": "#/$defs/transportEpoch" }
+      },
+      "required": ["accepted", "lifecycleState", "transportEpoch", "editorEpoch", "generation"],
+      "type": "object"
+    },
+    "captureFrameRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.capture_frame" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "afterSequence": { "$ref": "#/$defs/zeroBasedSequence" },
+            "capability": { "const": "cpu_bgra8" },
+            "generation": { "$ref": "#/$defs/generation" },
+            "maxHeight": { "$ref": "#/$defs/cpuFrameHeight" },
+            "maxWidth": { "$ref": "#/$defs/cpuFrameWidth" },
+            "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["viewportInstanceId", "generation", "afterSequence", "capability", "maxWidth", "maxHeight"],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "committedRenderBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "displayState": { "const": "committed" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" }
+      },
+      "required": ["displayState", "documentId", "revision", "geometryHash"],
+      "type": "object"
+    },
+    "cpuFrameHeight": { "maximum": 480, "minimum": 1, "type": "integer" },
+    "cpuFrameResponse": {
+      "additionalProperties": false,
+      "description": "A bounded one-shot CPU frame. The receiver must verify that decoded bytes equal payloadByteLength and strideBytes multiplied by height, then verify contentHash before presentation.",
+      "properties": {
+        "capability": { "const": "cpu_bgra8" },
+        "frame": { "$ref": "#/$defs/frameMetadata" },
+        "payloadByteLength": { "maximum": 1228800, "minimum": 1, "type": "integer" },
+        "pixelsBase64": {
+          "maxLength": 1638400,
+          "minLength": 4,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "type": "string"
+        }
+      },
+      "required": ["capability", "frame", "payloadByteLength", "pixelsBase64"],
+      "type": "object"
+    },
+    "cpuFrameWidth": { "maximum": 640, "minimum": 1, "type": "integer" },
+    "editorEpoch": {
+      "description": "A monotonically increasing native editor process incarnation. Surface and OpenGL context replacement within that incarnation is expressed by generation.",
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "extent": { "maximum": 65536, "minimum": 1, "type": "integer" },
+    "fallbackReason": {
+      "enum": [
+        "backpressure",
+        "capture_failed",
+        "helper_restarted",
+        "mutation_tool_requires_overlay",
+        "renderer_detached",
+        "shared_texture_unavailable",
+        "transport_timeout",
+        "unsupported_platform"
+      ]
+    },
+    "focusInput": {
+      "additionalProperties": false,
+      "properties": {
+        "focused": { "type": "boolean" },
+        "kind": { "const": "focus" }
+      },
+      "required": ["kind", "focused"],
+      "type": "object"
+    },
+    "frameExtent": {
+      "additionalProperties": false,
+      "properties": {
+        "height": { "$ref": "#/$defs/extent" },
+        "width": { "$ref": "#/$defs/extent" }
+      },
+      "required": ["width", "height"],
+      "type": "object"
+    },
+    "frameIndex": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "frameMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "alphaMode": { "const": "opaque" },
+        "capturedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "colorSpace": { "const": "srgb" },
+        "contentHash": { "pattern": "^sha256:[0-9a-f]{64}$", "type": "string" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "height": {
+          "$ref": "#/$defs/cpuFrameHeight",
+          "description": "The encoded frame height in pixels."
+        },
+        "logicalHeight": {
+          "$ref": "#/$defs/extent",
+          "description": "The native viewport height in logical points before device scaling."
+        },
+        "logicalWidth": {
+          "$ref": "#/$defs/extent",
+          "description": "The native viewport width in logical points before device scaling."
+        },
+        "pixelFormat": { "const": "bgra8" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "rowOrigin": { "const": "top_left" },
+        "scaleFactor": {
+          "description": "The native viewport device-pixel ratio; it does not imply a relationship between logical and encoded frame dimensions.",
+          "exclusiveMinimum": 0,
+          "maximum": 8,
+          "type": "number"
+        },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "strideBytes": {
+          "maximum": 2560,
+          "minimum": 4,
+          "multipleOf": 4,
+          "type": "integer"
+        },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "width": {
+          "$ref": "#/$defs/cpuFrameWidth",
+          "description": "The encoded frame width in pixels."
+        }
+      },
+      "required": [
+        "viewportInstanceId",
+        "generation",
+        "sequence",
+        "documentId",
+        "revision",
+        "width",
+        "height",
+        "logicalWidth",
+        "logicalHeight",
+        "strideBytes",
+        "scaleFactor",
+        "pixelFormat",
+        "rowOrigin",
+        "alphaMode",
+        "colorSpace",
+        "contentHash",
+        "capturedAt"
+      ],
+      "type": "object"
+    },
+    "framePresentationAcknowledgement": {
+      "additionalProperties": false,
+      "description": "Electron main's acknowledgement to the native helper that the renderer presented one exact imported frame. The renderer does not call the helper directly, and main records its own receipt timestamp outside this wire object.",
+      "properties": {
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "presented": { "const": true },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "surfaceSlot": { "$ref": "#/$defs/surfaceSlot" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "sequence",
+        "surfaceSlot",
+        "presented"
+      ],
+      "type": "object"
+    },
+    "framePresentationReceipt": {
+      "additionalProperties": false,
+      "description": "The native helper's closed receipt that the exact frame acknowledgement was accepted and its ledger reached Presented. It makes no claim that Electron released every shared-texture reference.",
+      "properties": {
+        "accepted": { "const": true },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "lifecycleState": { "const": "presented" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "surfaceSlot": { "$ref": "#/$defs/surfaceSlot" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "accepted",
+        "lifecycleState",
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "sequence",
+        "surfaceSlot"
+      ],
+      "type": "object"
+    },
+    "framePresentedRequest": {
+      "additionalProperties": false,
+      "description": "A main-to-helper JSON-RPC request issued only after Electron main accepts the renderer's presentation acknowledgement for the exact frame identity.",
+      "properties": {
+        "method": { "const": "viewport.frame_presented" },
+        "params": { "$ref": "#/$defs/framePresentationAcknowledgement" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "framePresentedResponse": {
+      "$ref": "#/$defs/framePresentationReceipt"
+    },
+    "frameAbandonReason": {
+      "description": "Why a transferred frame definitely never reached Presented before Electron released every imported reference. delivery_failed requires a definite pre-presentation failure; timeout or ambiguous presentation state is not abandonment and requires generation retirement/quarantine. This closed list is lifecycle evidence, not a renderer-provided error string.",
+      "enum": [
+        "application_stopping",
+        "delivery_failed",
+        "renderer_replaced",
+        "renderer_unavailable",
+        "transport_retired"
+      ]
+    },
+    "frameAbandonmentAcknowledgement": {
+      "additionalProperties": false,
+      "description": "Electron main's exact-frame acknowledgement after all shared-texture references were released for a frame that never reached Presented.",
+      "properties": {
+        "abandoned": { "const": true },
+        "allReferencesReleased": { "const": true },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "reason": { "$ref": "#/$defs/frameAbandonReason" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "surfaceSlot": { "$ref": "#/$defs/surfaceSlot" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "sequence",
+        "surfaceSlot",
+        "abandoned",
+        "allReferencesReleased",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "frameAbandonmentReceipt": {
+      "additionalProperties": false,
+      "description": "The native helper's closed receipt that the exact never-presented frame reached Abandoned. It makes no claim about any other frame or generation.",
+      "properties": {
+        "accepted": { "const": true },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "lifecycleState": { "const": "abandoned" },
+        "reason": { "$ref": "#/$defs/frameAbandonReason" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "surfaceSlot": { "$ref": "#/$defs/surfaceSlot" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "accepted",
+        "lifecycleState",
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "sequence",
+        "surfaceSlot",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "frameAbandonedRequest": {
+      "additionalProperties": false,
+      "description": "A main-to-helper JSON-RPC request issued only after Electron reports all references released for an exact frame that never reached Presented.",
+      "properties": {
+        "method": { "const": "viewport.frame_abandoned" },
+        "params": { "$ref": "#/$defs/frameAbandonmentAcknowledgement" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "frameAbandonedResponse": {
+      "$ref": "#/$defs/frameAbandonmentReceipt"
+    },
+    "frameReleaseAcknowledgement": {
+      "additionalProperties": false,
+      "description": "Electron main's exact-frame acknowledgement after all shared-texture references were released for a frame that had already reached Presented.",
+      "properties": {
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "released": { "const": true },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "surfaceSlot": { "$ref": "#/$defs/surfaceSlot" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "sequence",
+        "surfaceSlot",
+        "released"
+      ],
+      "type": "object"
+    },
+    "frameReleaseReceipt": {
+      "additionalProperties": false,
+      "description": "The native helper's closed receipt that the exact presented frame reached Released. It makes no claim about any other frame or generation.",
+      "properties": {
+        "accepted": { "const": true },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "lifecycleState": { "const": "released" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "surfaceSlot": { "$ref": "#/$defs/surfaceSlot" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "accepted",
+        "lifecycleState",
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "sequence",
+        "surfaceSlot"
+      ],
+      "type": "object"
+    },
+    "frameReleasedRequest": {
+      "additionalProperties": false,
+      "description": "A main-to-helper JSON-RPC request issued only after Electron reports all references released for an exact frame that previously reached Presented.",
+      "properties": {
+        "method": { "const": "viewport.frame_released" },
+        "params": { "$ref": "#/$defs/frameReleaseAcknowledgement" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "frameReleasedResponse": {
+      "$ref": "#/$defs/frameReleaseReceipt"
+    },
+    "generation": {
+      "description": "A monotonically increasing surface generation. The receiver rejects a value older than its current generation.",
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "gpuGenerationBinding": {
+      "additionalProperties": false,
+      "description": "Electron main's authenticated binding for one fresh GPU transport generation. Freshness and monotonicity are runtime invariants enforced against the prior binding.",
+      "properties": {
+        "devicePixelRatio": {
+          "exclusiveMinimum": 0,
+          "maximum": 8,
+          "type": "number"
+        },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "logicalExtent": { "$ref": "#/$defs/frameExtent" },
+        "pixelExtent": { "$ref": "#/$defs/frameExtent" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "logicalExtent",
+        "pixelExtent",
+        "devicePixelRatio"
+      ],
+      "type": "object"
+    },
+    "gpuGenerationBindingReceipt": {
+      "additionalProperties": false,
+      "description": "The native helper's closed receipt that one exact generation reached GenerationBound. It does not claim a frame was produced, presented, or released.",
+      "properties": {
+        "accepted": { "const": true },
+        "devicePixelRatio": {
+          "exclusiveMinimum": 0,
+          "maximum": 8,
+          "type": "number"
+        },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "lifecycleState": { "const": "generation_bound" },
+        "logicalExtent": { "$ref": "#/$defs/frameExtent" },
+        "pixelExtent": { "$ref": "#/$defs/frameExtent" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "accepted",
+        "lifecycleState",
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "logicalExtent",
+        "pixelExtent",
+        "devicePixelRatio"
+      ],
+      "type": "object"
+    },
+    "bindGpuGenerationRequest": {
+      "additionalProperties": false,
+      "description": "A main-to-helper JSON-RPC request issued after authentication to bind one fresh GPU generation before any frame from it is accepted.",
+      "properties": {
+        "method": { "const": "viewport.bind_gpu_generation" },
+        "params": { "$ref": "#/$defs/gpuGenerationBinding" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "bindGpuGenerationResponse": {
+      "$ref": "#/$defs/gpuGenerationBindingReceipt"
+    },
+    "generationRetirementReason": {
+      "description": "Why Electron main retired one exact old transport generation. Retirement quarantines that generation and does not assert that its individual frames were released.",
+      "enum": [
+        "application_stopping",
+        "renderer_replaced",
+        "renderer_unavailable",
+        "transport_reconfigured",
+        "viewport_detached"
+      ]
+    },
+    "generationRetirementAcknowledgement": {
+      "additionalProperties": false,
+      "description": "Electron main's generation-scoped retirement instruction. It carries no renderer or native process identity.",
+      "properties": {
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "reason": { "$ref": "#/$defs/generationRetirementReason" },
+        "retired": { "const": true },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["viewportInstanceId", "viewportLeaseId", "editorEpoch", "generation", "retired", "reason"],
+      "type": "object"
+    },
+    "generationRetirementReceipt": {
+      "additionalProperties": false,
+      "description": "The native helper's closed receipt that one exact generation reached GenerationRetired. Individual frame release remains separately evidenced.",
+      "properties": {
+        "accepted": { "const": true },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "lifecycleState": { "const": "generation_retired" },
+        "reason": { "$ref": "#/$defs/generationRetirementReason" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "accepted",
+        "lifecycleState",
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "retireGenerationRequest": {
+      "additionalProperties": false,
+      "description": "A main-to-helper JSON-RPC request that explicitly quarantines one exact old generation. The helper must match the viewport lease, editor epoch, and generation to its bound generation; the receipt does not claim that frame references were released.",
+      "properties": {
+        "method": { "const": "viewport.retire_generation" },
+        "params": { "$ref": "#/$defs/generationRetirementAcknowledgement" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "retireGenerationResponse": {
+      "$ref": "#/$defs/generationRetirementReceipt"
+    },
+    "getToolStateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.get_tool_state" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "generation": { "$ref": "#/$defs/generation" },
+            "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["viewportInstanceId", "generation"],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "getTransportStateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.get_transport_state" },
+        "params": { "additionalProperties": false, "type": "object" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "gpuFrameDescriptor": {
+      "additionalProperties": false,
+      "description": "Metadata for one IOSurface-backed frame delivered through Electron's trusted shared-texture channel. This descriptor deliberately has no pixel content hash, native pointer, Mach right, IOSurface identifier, or filesystem path.",
+      "properties": {
+        "alphaMode": { "const": "opaque" },
+        "capability": { "const": "iosurface_bgra8" },
+        "colorSpace": { "$ref": "#/$defs/gpuFrameColorSpace" },
+        "devicePixelRatio": {
+          "exclusiveMinimum": 0,
+          "maximum": 8,
+          "type": "number"
+        },
+        "editorEpoch": { "$ref": "#/$defs/editorEpoch" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "logicalExtent": { "$ref": "#/$defs/frameExtent" },
+        "pixelExtent": { "$ref": "#/$defs/frameExtent" },
+        "pixelFormat": { "const": "bgra8" },
+        "producedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "renderBinding": { "$ref": "#/$defs/renderBinding" },
+        "rowOrigin": { "const": "top_left" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "surfaceSlot": { "$ref": "#/$defs/surfaceSlot" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "viewportLeaseId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "capability",
+        "viewportInstanceId",
+        "viewportLeaseId",
+        "editorEpoch",
+        "generation",
+        "sequence",
+        "surfaceSlot",
+        "logicalExtent",
+        "pixelExtent",
+        "devicePixelRatio",
+        "pixelFormat",
+        "rowOrigin",
+        "alphaMode",
+        "colorSpace",
+        "renderBinding",
+        "producedAt"
+      ],
+      "type": "object"
+    },
+    "gpuFrameColorSpace": {
+      "additionalProperties": false,
+      "description": "The exact Electron ColorSpace metadata supported by the current Stage C evidence: RGB matrix, BT.709 primaries, full range, and linear transfer. This does not claim an sRGB transfer function.",
+      "properties": {
+        "matrix": { "const": "rgb" },
+        "primaries": { "const": "bt709" },
+        "range": { "const": "full" },
+        "transfer": { "const": "linear" }
+      },
+      "required": ["matrix", "primaries", "range", "transfer"],
+      "type": "object"
+    },
+    "gpuFrameNotification": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.gpu_frame" },
+        "params": { "$ref": "#/$defs/gpuFrameDescriptor" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "rendererReadiness": {
+      "additionalProperties": false,
+      "description": "The renderer's narrow readiness declaration. Electron main derives sender identity; this declaration opens one send attempt, while a successful sendSharedTexture transfer is the definitive receiver-liveness proof.",
+      "properties": {
+        "capability": { "const": "iosurface_bgra8" },
+        "receiverInstalled": { "const": true },
+        "webGpuReady": { "const": true }
+      },
+      "required": ["capability", "receiverInstalled", "webGpuReady"],
+      "type": "object"
+    },
+    "rendererReadyReceipt": {
+      "additionalProperties": false,
+      "description": "Electron main's closed receipt that it accepted the sender-bound readiness declaration. It does not claim a shared texture was transferred or presented.",
+      "properties": {
+        "accepted": { "const": true },
+        "capability": { "const": "iosurface_bgra8" },
+        "lifecycleState": { "const": "renderer_ready" }
+      },
+      "required": ["accepted", "lifecycleState", "capability"],
+      "type": "object"
+    },
+    "inputAccepted": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": { "const": true },
+        "generation": { "$ref": "#/$defs/generation" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["accepted", "viewportInstanceId", "generation", "sequence"],
+      "type": "object"
+    },
+    "inputAcknowledgement": {
+      "description": "The receiver compares generation and sequence against trusted runtime state. Stale generations and non-increasing sequences fail closed through the typed rejection branch.",
+      "oneOf": [{ "$ref": "#/$defs/inputAccepted" }, { "$ref": "#/$defs/inputRejected" }]
+    },
+    "inputErrorCode": {
+      "enum": ["INPUT_INVALID", "RATE_LIMITED", "SEQUENCE_ROLLBACK", "STALE_GENERATION", "VIEWPORT_INACTIVE"]
+    },
+    "inputEvent": {
+      "oneOf": [
+        { "$ref": "#/$defs/pointerInput" },
+        { "$ref": "#/$defs/wheelInput" },
+        { "$ref": "#/$defs/keyInput" },
+        { "$ref": "#/$defs/focusInput" }
+      ]
+    },
+    "inputModifiers": {
+      "additionalProperties": false,
+      "properties": {
+        "alt": { "type": "boolean" },
+        "control": { "type": "boolean" },
+        "meta": { "type": "boolean" },
+        "shift": { "type": "boolean" }
+      },
+      "required": ["alt", "control", "meta", "shift"],
+      "type": "object"
+    },
+    "inheritedPortSlot": {
+      "description": "Zero-based Mach registered-port slot. macOS TASK_PORT_REGISTER_MAX is 3, so valid inherited slots are 0 through 2.",
+      "maximum": 2,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "inputRejected": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": { "const": false },
+        "currentGeneration": { "$ref": "#/$defs/generation" },
+        "errorCode": { "$ref": "#/$defs/inputErrorCode" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "lastAcceptedSequence": { "$ref": "#/$defs/zeroBasedSequence" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "accepted",
+        "viewportInstanceId",
+        "generation",
+        "sequence",
+        "errorCode",
+        "currentGeneration",
+        "lastAcceptedSequence"
+      ],
+      "type": "object"
+    },
+    "keyInput": {
+      "additionalProperties": false,
+      "properties": {
+        "code": { "maxLength": 128, "minLength": 1, "pattern": "\\S", "type": "string" },
+        "key": { "maxLength": 128, "minLength": 1, "pattern": "\\S", "type": "string" },
+        "kind": { "const": "key" },
+        "modifiers": { "$ref": "#/$defs/inputModifiers" },
+        "phase": { "enum": ["down", "up"] },
+        "repeat": { "type": "boolean" }
+      },
+      "required": ["kind", "phase", "key", "code", "repeat", "modifiers"],
+      "type": "object"
+    },
+    "negotiateTransportRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.negotiate_transport" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "generation": { "$ref": "#/$defs/generation" },
+            "preferredCapabilities": {
+              "items": { "$ref": "#/$defs/transportCapability" },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["viewportInstanceId", "generation", "preferredCapabilities"],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "negotiateTransportResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "generation": { "$ref": "#/$defs/generation" },
+        "selectedCapability": { "$ref": "#/$defs/transportCapability" },
+        "supportedCapabilities": {
+          "items": { "$ref": "#/$defs/transportCapability" },
+          "maxItems": 3,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["viewportInstanceId", "generation", "supportedCapabilities", "selectedCapability"],
+      "type": "object"
+    },
+    "origin": { "maximum": 65536, "minimum": -65536, "type": "integer" },
+    "pointerButton": {
+      "enum": ["back", "forward", "middle", "none", "primary", "secondary"]
+    },
+    "pointerInput": {
+      "additionalProperties": false,
+      "properties": {
+        "button": { "$ref": "#/$defs/pointerButton" },
+        "buttons": {
+          "items": {
+            "enum": ["back", "forward", "middle", "primary", "secondary"]
+          },
+          "maxItems": 5,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "kind": { "const": "pointer" },
+        "modifiers": { "$ref": "#/$defs/inputModifiers" },
+        "phase": { "enum": ["cancel", "down", "move", "up"] },
+        "x": {
+          "description": "A finite viewport-local logical coordinate measured from the top-left before device scaling.",
+          "maximum": 65536,
+          "minimum": 0,
+          "type": "number"
+        },
+        "y": {
+          "description": "A finite viewport-local logical coordinate measured from the top-left before device scaling.",
+          "maximum": 65536,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": ["kind", "phase", "x", "y", "button", "buttons", "modifiers"],
+      "type": "object"
+    },
+    "previewRenderBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "displayState": { "const": "preview" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "previewGeometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "previewId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["displayState", "documentId", "baseRevision", "previewId", "previewGeometryHash"],
+      "type": "object"
+    },
+    "renderBinding": {
+      "oneOf": [
+        { "$ref": "#/$defs/committedRenderBinding" },
+        { "$ref": "#/$defs/previewRenderBinding" },
+        { "$ref": "#/$defs/runRenderBinding" },
+        { "$ref": "#/$defs/replayRenderBinding" }
+      ]
+    },
+    "replayRenderBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "displayState": { "const": "replay" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "frameIndex": { "$ref": "#/$defs/frameIndex" },
+        "inputRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "structureHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+      },
+      "required": ["displayState", "documentId", "inputRevision", "runId", "frameIndex", "structureHash"],
+      "type": "object"
+    },
+    "runRenderBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "displayState": { "const": "run" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "frameIndex": { "$ref": "#/$defs/frameIndex" },
+        "inputRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "structureHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+      },
+      "required": ["displayState", "documentId", "inputRevision", "runId", "frameIndex", "structureHash"],
+      "type": "object"
+    },
+    "sendInputRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.send_input" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "coordinateSpace": { "const": "viewport_logical_top_left" },
+            "event": { "$ref": "#/$defs/inputEvent" },
+            "generation": { "$ref": "#/$defs/generation" },
+            "sequence": { "$ref": "#/$defs/sequence" },
+            "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["viewportInstanceId", "generation", "sequence", "coordinateSpace", "event"],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "sequence": {
+      "description": "A positive per-stream sequence. The receiver rejects a value not greater than the last accepted sequence.",
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "setBoundsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.set_bounds" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "height": { "$ref": "#/$defs/extent" },
+            "width": { "$ref": "#/$defs/extent" },
+            "x": { "$ref": "#/$defs/origin" },
+            "y": { "$ref": "#/$defs/origin" }
+          },
+          "required": ["x", "y", "width", "height"],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "setToolRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.set_tool" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "generation": { "$ref": "#/$defs/generation" },
+            "tool": { "$ref": "#/$defs/tool" },
+            "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["viewportInstanceId", "generation", "tool"],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "setVisibleRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.set_visible" },
+        "params": {
+          "additionalProperties": false,
+          "properties": { "visible": { "type": "boolean" } },
+          "required": ["visible"],
+          "type": "object"
+        }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "surfaceSlot": {
+      "description": "A bounded producer-ring slot. It is only an opaque logical slot number and is not an IOSurface identifier.",
+      "maximum": 2,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tool": {
+      "enum": ["navigate", "draw", "manipulate", "select", "measure"]
+    },
+    "toolAvailability": {
+      "additionalProperties": false,
+      "properties": {
+        "disabledReason": {
+          "enum": [null, "mutation_locked", "read_only_transport"]
+        },
+        "enabled": { "type": "boolean" },
+        "tool": { "$ref": "#/$defs/tool" }
+      },
+      "required": ["tool", "enabled", "disabledReason"],
+      "type": "object"
+    },
+    "toolChangedNotification": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "viewport.tool_changed" },
+        "params": { "$ref": "#/$defs/toolState" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "toolState": {
+      "additionalProperties": false,
+      "properties": {
+        "activeTool": { "$ref": "#/$defs/tool" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "tools": {
+          "items": false,
+          "maxItems": 5,
+          "minItems": 5,
+          "prefixItems": [
+            {
+              "allOf": [
+                { "$ref": "#/$defs/toolAvailability" },
+                {
+                  "properties": {
+                    "disabledReason": { "type": "null" },
+                    "tool": { "const": "navigate" }
+                  }
+                }
+              ]
+            },
+            {
+              "oneOf": [
+                {
+                  "allOf": [
+                    { "$ref": "#/$defs/toolAvailability" },
+                    {
+                      "properties": {
+                        "disabledReason": { "type": "null" },
+                        "enabled": { "const": true },
+                        "tool": { "const": "draw" }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    { "$ref": "#/$defs/toolAvailability" },
+                    {
+                      "properties": {
+                        "disabledReason": { "const": "mutation_locked" },
+                        "enabled": { "const": false },
+                        "tool": { "const": "draw" }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    { "$ref": "#/$defs/toolAvailability" },
+                    {
+                      "properties": {
+                        "disabledReason": { "const": "read_only_transport" },
+                        "enabled": { "const": false },
+                        "tool": { "const": "draw" }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "oneOf": [
+                {
+                  "allOf": [
+                    { "$ref": "#/$defs/toolAvailability" },
+                    {
+                      "properties": {
+                        "disabledReason": { "type": "null" },
+                        "enabled": { "const": true },
+                        "tool": { "const": "manipulate" }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    { "$ref": "#/$defs/toolAvailability" },
+                    {
+                      "properties": {
+                        "disabledReason": { "const": "mutation_locked" },
+                        "enabled": { "const": false },
+                        "tool": { "const": "manipulate" }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    { "$ref": "#/$defs/toolAvailability" },
+                    {
+                      "properties": {
+                        "disabledReason": { "const": "read_only_transport" },
+                        "enabled": { "const": false },
+                        "tool": { "const": "manipulate" }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/toolAvailability" },
+                {
+                  "properties": {
+                    "disabledReason": { "type": "null" },
+                    "tool": { "const": "select" }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/toolAvailability" },
+                {
+                  "properties": {
+                    "disabledReason": { "type": "null" },
+                    "tool": { "const": "measure" }
+                  }
+                }
+              ]
+            }
+          ],
+          "type": "array"
+        },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["viewportInstanceId", "generation", "activeTool", "tools"],
+      "type": "object"
+    },
+    "transportCapability": {
+      "enum": ["cpu_bgra8", "iosurface_bgra8", "overlay"]
+    },
+    "transportLifecycleState": {
+      "enum": [
+        "degraded_cpu",
+        "fallback",
+        "negotiating",
+        "recovering",
+        "stopped",
+        "streaming_cpu",
+        "streaming_gpu",
+        "suspended"
+      ]
+    },
+    "transportState": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "state": { "const": "streaming_cpu" } },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "activeCapability": { "const": "cpu_bgra8" },
+              "fallbackReason": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "state": { "const": "streaming_gpu" } },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "activeCapability": { "const": "iosurface_bgra8" },
+              "fallbackReason": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "state": { "const": "degraded_cpu" } },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "activeCapability": { "const": "cpu_bgra8" },
+              "fallbackReason": { "$ref": "#/$defs/fallbackReason" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "state": { "const": "fallback" } },
+            "required": ["state"]
+          },
+          "then": {
+            "description": "Compatibility-only overlay state retained for legacy fixtures and explicit development diagnostics. Product degradation uses degraded_cpu.",
+            "properties": {
+              "activeCapability": { "const": "overlay" },
+              "fallbackReason": { "$ref": "#/$defs/fallbackReason" }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "activeCapability": {
+          "enum": [null, "cpu_bgra8", "iosurface_bgra8", "overlay"]
+        },
+        "fallbackReason": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/fallbackReason" }]
+        },
+        "generation": { "$ref": "#/$defs/generation" },
+        "outstandingFrames": { "maximum": 2, "minimum": 0, "type": "integer" },
+        "producerSlotsInUse": { "maximum": 3, "minimum": 0, "type": "integer" },
+        "state": { "$ref": "#/$defs/transportLifecycleState" },
+        "stateSequence": { "$ref": "#/$defs/sequence" },
+        "viewportInstanceId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": [
+        "viewportInstanceId",
+        "generation",
+        "stateSequence",
+        "state",
+        "activeCapability",
+        "fallbackReason",
+        "outstandingFrames",
+        "producerSlotsInUse"
+      ],
+      "type": "object"
+    },
+    "transportEpoch": {
+      "description": "A monotonically increasing authenticated GPU transport incarnation.",
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "visibleResponse": {
+      "additionalProperties": false,
+      "properties": { "visible": { "type": "boolean" } },
+      "required": ["visible"],
+      "type": "object"
+    },
+    "wheelInput": {
+      "additionalProperties": false,
+      "properties": {
+        "deltaMode": { "enum": ["line", "page", "pixel"] },
+        "deltaX": { "maximum": 100000, "minimum": -100000, "type": "number" },
+        "deltaY": { "maximum": 100000, "minimum": -100000, "type": "number" },
+        "kind": { "const": "wheel" },
+        "modifiers": { "$ref": "#/$defs/inputModifiers" },
+        "x": {
+          "description": "A finite viewport-local logical coordinate measured from the top-left before device scaling.",
+          "maximum": 65536,
+          "minimum": 0,
+          "type": "number"
+        },
+        "y": {
+          "description": "A finite viewport-local logical coordinate measured from the top-left before device scaling.",
+          "maximum": 65536,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": ["kind", "x", "y", "deltaX", "deltaY", "deltaMode", "modifiers"],
+      "type": "object"
+    },
+    "zeroBasedSequence": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v1/native-viewport.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Electron main owns viewport transport negotiation, input ordering, and lifecycle. The helper owns rendered molecule frames but exposes no process identity, filesystem path, native pointer, or cross-process surface handle through this wire contract.",
+  "oneOf": [
+    { "$ref": "#/$defs/bootstrapGpuTransportRequest" },
+    { "$ref": "#/$defs/bootstrapGpuTransportResponse" },
+    { "$ref": "#/$defs/attachRequest" },
+    { "$ref": "#/$defs/setBoundsRequest" },
+    { "$ref": "#/$defs/setVisibleRequest" },
+    { "$ref": "#/$defs/negotiateTransportRequest" },
+    { "$ref": "#/$defs/captureFrameRequest" },
+    { "$ref": "#/$defs/sendInputRequest" },
+    { "$ref": "#/$defs/getTransportStateRequest" },
+    { "$ref": "#/$defs/setToolRequest" },
+    { "$ref": "#/$defs/getToolStateRequest" },
+    { "$ref": "#/$defs/toolChangedNotification" },
+    { "$ref": "#/$defs/gpuFrameNotification" },
+    { "$ref": "#/$defs/bindGpuGenerationRequest" },
+    { "$ref": "#/$defs/bindGpuGenerationResponse" },
+    { "$ref": "#/$defs/framePresentedRequest" },
+    { "$ref": "#/$defs/framePresentedResponse" },
+    { "$ref": "#/$defs/frameReleasedRequest" },
+    { "$ref": "#/$defs/frameReleasedResponse" },
+    { "$ref": "#/$defs/frameAbandonedRequest" },
+    { "$ref": "#/$defs/frameAbandonedResponse" },
+    { "$ref": "#/$defs/retireGenerationRequest" },
+    { "$ref": "#/$defs/retireGenerationResponse" },
+    { "$ref": "#/$defs/attachResponse" },
+    { "$ref": "#/$defs/boundsResponse" },
+    { "$ref": "#/$defs/visibleResponse" },
+    { "$ref": "#/$defs/negotiateTransportResponse" },
+    { "$ref": "#/$defs/cpuFrameResponse" },
+    { "$ref": "#/$defs/inputAcknowledgement" },
+    { "$ref": "#/$defs/transportState" },
+    { "$ref": "#/$defs/toolState" }
+  ],
+  "title": "NativeViewport"
+}

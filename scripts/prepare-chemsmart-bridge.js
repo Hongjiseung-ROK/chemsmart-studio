@@ -1,0 +1,184 @@
+const { execFileSync } = require('child_process')
+const { createHash } = require('crypto')
+const fs = require('fs')
+const path = require('path')
+
+const root = path.join(__dirname, '..')
+const bridgeProject = path.join(root, 'services', 'chemsmart_bridge')
+const outputRoot = path.join(root, 'build', 'chemsmart-bridge')
+const runtimeDirectory = path.join(outputRoot, '.venv')
+
+function readPinnedPythonVersion() {
+  const version = fs.readFileSync(path.join(root, '.python-version'), 'utf8').trim()
+  if (!/^3\.11\.\d+$/.test(version)) {
+    throw new Error(`ChemSmart bridge packaging requires a pinned Python 3.11 patch release, received ${version}`)
+  }
+  return version
+}
+
+function run(executable, args, options = {}) {
+  return execFileSync(executable, args, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: options.capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
+    env: {
+      ...process.env,
+      UV_LINK_MODE: 'copy'
+    }
+  })
+}
+
+function copyPythonStandardLibrary(source, destination) {
+  fs.cpSync(source, destination, {
+    recursive: true,
+    filter: (candidate) => path.basename(candidate) !== 'site-packages'
+  })
+}
+
+function removeLocalInstallMetadata(directory) {
+  if (!fs.existsSync(directory)) return
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const candidate = path.join(directory, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === '__pycache__') {
+        fs.rmSync(candidate, { force: true, recursive: true })
+      } else {
+        removeLocalInstallMetadata(candidate)
+      }
+    } else if (entry.name === 'direct_url.json' || entry.name.endsWith('.pyc')) {
+      fs.rmSync(candidate, { force: true })
+    }
+  }
+}
+
+function findAbsoluteSymlinks(directory) {
+  const results = []
+  if (!fs.existsSync(directory)) return results
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const candidate = path.join(directory, entry.name)
+    if (entry.isSymbolicLink()) {
+      const target = fs.readlinkSync(candidate)
+      if (path.isAbsolute(target)) results.push({ path: candidate, target })
+    } else if (entry.isDirectory()) {
+      results.push(...findAbsoluteSymlinks(candidate))
+    }
+  }
+  return results
+}
+
+function sha256(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+}
+
+function prepareChemSmartBridge() {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') {
+    throw new Error(`Portable ChemSmart bridge packaging is currently validated only for darwin-arm64`)
+  }
+
+  const pythonVersion = readPinnedPythonVersion()
+  const uv = path.join(root, 'resources', 'binaries', 'darwin-arm64', 'uv')
+  const requirements = path.join(outputRoot, 'requirements.txt')
+  const python = path.join(runtimeDirectory, 'bin', 'python')
+
+  if (!fs.existsSync(uv)) {
+    throw new Error(`Bundled uv is missing: resources/binaries/darwin-arm64/uv`)
+  }
+
+  fs.rmSync(outputRoot, { force: true, recursive: true })
+  fs.mkdirSync(outputRoot, { recursive: true })
+
+  run(uv, ['python', 'install', pythonVersion, '--managed-python', '--quiet'])
+  run(uv, ['venv', '--managed-python', '--python', pythonVersion, '--relocatable', runtimeDirectory, '--quiet'])
+  run(uv, [
+    'export',
+    '--project',
+    bridgeProject,
+    '--frozen',
+    '--no-dev',
+    '--no-emit-project',
+    '--no-emit-package',
+    'chemsmart',
+    '--format',
+    'requirements-txt',
+    '--output-file',
+    requirements,
+    '--quiet'
+  ])
+  run(uv, ['pip', 'sync', '--python', python, requirements, '--quiet'])
+  run(uv, [
+    'pip',
+    'install',
+    '--python',
+    python,
+    '--no-deps',
+    '--no-editable',
+    path.join(root, 'vendor', 'chemsmart'),
+    bridgeProject,
+    '--quiet'
+  ])
+
+  const managedPython = run(uv, ['python', 'find', '--managed-python', pythonVersion], { capture: true }).trim()
+  const managedRoot = path.dirname(path.dirname(fs.realpathSync(managedPython)))
+  const managedStandardLibrary = path.join(managedRoot, 'lib', 'python3.11')
+
+  fs.rmSync(python, { force: true })
+  fs.copyFileSync(managedPython, python)
+  fs.chmodSync(python, 0o755)
+  fs.copyFileSync(
+    path.join(managedRoot, 'lib', 'libpython3.11.dylib'),
+    path.join(runtimeDirectory, 'lib', 'libpython3.11.dylib')
+  )
+  copyPythonStandardLibrary(managedStandardLibrary, path.join(runtimeDirectory, 'lib', 'python3.11'))
+  fs.rmSync(path.join(runtimeDirectory, 'pyvenv.cfg'), { force: true })
+  removeLocalInstallMetadata(runtimeDirectory)
+
+  const absoluteSymlinks = findAbsoluteSymlinks(runtimeDirectory)
+  if (absoluteSymlinks.length > 0) {
+    throw new Error(`Portable ChemSmart bridge contains ${absoluteSymlinks.length} absolute symlink(s)`)
+  }
+
+  const validation = [
+    'import chemsmart, chemsmart_studio_bridge, jsonschema, numpy, rdkit, sys',
+    'assert sys.prefix == sys.base_prefix',
+    'print("portable-chemsmart-bridge-ok")'
+  ].join('; ')
+  const validationOutput = run(python, ['-I', '-c', validation], { capture: true }).trim()
+  if (validationOutput !== 'portable-chemsmart-bridge-ok') {
+    throw new Error(`Portable ChemSmart bridge self-check returned an unexpected result`)
+  }
+
+  fs.writeFileSync(
+    path.join(outputRoot, 'runtime-manifest.json'),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        platform: 'darwin',
+        architecture: 'arm64',
+        pythonVersion,
+        pythonSha256: sha256(python),
+        dependencyLockSha256: sha256(path.join(bridgeProject, 'uv.lock')),
+        installationMode: 'locked-non-editable',
+        portable: true,
+        absoluteSymlinks: 0
+      },
+      null,
+      2
+    )
+  )
+}
+
+module.exports = {
+  findAbsoluteSymlinks,
+  prepareChemSmartBridge,
+  readPinnedPythonVersion,
+  removeLocalInstallMetadata
+}
+
+if (require.main === module) {
+  try {
+    prepareChemSmartBridge()
+  } catch (error) {
+    console.error('Failed to prepare portable ChemSmart bridge:', error.message)
+    process.exit(1)
+  }
+}

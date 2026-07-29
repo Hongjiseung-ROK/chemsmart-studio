@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/studio-ui-update-input.schema.json",
+  "title": "emit_studio_ui_update input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "message", "extensions"],
+  "properties": {
+    "kind": { "enum": ["status", "progress", "molecule_focus", "notice", "agent_thought", "inspector_target"] },
+    "message": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "documentId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "revision": { "type": "integer", "minimum": 0 },
+    "atomIds": {
+      "type": "array",
+      "maxItems": 100000,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      }
+    },
+    "bondIds": {
+      "type": "array",
+      "maxItems": 100000,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      }
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "stepIndex": { "type": "integer", "minimum": 0 },
+    "totalSteps": { "type": "integer", "minimum": 1 },
+    "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+    "phase": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "toolName": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "target": { "enum": ["coordinates", "measurements", "constraints", "decisions", "activity"] },
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9]*)+$" },
+      "additionalProperties": { "type": "object" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "molecule_focus" } }, "required": ["kind"] },
+      "then": {
+        "required": ["documentId", "revision"],
+        "anyOf": [{ "required": ["atomIds"] }, { "required": ["bondIds"] }]
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "progress" } }, "required": ["kind"] },
+      "then": { "required": ["runId", "stepIndex", "progress"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "agent_thought" } }, "required": ["kind"] },
+      "then": { "required": ["phase"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "inspector_target" } }, "required": ["kind"] },
+      "then": { "required": ["target"] }
+    }
+  ]
+}

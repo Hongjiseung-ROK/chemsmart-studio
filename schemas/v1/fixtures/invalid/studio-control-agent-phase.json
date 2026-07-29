@@ -1,0 +1,27 @@
+{
+  "activity": [],
+  "agent": {
+    "activeTool": null,
+    "currentObject": "session",
+    "extensions": {},
+    "focus": {
+      "atomIds": [],
+      "bondIds": []
+    },
+    "latestGate": null,
+    "pendingTrustedAction": null,
+    "phase": "revealing_private_reasoning",
+    "progress": null,
+    "recoverySequence": 0,
+    "requiresUserInput": false,
+    "statusSummary": "Invalid phase",
+    "terminalResult": null,
+    "updatedAt": "2026-07-25T00:00:00Z"
+  },
+  "extensions": {},
+  "molecule": null,
+  "optimization": null,
+  "pendingApprovals": [],
+  "sessionId": "session-agent-invalid",
+  "snapshotRevision": 0
+}

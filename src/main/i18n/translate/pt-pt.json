@@ -1,0 +1,156 @@
+{
+  "agent": {
+    "builtin": {
+      "cherry_assistant": {
+        "description": "Built-in ChemSmart Studio advisor. Diagnose issues, guide operations, collect FAQs, submit bugs/feature requests, and search/create Skills"
+      }
+    },
+    "session": {
+      "workspace_status": {
+        "inaccessible": "O caminho do workspace não está acessível: {{path}}",
+        "missing": "O caminho do espaço de trabalho não existe: {{path}}",
+        "not_directory": "O caminho do workspace não é um diretório: {{path}}"
+      }
+    }
+  },
+  "appMenu": {
+    "about": "Sobre",
+    "close": "Fechar Janela",
+    "copy": "Copiar",
+    "cut": "Corte",
+    "delete": "Excluir",
+    "documentation": "Documentação",
+    "edit": "Editar",
+    "feedback": "Feedback",
+    "file": "Arquivo",
+    "forceReload": "Forçar Recarregamento",
+    "front": "Trazer Tudo para a Frente",
+    "help": "Ajuda",
+    "hide": "Esconder",
+    "hideOthers": "Ocultar Outros",
+    "minimize": "Minimizar",
+    "paste": "Colar",
+    "quit": "Sair",
+    "redo": "Refazer",
+    "releases": "Lançamentos",
+    "reload": "Recarregar",
+    "resetZoom": "Tamanho Real",
+    "selectAll": "Selecionar Todos",
+    "services": "Serviços",
+    "toggleDevTools": "Alternar Ferramentas de Desenvolvedor",
+    "toggleFullscreen": "Alternar Tela Cheia",
+    "undo": "Desfazer",
+    "unhide": "Mostrar Todos",
+    "view": "Visualizar",
+    "website": "Site",
+    "window": "Janela",
+    "zoom": "Zoom",
+    "zoomIn": "Ampliar",
+    "zoomOut": "Reduzir Zoom"
+  },
+  "chemsmart_studio": {
+    "agent_state": {
+      "awaiting_calculation_approval": "[to be translated]:Waiting for calculation approval",
+      "awaiting_final_geometry_decision": "[to be translated]:Waiting for the final geometry decision",
+      "awaiting_preview_decision": "[to be translated]:Waiting for the molecule preview decision",
+      "completed": "[to be translated]:Agent task completed",
+      "failed": "[to be translated]:Agent task needs attention",
+      "idle": "[to be translated]:Ready for a scientific task",
+      "inspecting_molecule": "[to be translated]:Inspecting the committed molecule",
+      "preparing_calculation": "[to be translated]:Preparing the controlled calculation",
+      "preparing_preview": "[to be translated]:Preparing a molecule preview",
+      "recovering": "[to be translated]:Recovering the scientific workspace",
+      "reviewing_trajectory": "[to be translated]:Reviewing the optimization trajectory",
+      "running_calculation": "[to be translated]:Monitoring the controlled calculation",
+      "understanding_request": "[to be translated]:Understanding the scientific request",
+      "validating_intent": "[to be translated]:Checking the requested intent",
+      "validating_semantics": "[to be translated]:Checking chemical and revision safety"
+    },
+    "control_activity": {
+      "action_denied_summary": "[to be translated]:{{tool}} was denied.",
+      "action_denied_title": "[to be translated]:Action denied",
+      "approve_calculation_summary": "[to be translated]:{{engine}}/{{method}} is waiting for a one-shot decision.",
+      "approve_calculation_title": "[to be translated]:Approve calculation start",
+      "approve_execution_summary": "[to be translated]:{{tool}} is waiting for an exact one-shot decision.",
+      "approve_execution_title": "[to be translated]:Approve agent execution",
+      "draft_staged_summary": "[to be translated]:{{count}} agent and researcher change(s) are staged for Save or Run review.",
+      "draft_staged_title": "[to be translated]:Molecule draft updated",
+      "final_geometry_accepted_summary": "[to be translated]:Run {{runId}} committed molecule revision {{revision}}.",
+      "final_geometry_accepted_title": "[to be translated]:Final geometry accepted",
+      "final_geometry_rejected_summary": "[to be translated]:Run {{runId}} was rejected; committed revision {{revision}} was preserved.",
+      "final_geometry_rejected_title": "[to be translated]:Final geometry rejected",
+      "mode_allow_summary": "[to be translated]:Every agent action asks before it runs.",
+      "mode_allow_title": "[to be translated]:Allow mode",
+      "mode_execute_summary": "[to be translated]:Reversible agent actions run without asking for the rest of this session. Calculations still ask.",
+      "mode_execute_title": "[to be translated]:Execute mode",
+      "one_shot_approved_summary": "[to be translated]:{{tool}} was approved once.",
+      "one_shot_approved_title": "[to be translated]:One-shot action approved",
+      "optimization_cancelled_summary": "[to be translated]:Run {{runId}} stopped after {{stepCount}} frame(s).",
+      "optimization_cancelled_title": "[to be translated]:Optimization cancelled",
+      "optimization_failed_summary": "[to be translated]:Run {{runId}} ended before a final geometry was available.",
+      "optimization_failed_title": "[to be translated]:Optimization failed",
+      "optimization_started_summary": "[to be translated]:{{engine}}/{{method}} is running from revision {{revision}}.",
+      "optimization_started_title": "[to be translated]:Optimization started",
+      "pre_authorized_summary": "[to be translated]:Ran without asking. {{reason}}",
+      "pre_authorized_title": "[to be translated]:Pre-authorized in Execute mode",
+      "preview_committed_summary": "[to be translated]:Committed preview {{previewId}} at revision {{revision}}.",
+      "preview_committed_title": "[to be translated]:Molecule preview committed",
+      "preview_discarded_summary": "[to be translated]:Preview {{previewId}} was discarded without changing committed state.",
+      "preview_discarded_title": "[to be translated]:Molecule preview discarded",
+      "preview_prepared_summary": "[to be translated]:Preview {{previewId}} contains {{operationCount}} operation(s).",
+      "preview_prepared_title": "[to be translated]:Molecule preview prepared",
+      "request_rejected_calculation_summary": "[to be translated]:Calculation request does not match the supported committed state.",
+      "request_rejected_preview_summary": "[to be translated]:Preview identity or revision does not match trusted state.",
+      "request_rejected_title": "[to be translated]:Studio request rejected",
+      "review_final_geometry_summary": "[to be translated]:Run {{runId}} produced {{stepCount}} frame(s) and is waiting for a one-shot decision.",
+      "review_final_geometry_title": "[to be translated]:Review final geometry",
+      "review_preview_summary": "[to be translated]:Preview {{previewId}} is waiting for a one-shot decision.",
+      "review_preview_title": "[to be translated]:Review molecule preview",
+      "trusted_control_required_summary": "[to be translated]:{{tool}} is available only through a main-issued one-shot control.",
+      "trusted_control_required_title": "[to be translated]:Use the trusted Studio control"
+    }
+  },
+  "common": {
+    "copy": "Copiar",
+    "cut": "Cortar",
+    "inspect": "Verificar",
+    "paste": "Colar"
+  },
+  "dialog": {
+    "all_files": "Todos os Arquivos",
+    "chemsmart_project": "[to be translated]:ChemSmart Studio Project",
+    "html_files": "Arquivos HTML",
+    "molecule_files": "[to be translated]:Molecule Files",
+    "open_file": "Abrir Arquivo",
+    "pdf_files": "Arquivos PDF",
+    "png_image": "Imagem PNG",
+    "save_as_html": "Salvar como HTML",
+    "save_as_pdf": "Salvar como PDF",
+    "save_file": "Salvar Arquivo",
+    "select_folder": "Selecionar Pasta",
+    "word_document": "Documento do Word"
+  },
+  "paintings": {
+    "generate_failed": "Falha ao gerar imagem",
+    "image_mix_failed": "Falha ao misturar imagens"
+  },
+  "selection": {
+    "name": "Assistente de Seleção de Palavras"
+  },
+  "settings": {
+    "mcp": {
+      "oauth": {
+        "callback": {
+          "message": "Você pode fechar esta página e retornar ao ChemSmart Studio",
+          "title": "Autenticação Bem-Sucedida"
+        }
+      }
+    },
+    "title": "Configurações"
+  },
+  "tray": {
+    "quit": "Sair",
+    "show_quick_assistant": "Atalho de Assistente",
+    "show_window": "Exibir Janela"
+  }
+}

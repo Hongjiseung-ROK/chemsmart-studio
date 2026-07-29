@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/preview-receipt.schema.json",
+  "title": "PreviewReceipt",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "stateHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "studioPreviewSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationKinds",
+        "elementChanges",
+        "coordinateChangeCount",
+        "bondChangeCount",
+        "constraintChangeCount",
+        "affectedAtomIds",
+        "affectedBondIds",
+        "affectedConstraintIds"
+      ],
+      "properties": {
+        "operationKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "add_atoms",
+              "remove_atoms",
+              "add_bonds",
+              "remove_bonds",
+              "set_positions",
+              "set_atomic_numbers",
+              "set_bond_orders",
+              "set_selection",
+              "set_frozen_axes",
+              "set_constraints",
+              "remove_constraints"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "elementChanges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["atomId", "kind"],
+            "properties": {
+              "atomId": { "$ref": "common.schema.json#/$defs/stableId" },
+              "kind": { "enum": ["added", "removed", "changed"] },
+              "beforeAtomicNumber": { "type": "integer", "minimum": 1, "maximum": 118 },
+              "afterAtomicNumber": { "type": "integer", "minimum": 1, "maximum": 118 }
+            }
+          }
+        },
+        "coordinateChangeCount": { "type": "integer", "minimum": 0 },
+        "bondChangeCount": { "type": "integer", "minimum": 0 },
+        "constraintChangeCount": { "type": "integer", "minimum": 0 },
+        "affectedAtomIds": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "uniqueItems": true
+        },
+        "affectedBondIds": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "uniqueItems": true
+        },
+        "affectedConstraintIds": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "required": [
+    "previewId",
+    "operationId",
+    "baseRevision",
+    "affectedAtomIds",
+    "affectedBondIds",
+    "beforeHash",
+    "afterHash",
+    "diff",
+    "createdAt",
+    "extensions"
+  ],
+  "properties": {
+    "previewId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "operationId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+    "affectedAtomIds": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/stableId" },
+      "uniqueItems": true
+    },
+    "affectedBondIds": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/stableId" },
+      "uniqueItems": true
+    },
+    "beforeHash": { "$ref": "#/$defs/stateHash" },
+    "afterHash": { "$ref": "#/$defs/stateHash" },
+    "diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operationCount": { "type": "integer", "minimum": 0 },
+        "addedAtomCount": { "type": "integer", "minimum": 0 },
+        "removedAtomCount": { "type": "integer", "minimum": 0 },
+        "movedAtomCount": { "type": "integer", "minimum": 0 },
+        "addedBondCount": { "type": "integer", "minimum": 0 },
+        "removedBondCount": { "type": "integer", "minimum": 0 },
+        "selectionChanged": { "type": "boolean" },
+        "frozenAxesChanged": { "type": "boolean" },
+        "constraintsChanged": { "type": "boolean" }
+      }
+    },
+    "summary": { "$ref": "#/$defs/studioPreviewSummary" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+  }
+}

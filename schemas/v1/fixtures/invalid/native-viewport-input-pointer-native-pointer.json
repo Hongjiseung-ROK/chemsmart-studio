@@ -1,0 +1,24 @@
+{
+  "method": "viewport.send_input",
+  "params": {
+    "coordinateSpace": "viewport_logical_top_left",
+    "event": {
+      "button": "primary",
+      "buttons": ["primary"],
+      "kind": "pointer",
+      "modifiers": {
+        "alt": false,
+        "control": false,
+        "meta": false,
+        "shift": false
+      },
+      "nativePointer": "0x0000000123456789",
+      "phase": "down",
+      "x": 180.5,
+      "y": 120.25
+    },
+    "generation": 12,
+    "sequence": 46,
+    "viewportInstanceId": "viewport-main-1"
+  }
+}

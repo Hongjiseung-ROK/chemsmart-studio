@@ -1,0 +1,24 @@
+{
+  "binding": {
+    "documentId": "ethanol",
+    "expectedRevision": 3,
+    "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "sessionId": "session-1"
+  },
+  "executable": {
+    "architecture": "arm64",
+    "engine": "avogadro",
+    "executableDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "kind": "native_editor",
+    "libraries": [],
+    "runtimeFingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "verifiedAt": "2026-07-23T05:00:00Z",
+    "version": "1.101.0"
+  },
+  "extensions": {},
+  "planDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "planId": "plan-ethanol-1",
+  "reservedAt": "2026-07-23T05:01:00Z",
+  "runId": "run-ethanol-1",
+  "type": "controlled_calculation_reservation"
+}

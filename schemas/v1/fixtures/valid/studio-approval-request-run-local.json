@@ -1,0 +1,8 @@
+{
+  "arguments": {
+    "job": "job_a1b2"
+  },
+  "requestId": "request-run-local",
+  "sessionId": "session-p4",
+  "tool": "run_local"
+}

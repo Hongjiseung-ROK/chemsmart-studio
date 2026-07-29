@@ -1,0 +1,66 @@
+{
+  "method": "optimization.start_native",
+  "params": {
+    "plan": {
+      "binding": {
+        "documentId": "water",
+        "expectedRevision": 3,
+        "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "sessionId": "session-uff"
+      },
+      "createdAt": "2026-07-24T16:00:00Z",
+      "engine": "avogadro",
+      "executable": {
+        "architecture": "arm64",
+        "engine": "avogadro",
+        "executableDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "kind": "native_editor",
+        "libraries": [],
+        "runtimeFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "verifiedAt": "2026-07-24T16:00:00Z",
+        "version": "avogadro-studio@5886a401dec4bf6be1c3d85350ef85f304eab5db"
+      },
+      "expiresAt": "2026-07-24T16:05:00Z",
+      "extensions": {},
+      "method": "UFF",
+      "planDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "planId": "plan-water-uff",
+      "settings": {
+        "charge": 0,
+        "extensions": {},
+        "forceThreshold": { "unit": "hartree/bohr", "value": 0.001 },
+        "maxRuntimeSeconds": 120,
+        "maxSteps": 50,
+        "multiplicity": 1,
+        "threads": 1
+      },
+      "settingsDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "state": "validated",
+      "type": "prepared_controlled_calculation"
+    },
+    "reservation": {
+      "binding": {
+        "documentId": "water",
+        "expectedRevision": 3,
+        "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "sessionId": "session-uff"
+      },
+      "executable": {
+        "architecture": "arm64",
+        "engine": "avogadro",
+        "executableDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "kind": "native_editor",
+        "libraries": [],
+        "runtimeFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "verifiedAt": "2026-07-24T16:00:00Z",
+        "version": "avogadro-studio@5886a401dec4bf6be1c3d85350ef85f304eab5db"
+      },
+      "extensions": {},
+      "planDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "planId": "plan-water-uff",
+      "reservedAt": "2026-07-24T16:01:00Z",
+      "runId": "run-water-uff",
+      "type": "controlled_calculation_reservation"
+    }
+  }
+}

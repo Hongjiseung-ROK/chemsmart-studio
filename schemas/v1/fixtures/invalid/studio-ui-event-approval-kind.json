@@ -1,0 +1,10 @@
+{
+  "eventId": "ui-invalid-3",
+  "sessionId": "session-1",
+  "sequence": 5,
+  "timestamp": "2026-07-22T04:10:05Z",
+  "source": "model_tool",
+  "kind": "approval_request",
+  "payload": { "message": "Approve this calculation." },
+  "extensions": {}
+}

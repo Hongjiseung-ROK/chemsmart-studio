@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/project-workspace.schema.json",
+  "title": "ChemSmart project workspace",
+  "anyOf": [
+    { "$ref": "#/$defs/listRequest" },
+    { "$ref": "#/$defs/listResult" },
+    { "$ref": "#/$defs/readRequest" },
+    { "$ref": "#/$defs/readResult" },
+    { "$ref": "#/$defs/validateRequest" },
+    { "$ref": "#/$defs/validateResult" },
+    { "$ref": "#/$defs/critiqueRequest" },
+    { "$ref": "#/$defs/critiqueResult" }
+  ],
+  "$defs": {
+    "program": {
+      "enum": ["gaussian", "orca"]
+    },
+    "listedProgram": {
+      "enum": ["gaussian", "orca", "xtb"]
+    },
+    "projectName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "yamlText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000,
+      "pattern": "\\S"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "\\S"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 12000,
+      "pattern": "\\S"
+    },
+    "verdict": {
+      "enum": ["ok", "warn", "reject"]
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleId", "severity", "message", "extensions"],
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+        },
+        "severity": { "enum": ["info", "warn", "reject"] },
+        "message": { "$ref": "#/$defs/message" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/issue" }
+    },
+    "unsupportedFeatures": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512,
+        "pattern": "\\S"
+      }
+    },
+    "programListing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program", "projectRequired", "projectNames", "extensions"],
+      "properties": {
+        "program": { "$ref": "#/$defs/listedProgram" },
+        "projectRequired": { "type": "boolean" },
+        "projectNames": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/projectName" }
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "program": { "const": "xtb" } },
+            "required": ["program"]
+          },
+          "then": {
+            "properties": {
+              "projectRequired": { "const": false },
+              "projectNames": { "maxItems": 0 }
+            }
+          },
+          "else": {
+            "properties": {
+              "projectRequired": { "const": true }
+            }
+          }
+        }
+      ]
+    },
+    "listRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extensions"],
+      "properties": {
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "listResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "programs", "extensions"],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "programs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/programListing" },
+          "allOf": [
+            {
+              "contains": {
+                "properties": { "program": { "const": "gaussian" } },
+                "required": ["program"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "program": { "const": "orca" } },
+                "required": ["program"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "program": { "const": "xtb" } },
+                "required": ["program"]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            }
+          ]
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "readRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectName", "program", "extensions"],
+      "properties": {
+        "projectName": { "$ref": "#/$defs/projectName" },
+        "program": { "$ref": "#/$defs/program" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "readResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "projectName", "program", "yamlText", "extensions"],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "projectName": { "$ref": "#/$defs/projectName" },
+        "program": { "$ref": "#/$defs/program" },
+        "yamlText": { "$ref": "#/$defs/yamlText" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "validateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectName", "program", "yamlText", "extensions"],
+      "properties": {
+        "projectName": { "$ref": "#/$defs/projectName" },
+        "program": { "$ref": "#/$defs/program" },
+        "yamlText": { "$ref": "#/$defs/yamlText" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "validateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "projectName", "program", "verdict", "issues", "message", "extensions"],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "projectName": { "$ref": "#/$defs/projectName" },
+        "program": { "$ref": "#/$defs/program" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "message": { "$ref": "#/$defs/message" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "critiqueRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectName", "program", "yamlText", "extensions"],
+      "properties": {
+        "projectName": { "$ref": "#/$defs/projectName" },
+        "program": { "$ref": "#/$defs/program" },
+        "yamlText": { "$ref": "#/$defs/yamlText" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "critiqueResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "projectName",
+        "program",
+        "verdict",
+        "issues",
+        "summary",
+        "unsupportedFeatures",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "projectName": { "$ref": "#/$defs/projectName" },
+        "program": { "$ref": "#/$defs/program" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "summary": { "$ref": "#/$defs/summary" },
+        "unsupportedFeatures": { "$ref": "#/$defs/unsupportedFeatures" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    }
+  }
+}

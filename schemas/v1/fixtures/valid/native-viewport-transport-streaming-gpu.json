@@ -1,0 +1,10 @@
+{
+  "activeCapability": "iosurface_bgra8",
+  "fallbackReason": null,
+  "generation": 3,
+  "outstandingFrames": 1,
+  "producerSlotsInUse": 2,
+  "state": "streaming_gpu",
+  "stateSequence": 8,
+  "viewportInstanceId": "viewport-main-1"
+}

@@ -1,0 +1,38 @@
+{
+  "extensions": {},
+  "nextRunId": null,
+  "runs": [
+    {
+      "active": false,
+      "extensions": {},
+      "frameCount": 2,
+      "latestFrame": {
+        "convergence": { "converged": true, "threshold": 0.001 },
+        "energy": { "unit": "kJ/mol", "value": -11.0 },
+        "forceMetrics": { "max": 0.0005, "rms": 0.0002, "unit": "kJ/mol/angstrom" },
+        "runId": "run-1",
+        "stepIndex": 1,
+        "timestamp": "2026-07-22T18:01:02.000Z"
+      },
+      "message": "",
+      "outcome": "accepted",
+      "recovered": false,
+      "replayable": true,
+      "run": {
+        "constraintIds": [],
+        "createdAt": "2026-07-22T18:01:00.000Z",
+        "documentId": "mol-1",
+        "engine": "avogadro",
+        "extensions": {},
+        "frozenAtomIds": [],
+        "inputRevision": 0,
+        "method": "UFF",
+        "runId": "run-1",
+        "settings": { "extensions": {}, "maxSteps": 2 },
+        "status": "completed"
+      },
+      "updatedAt": "2026-07-22T18:01:03.000Z"
+    }
+  ],
+  "totalRuns": 1
+}

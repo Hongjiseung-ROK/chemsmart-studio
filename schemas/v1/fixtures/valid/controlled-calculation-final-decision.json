@@ -1,0 +1,11 @@
+{
+  "decidedAt": "2026-07-23T05:04:00Z",
+  "decision": "accept",
+  "documentId": "ethanol",
+  "expectedRevision": 3,
+  "extensions": {},
+  "finalGeometryHash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "requestId": "decision-1",
+  "runId": "run-ethanol-1",
+  "type": "controlled_calculation_final_geometry_decision"
+}

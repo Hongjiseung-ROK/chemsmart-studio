@@ -1,0 +1,16 @@
+{
+  "eventId": "ui-evt-3",
+  "sessionId": "session-1",
+  "sequence": 2,
+  "timestamp": "2026-07-22T04:10:02Z",
+  "source": "model_tool",
+  "kind": "molecule_focus",
+  "payload": {
+    "message": "Highlighting the constrained bond.",
+    "documentId": "mol-1",
+    "revision": 3,
+    "atomIds": ["a-1", "a-2"],
+    "bondIds": ["b-1"]
+  },
+  "extensions": {}
+}

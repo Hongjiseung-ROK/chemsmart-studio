@@ -1,0 +1,9 @@
+{
+  "accepted": false,
+  "currentGeneration": 3,
+  "errorCode": "STALE_GENERATION",
+  "generation": 2,
+  "lastAcceptedSequence": 14,
+  "sequence": 15,
+  "viewportInstanceId": "viewport-main-1"
+}

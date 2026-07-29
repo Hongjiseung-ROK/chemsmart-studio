@@ -1,0 +1,14 @@
+{
+  "eventId": "ui-invalid-2",
+  "sessionId": "session-1",
+  "sequence": 4,
+  "timestamp": "2026-07-22T04:10:04Z",
+  "source": "model_tool",
+  "kind": "molecule_focus",
+  "payload": {
+    "message": "No focus target was supplied.",
+    "documentId": "mol-1",
+    "revision": 3
+  },
+  "extensions": {}
+}
