@@ -359,6 +359,7 @@ def typescript(
     studio_ui_event_schema: dict,
     studio_ui_event_runtime_schema: dict,
     studio_agent_trace_event_runtime_schema: dict,
+    studio_agent_workbench_runtime_schema: dict,
     studio_ui_delivery_schema: dict,
     studio_control_schema: dict,
     studio_control_runtime_schema: dict,
@@ -446,6 +447,11 @@ def typescript(
     )
     agent_trace_runtime_schema_literal = json.dumps(
         studio_agent_trace_event_runtime_schema,
+        indent=2,
+        ensure_ascii=False,
+    )
+    agent_workbench_runtime_schema_literal = json.dumps(
+        studio_agent_workbench_runtime_schema,
         indent=2,
         ensure_ascii=False,
     )
@@ -563,6 +569,23 @@ export type StudioAgentTraceKind = 'turn_started' | 'reasoning_summary' | 'tool_
 export type StudioAgentTraceStatus = 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'denied'
 export interface StudioAgentTraceDetail {{ argumentKeys?: string[]; resultKeys?: string[]; ruleIds?: string[]; verdict?: string; durationMs?: number }}
 export interface StudioAgentTraceEvent {{ eventId: StableId; sessionId: StableId; turnId: StableId; sequence: number; timestamp: string; kind: StudioAgentTraceKind; status: StudioAgentTraceStatus; toolCallId?: StableId; toolName?: string; title: string; summary: string; detail?: StudioAgentTraceDetail; extensions: Extensions }}
+export type StudioAgentAnswerSectionKind = 'finding' | 'evidence' | 'warning' | 'next_step'
+export interface StudioAgentAnswerSection {{ kind: StudioAgentAnswerSectionKind; heading: string; summary: string }}
+export interface StudioAgentAnswer {{ answerId: StableId; heading: string; summary: string; sections: StudioAgentAnswerSection[]; extensions: Extensions }}
+export type StudioAgentArtifactKind = 'molecule_change' | 'calculation_plan' | 'preflight_receipt' | 'trajectory_result' | 'verification'
+export interface StudioAgentArtifact {{ artifactId: StableId; kind: StudioAgentArtifactKind; heading: string; summary: string; documentId: StableId; revision: number; geometryHash: string; charge: number; multiplicity: number; engine?: 'xtb' | 'gaussian' | 'orca'; method?: string; calculationKind?: 'single_point' | 'optimization' | 'frequency' | 'transition_state' | 'scan' | 'other'; energy?: {{ value: number; unit: 'hartree' | 'eV' | 'kJ/mol' | 'kcal/mol' }}; affectedIds?: StableId[]; ruleIds?: string[]; verdict?: 'passed' | 'warning' | 'failed' | 'denied'; extensions: Extensions }}
+export interface StudioAgentToolProjection {{ toolCallId: StableId; toolName: string; purpose: string; argumentKeys?: string[]; resultKeys?: string[]; ruleIds?: string[]; verdict?: string; durationMs?: number }}
+export type StudioAgentTurnEventKind = 'user_message' | 'reasoning_summary' | 'tool_started' | 'permission_waiting' | 'tool_progress' | 'tool_succeeded' | 'tool_failed' | 'artifact_published' | 'answer_published' | 'turn_terminal'
+export type StudioAgentTurnStatus = 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'denied' | 'cancelled' | 'needs_user'
+export type StudioAgentTurnOutcome = 'completed' | 'denied' | 'failed' | 'cancelled' | 'needs_user'
+export interface StudioAgentTurnEvent {{ eventId: StableId; threadId: StableId; turnId: StableId; sequence: number; timestamp: string; kind: StudioAgentTurnEventKind; status: StudioAgentTurnStatus; summary: string; tool?: StudioAgentToolProjection; approvalRef?: StableId; artifact?: StudioAgentArtifact; answer?: StudioAgentAnswer; outcome?: StudioAgentTurnOutcome; extensions: Extensions }}
+export interface StudioAgentCapability {{ discovery: 'plus' | 'mention' | 'command'; key: string; label: string; description: string; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRef?: StableId }}
+export interface StudioAgentCapabilityManifest {{ projectId: StableId; threadId: StableId; generatedAt: string; items: StudioAgentCapability[]; extensions: Extensions }}
+export interface StudioAgentComposerIntent {{ intentId: StableId; kind: 'inspect' | 'plan' | 'dry_run' | 'review' | 'history' | 'new' | 'context'; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRefs: StableId[]; prompt?: string; requiresExecutionApproval: boolean; extensions: Extensions }}
+export interface StudioAgentReportResultInput {{ answer: StudioAgentAnswer; artifacts: StudioAgentArtifact[] }}
+export interface StudioAgentTurnPage {{ threadId: StableId; events: StudioAgentTurnEvent[]; nextBeforeSequence: number | null; extensions: Extensions }}
+export interface StudioAgentTurnPageRequest {{ threadId: StableId; beforeSequence: number | null; limit: number }}
+export interface StudioAgentCapabilityManifestRequest {{ sessionId: StableId; threadId: StableId }}
 export interface PreviewReceipt {{ previewId: StableId; operationId: StableId; baseRevision: number; affectedAtomIds: StableId[]; affectedBondIds: StableId[]; beforeHash: string; afterHash: string; diff: PreviewDiff; summary?: StudioPreviewSummary; createdAt: string; extensions: Extensions }}
 export interface MoleculeCommitReceipt {{ type: 'molecule_commit'; previewId: StableId; revision: number; timestamp: string; geometryHash: string; stateHash: string }}
 export interface OptimizationSettings {{ maxSteps?: number; forceThreshold?: number; charge?: number; multiplicity?: number; solvent?: string; extensions: Extensions }}
@@ -840,6 +863,7 @@ export const optimizationTrajectoryRuntimeSchema = {optimization_trajectory_runt
 export const studioUiEventSchema = {event_schema_literal} as const
 export const studioUiEventRuntimeSchema = {runtime_schema_literal} as const
 export const studioAgentTraceEventRuntimeSchema = {agent_trace_runtime_schema_literal} as const
+export const studioAgentWorkbenchRuntimeSchema = {agent_workbench_runtime_schema_literal} as const
 export const studioUiDeliverySchema = {delivery_schema_literal} as const
 export const studioControlSchema = {control_schema_literal} as const
 export const studioControlRuntimeSchema = {control_runtime_schema_literal} as const
@@ -877,6 +901,7 @@ def python_types(
     studio_ui_event_schema: dict,
     studio_ui_event_runtime_schema: dict,
     studio_agent_trace_event_runtime_schema: dict,
+    studio_agent_workbench_runtime_schema: dict,
     studio_ui_delivery_schema: dict,
     studio_control_schema: dict,
     studio_control_runtime_schema: dict,
@@ -954,6 +979,11 @@ def python_types(
     )
     agent_trace_runtime_schema_literal = pprint.pformat(
         studio_agent_trace_event_runtime_schema,
+        sort_dicts=False,
+        width=100,
+    )
+    agent_workbench_runtime_schema_literal = pprint.pformat(
+        studio_agent_workbench_runtime_schema,
         sort_dicts=False,
         width=100,
     )
@@ -1218,6 +1248,142 @@ class StudioAgentTraceEvent(TypedDict):
     summary: str
     detail: NotRequired[StudioAgentTraceDetail]
     extensions: Extensions
+
+StudioAgentAnswerSectionKind = Literal["finding", "evidence", "warning", "next_step"]
+
+class StudioAgentAnswerSection(TypedDict):
+    kind: StudioAgentAnswerSectionKind
+    heading: str
+    summary: str
+
+class StudioAgentAnswer(TypedDict):
+    answerId: str
+    heading: str
+    summary: str
+    sections: list[StudioAgentAnswerSection]
+    extensions: Extensions
+
+StudioAgentArtifactKind = Literal[
+    "molecule_change",
+    "calculation_plan",
+    "preflight_receipt",
+    "trajectory_result",
+    "verification",
+]
+
+class StudioAgentArtifact(TypedDict):
+    artifactId: str
+    kind: StudioAgentArtifactKind
+    heading: str
+    summary: str
+    documentId: str
+    revision: int
+    geometryHash: str
+    charge: int
+    multiplicity: int
+    engine: NotRequired[Literal["xtb", "gaussian", "orca"]]
+    method: NotRequired[str]
+    calculationKind: NotRequired[
+        Literal["single_point", "optimization", "frequency", "transition_state", "scan", "other"]
+    ]
+    energy: NotRequired[dict[str, Any]]
+    affectedIds: NotRequired[list[str]]
+    ruleIds: NotRequired[list[str]]
+    verdict: NotRequired[Literal["passed", "warning", "failed", "denied"]]
+    extensions: Extensions
+
+class StudioAgentToolProjection(TypedDict):
+    toolCallId: str
+    toolName: str
+    purpose: str
+    argumentKeys: NotRequired[list[str]]
+    resultKeys: NotRequired[list[str]]
+    ruleIds: NotRequired[list[str]]
+    verdict: NotRequired[str]
+    durationMs: NotRequired[int]
+
+StudioAgentTurnEventKind = Literal[
+    "user_message",
+    "reasoning_summary",
+    "tool_started",
+    "permission_waiting",
+    "tool_progress",
+    "tool_succeeded",
+    "tool_failed",
+    "artifact_published",
+    "answer_published",
+    "turn_terminal",
+]
+StudioAgentTurnStatus = Literal[
+    "queued",
+    "running",
+    "waiting",
+    "succeeded",
+    "failed",
+    "denied",
+    "cancelled",
+    "needs_user",
+]
+StudioAgentTurnOutcome = Literal["completed", "denied", "failed", "cancelled", "needs_user"]
+
+class StudioAgentTurnEvent(TypedDict):
+    eventId: str
+    threadId: str
+    turnId: str
+    sequence: int
+    timestamp: str
+    kind: StudioAgentTurnEventKind
+    status: StudioAgentTurnStatus
+    summary: str
+    tool: NotRequired[StudioAgentToolProjection]
+    approvalRef: NotRequired[str]
+    artifact: NotRequired[StudioAgentArtifact]
+    answer: NotRequired[StudioAgentAnswer]
+    outcome: NotRequired[StudioAgentTurnOutcome]
+    extensions: Extensions
+
+class StudioAgentCapability(TypedDict):
+    discovery: Literal["plus", "mention", "command"]
+    key: str
+    label: str
+    description: str
+    capability: Literal["inspect", "plan", "act", "navigation"]
+    contextRef: NotRequired[str]
+
+class StudioAgentCapabilityManifest(TypedDict):
+    projectId: str
+    threadId: str
+    generatedAt: str
+    items: list[StudioAgentCapability]
+    extensions: Extensions
+
+class StudioAgentComposerIntent(TypedDict):
+    intentId: str
+    kind: Literal["inspect", "plan", "dry_run", "review", "history", "new", "context"]
+    capability: Literal["inspect", "plan", "act", "navigation"]
+    contextRefs: list[str]
+    prompt: NotRequired[str]
+    requiresExecutionApproval: bool
+    extensions: Extensions
+
+class StudioAgentReportResultInput(TypedDict):
+    answer: StudioAgentAnswer
+    artifacts: list[StudioAgentArtifact]
+
+class StudioAgentTurnPage(TypedDict):
+    threadId: str
+    events: list[StudioAgentTurnEvent]
+    nextBeforeSequence: int | None
+    extensions: Extensions
+
+class StudioAgentTurnPageRequest(TypedDict):
+    threadId: str
+    beforeSequence: int | None
+    limit: int
+
+class StudioAgentCapabilityManifestRequest(TypedDict):
+    sessionId: str
+    threadId: str
 
 class PreviewReceipt(TypedDict):
     previewId: str
@@ -2143,6 +2309,7 @@ OPTIMIZATION_TRAJECTORY_RUNTIME_SCHEMA = {optimization_trajectory_runtime_schema
 STUDIO_UI_EVENT_SCHEMA = {event_schema_literal}
 STUDIO_UI_EVENT_RUNTIME_SCHEMA = {runtime_schema_literal}
 STUDIO_AGENT_TRACE_EVENT_RUNTIME_SCHEMA = {agent_trace_runtime_schema_literal}
+STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA = {agent_workbench_runtime_schema_literal}
 STUDIO_UI_DELIVERY_SCHEMA = {delivery_schema_literal}
 STUDIO_CONTROL_SCHEMA = {control_schema_literal}
 STUDIO_CONTROL_RUNTIME_SCHEMA = {control_runtime_schema_literal}
@@ -2171,6 +2338,9 @@ def main() -> int:
     )
     studio_agent_trace_event_schema = json.loads(
         (SCHEMAS / "studio-agent-trace-event.schema.json").read_text()
+    )
+    studio_agent_workbench_schema = json.loads(
+        (SCHEMAS / "studio-agent-workbench.schema.json").read_text()
     )
     studio_ui_delivery_schema = json.loads(
         (SCHEMAS / "studio-ui-delivery.schema.json").read_text()
@@ -2255,6 +2425,11 @@ def main() -> int:
     studio_agent_trace_event_runtime_schema = bundle_studio_ui_event_schema(
         studio_agent_trace_event_schema,
         common_schema,
+    )
+    studio_agent_workbench_runtime_schema = bundle_protocol_schema(
+        studio_agent_workbench_schema,
+        "studio-agent-workbench.schema.json",
+        schema_documents,
     )
     studio_control_runtime_schema = bundle_studio_control_schema(
         studio_control_schema,
@@ -2359,6 +2534,7 @@ def main() -> int:
             studio_ui_event_schema,
             studio_ui_event_runtime_schema,
             studio_agent_trace_event_runtime_schema,
+            studio_agent_workbench_runtime_schema,
             studio_ui_delivery_schema,
             studio_control_schema,
             studio_control_runtime_schema,
@@ -2396,6 +2572,7 @@ def main() -> int:
             studio_ui_event_schema,
             studio_ui_event_runtime_schema,
             studio_agent_trace_event_runtime_schema,
+            studio_agent_workbench_runtime_schema,
             studio_ui_delivery_schema,
             studio_control_schema,
             studio_control_runtime_schema,

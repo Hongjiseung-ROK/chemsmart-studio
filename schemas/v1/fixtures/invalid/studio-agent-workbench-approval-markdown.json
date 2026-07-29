@@ -1,0 +1,17 @@
+{
+  "approvalRef": "approval-1",
+  "eventId": "event-2",
+  "extensions": {},
+  "kind": "permission_waiting",
+  "sequence": 2,
+  "status": "waiting",
+  "summary": "``` APPROVAL CARD ```",
+  "threadId": "thread-1",
+  "timestamp": "2026-07-29T03:00:00Z",
+  "tool": {
+    "purpose": "Start one approved calculation.",
+    "toolCallId": "call-1",
+    "toolName": "run_local"
+  },
+  "turnId": "turn-1"
+}

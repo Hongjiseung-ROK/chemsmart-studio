@@ -1,0 +1,27 @@
+{
+  "artifact": {
+    "artifactId": "artifact-1",
+    "calculationKind": "single_point",
+    "charge": 0,
+    "documentId": "molecule-1",
+    "energy": { "unit": "hartree", "value": -5.0705 },
+    "engine": "xtb",
+    "extensions": {},
+    "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "heading": "GFN2-xTB single-point result",
+    "kind": "trajectory_result",
+    "method": "GFN2-xTB",
+    "multiplicity": 1,
+    "revision": 2,
+    "summary": "The calculation completed normally."
+  },
+  "eventId": "event-1",
+  "extensions": {},
+  "kind": "artifact_published",
+  "sequence": 3,
+  "status": "succeeded",
+  "summary": "Published the verified calculation result.",
+  "threadId": "thread-1",
+  "timestamp": "2026-07-29T03:00:00Z",
+  "turnId": "turn-1"
+}

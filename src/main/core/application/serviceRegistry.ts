@@ -27,6 +27,7 @@ import {
   MoleculeProjectStore,
   MoleculeWorkspaceService,
   ResearchProjectSessionService,
+  StudioAgentProjectionService,
   StudioConsoleService,
   StudioControlService
 } from '@main/features/chemsmartStudio'
@@ -135,6 +136,7 @@ export const services = {
   MoleculeDocumentService,
   MoleculeWorkspaceService,
   ResearchProjectSessionService,
+  StudioAgentProjectionService,
   CalculationRuntimeService,
   StudioConsoleService,
   StudioControlService,

@@ -1,0 +1,12 @@
+{
+  "eventId": "event-1",
+  "extensions": {},
+  "kind": "reasoning_summary",
+  "providerPayload": { "reasoning_content": "private reasoning" },
+  "sequence": 0,
+  "status": "running",
+  "summary": "Inspecting the visible molecule.",
+  "threadId": "thread-1",
+  "timestamp": "2026-07-29T03:00:00Z",
+  "turnId": "turn-1"
+}

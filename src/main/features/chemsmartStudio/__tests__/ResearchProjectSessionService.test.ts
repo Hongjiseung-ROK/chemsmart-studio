@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -103,7 +103,11 @@ describe('ResearchProjectSessionService', () => {
     const context = await service.getContext()
 
     expect(context.threads).toHaveLength(1)
-    expect(context.threads[0]).toMatchObject({ title: 'Imported workspace', agentBound: true, imported: true })
+    expect(context.threads[0]).toMatchObject({
+      title: 'Imported legacy conversation',
+      agentBound: true,
+      imported: true
+    })
     // The legacy directory is a record of what happened and is never rewritten.
     const legacy = await readFile(path.join(agentSessionsRoot, 'workspace-main', 'agent-session.json'), 'utf8')
     expect(JSON.parse(legacy)).toEqual({ agentSessionId: '20260727T000000Z-abcdef01', schemaVersion: 1 })
@@ -128,6 +132,21 @@ describe('ResearchProjectSessionService', () => {
     const reloaded = await freshService().getContext()
     expect(reloaded.activeThreadId).toBe(seeded.threads[0].threadId)
     expect(reloaded.threads.map((thread) => thread.title)).toEqual(['Research thread 1', 'TS search, def2-SVP'])
+  })
+
+  it('records only durable thread metadata and enforces private file modes', async () => {
+    const context = await service.getContext()
+    const threadId = context.threads[0].threadId
+
+    await service.recordActivity(threadId)
+
+    const reloaded = await freshService().getContext()
+    expect(reloaded.threads[0]).toMatchObject({ activityCount: 1, agentBound: true })
+    expect((await stat(path.dirname(indexPath()))).mode & 0o777).toBe(0o700)
+    expect((await stat(indexPath())).mode & 0o777).toBe(0o600)
+    const stored = await readFile(indexPath(), 'utf8')
+    expect(stored).not.toContain('message')
+    expect(stored).not.toContain('provider')
   })
 
   it('refuses a blank, oversized, or control-character title', async () => {

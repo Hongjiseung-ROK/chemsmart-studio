@@ -34,6 +34,12 @@ import {
   type ResearchSelectThreadRequest,
   type StageGestureIntent,
   type StudioAgentTraceEvent,
+  type StudioAgentCapabilityManifest,
+  type StudioAgentCapabilityManifestRequest,
+  type StudioAgentTurnEvent,
+  type StudioAgentTurnPage,
+  type StudioAgentTurnPageRequest,
+  studioAgentWorkbenchRuntimeSchema,
   studioControlRuntimeSchema,
   type StudioControlSnapshot,
   studioDraftRuntimeSchema,
@@ -159,6 +165,22 @@ const researchRenameThreadRequestSchema = runtimeDefinitionSchema<ResearchRename
 const researchSelectThreadRequestSchema = runtimeDefinitionSchema<ResearchSelectThreadRequest>(
   researchProjectSessionRuntimeSchema,
   'selectThreadRequest'
+)
+const studioAgentTurnPageRequestSchema = runtimeDefinitionSchema<StudioAgentTurnPageRequest>(
+  studioAgentWorkbenchRuntimeSchema,
+  'turnPageRequest'
+)
+const studioAgentTurnPageSchema = runtimeDefinitionSchema<StudioAgentTurnPage>(
+  studioAgentWorkbenchRuntimeSchema,
+  'turnPage'
+)
+const studioAgentCapabilityManifestRequestSchema = runtimeDefinitionSchema<StudioAgentCapabilityManifestRequest>(
+  studioAgentWorkbenchRuntimeSchema,
+  'capabilityManifestRequest'
+)
+const studioAgentCapabilityManifestSchema = runtimeDefinitionSchema<StudioAgentCapabilityManifest>(
+  studioAgentWorkbenchRuntimeSchema,
+  'studioAgentCapabilityManifest'
 )
 const replayCatalogQuerySchema = runtimeDefinitionSchema<OptimizationReplayCatalogQuery>(
   optimizationReplayRuntimeSchema,
@@ -308,6 +330,14 @@ export const chemsmartStudioRequestSchemas = {
       request: z.string().min(1).max(100_000)
     }),
     output: z.object({ completed: z.literal(true) })
+  }),
+  'chemsmart_studio.agent.turns': defineRoute({
+    input: studioAgentTurnPageRequestSchema,
+    output: studioAgentTurnPageSchema
+  }),
+  'chemsmart_studio.agent.capabilities': defineRoute({
+    input: studioAgentCapabilityManifestRequestSchema,
+    output: studioAgentCapabilityManifestSchema
   }),
   'chemsmart_studio.agent.update_workspace_view': defineRoute({
     input: z.strictObject({
@@ -542,6 +572,7 @@ export type ChemSmartStudioWorkspaceRoots = z.infer<
 export type ChemSmartStudioEventSchemas = {
   'chemsmart_studio.agent.state_changed': ChemSmartStudioProcessStatus
   'chemsmart_studio.agent.trace': StudioAgentTraceEvent
+  'chemsmart_studio.agent.turn_event': StudioAgentTurnEvent
   'chemsmart_studio.studio_ui.event': StudioUiEvent
   'chemsmart_studio.control.changed': {
     sessionId: string

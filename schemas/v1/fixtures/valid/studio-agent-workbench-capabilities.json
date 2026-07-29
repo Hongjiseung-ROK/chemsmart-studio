@@ -1,0 +1,23 @@
+{
+  "extensions": {},
+  "generatedAt": "2026-07-29T03:00:00Z",
+  "items": [
+    {
+      "capability": "inspect",
+      "contextRef": "molecule-1",
+      "description": "Attach the currently visible molecule.",
+      "discovery": "mention",
+      "key": "current_molecule",
+      "label": "Current molecule"
+    },
+    {
+      "capability": "plan",
+      "description": "Validate a calculation without starting it.",
+      "discovery": "command",
+      "key": "dry-run",
+      "label": "Dry-run"
+    }
+  ],
+  "projectId": "project-1",
+  "threadId": "thread-1"
+}

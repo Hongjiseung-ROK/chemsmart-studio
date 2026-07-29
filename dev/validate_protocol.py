@@ -37,6 +37,7 @@ FIXTURE_SCHEMA = {
     "agent-event": "agent-event.schema.json",
     "studio-ui-event": "studio-ui-event.schema.json",
     "studio-agent-trace": "studio-agent-trace-event.schema.json",
+    "studio-agent-workbench": "studio-agent-workbench.schema.json",
     "studio-ui-delivery": "studio-ui-delivery.schema.json",
     "studio-ui-update-input": "studio-ui-update-input.schema.json",
     "studio-control": "studio-control.schema.json",

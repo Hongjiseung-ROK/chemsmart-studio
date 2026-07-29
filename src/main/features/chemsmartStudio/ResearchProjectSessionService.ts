@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { application } from '@application'
@@ -25,10 +25,11 @@ const AGENT_DIRECTORY = 'agent'
 const THREAD_INDEX_NAME = 'threads.json'
 /** Matches the schema's `researchThreadList` bound. */
 const MAX_THREADS = 64
+const MAX_ACTIVITY_COUNT = 100_000
 const MAX_INDEX_BYTES = 256 * 1024
 /** The single legacy Studio session id that predates named threads. */
 const LEGACY_SESSION_ID = 'workspace-main'
-const IMPORTED_THREAD_TITLE = 'Imported workspace'
+const IMPORTED_THREAD_TITLE = 'Imported legacy conversation'
 // The schema forbids C0 controls and DEL in a title.
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/
 
@@ -69,15 +70,15 @@ function newThread(title: string, now: string, imported: boolean, agentBound: bo
  * Owns which project and which named research thread are active, and persists the thread
  * set inside the canonical `.cmsproj` package.
  *
- * It is deliberately **not** a revision authority. The native helper owns molecule
- * revisions and geometry hashes, `MoleculeWorkspaceService` forwards them, and
- * `StudioControlService` holds the pre-flight predicate. Nothing here reads or writes a
- * revision, so a second source of truth cannot appear.
+ * It is deliberately **not** a revision authority. `MoleculeDocumentService` owns
+ * molecule revisions, `MoleculeWorkspaceService` publishes them, and
+ * `StudioControlService` holds the pre-flight predicate. Nothing here reads or writes
+ * a revision, so a second source of truth cannot appear.
  *
  * Persistence is a sidecar: `<project>.cmsproj/agent/threads.json`. `manifest.json`,
- * `molecule.json`, and the native C++ loader are untouched, which is why this needs no
- * schema version bump. Provider payloads, credentials, model identifiers, and filesystem
- * paths are never stored or returned.
+ * `molecule.json`, and the Python sidecar are untouched, which is why this needs no
+ * schema version bump. Provider payloads, credentials, model identifiers, and
+ * filesystem paths are never stored or returned.
  */
 @Injectable('ResearchProjectSessionService')
 @DependsOn(['MoleculeWorkspaceService'])
@@ -145,6 +146,27 @@ export class ResearchProjectSessionService extends BaseService {
     })
   }
 
+  async recordActivity(threadId: string): Promise<void> {
+    await this.enqueue(async () => {
+      const projectPath = this.projectPath()
+      const index = await this.loadIndex(projectPath)
+      const now = new Date().toISOString()
+      let found = false
+      const threads = index.threads.map((thread) => {
+        if (thread.threadId !== threadId) return thread
+        found = true
+        return {
+          ...thread,
+          updatedAt: now,
+          activityCount: Math.min(MAX_ACTIVITY_COUNT, thread.activityCount + 1),
+          agentBound: true
+        }
+      })
+      if (!found) throw invalid('The research thread does not exist in this project')
+      await this.writeIndex(projectPath, { ...index, threads })
+    })
+  }
+
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation, operation)
     this.queue = result.catch(() => undefined)
@@ -177,6 +199,8 @@ export class ResearchProjectSessionService extends BaseService {
         throw invalid('The research thread index must be a regular file')
       }
       if (stat.size > MAX_INDEX_BYTES) throw invalid('The research thread index is too large')
+      await chmod(path.dirname(indexPath), 0o700)
+      await chmod(indexPath, 0o600)
       raw = await readFile(indexPath, 'utf8')
     } catch (error) {
       if (error instanceof IpcError) throw error
@@ -241,10 +265,12 @@ export class ResearchProjectSessionService extends BaseService {
     }
     const indexPath = this.indexPath(projectPath)
     await mkdir(path.dirname(indexPath), { recursive: true, mode: 0o700 })
+    await chmod(path.dirname(indexPath), 0o700)
     const temporary = `${indexPath}.${randomUUID()}.tmp`
     try {
       await writeFile(temporary, `${JSON.stringify(index, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
       await rename(temporary, indexPath)
+      await chmod(indexPath, 0o600)
     } catch (error) {
       await rm(temporary, { force: true })
       throw error

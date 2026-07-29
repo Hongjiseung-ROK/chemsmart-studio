@@ -1,0 +1,338 @@
+{
+  "$defs": {
+    "answerSection": {
+      "additionalProperties": false,
+      "properties": {
+        "heading": { "$ref": "#/$defs/shortText" },
+        "kind": { "enum": ["finding", "evidence", "warning", "next_step"] },
+        "summary": { "$ref": "#/$defs/safeText" }
+      },
+      "required": ["kind", "heading", "summary"],
+      "type": "object"
+    },
+    "artifactKind": {
+      "enum": ["molecule_change", "calculation_plan", "preflight_receipt", "trajectory_result", "verification"]
+    },
+    "capability": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": { "enum": ["inspect", "plan", "act", "navigation"] },
+        "contextRef": { "$ref": "common.schema.json#/$defs/stableId" },
+        "description": { "$ref": "#/$defs/shortText" },
+        "discovery": { "enum": ["plus", "mention", "command"] },
+        "key": { "$ref": "#/$defs/safeKey" },
+        "label": { "$ref": "#/$defs/shortText" }
+      },
+      "required": ["discovery", "key", "label", "description", "capability"],
+      "type": "object"
+    },
+    "capabilityManifestRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "threadId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "threadId"],
+      "type": "object"
+    },
+    "reportStudioResultInput": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": { "$ref": "#/$defs/studioAgentAnswer" },
+        "artifacts": {
+          "items": { "$ref": "#/$defs/studioAgentArtifact" },
+          "maxItems": 8,
+          "type": "array"
+        }
+      },
+      "required": ["answer", "artifacts"],
+      "type": "object"
+    },
+    "safeKey": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$",
+      "type": "string"
+    },
+    "safeText": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001f\\u007f`<>]+$",
+      "type": "string"
+    },
+    "shortText": {
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001f\\u007f`<>]+$",
+      "type": "string"
+    },
+    "studioAgentAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "answerId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "heading": { "$ref": "#/$defs/shortText" },
+        "sections": {
+          "items": { "$ref": "#/$defs/answerSection" },
+          "maxItems": 12,
+          "minItems": 1,
+          "type": "array"
+        },
+        "summary": { "$ref": "#/$defs/safeText" }
+      },
+      "required": ["answerId", "heading", "summary", "sections", "extensions"],
+      "type": "object"
+    },
+    "studioAgentArtifact": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": ["calculation_plan", "preflight_receipt", "trajectory_result"]
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": { "required": ["engine", "method", "calculationKind"] }
+        }
+      ],
+      "properties": {
+        "affectedIds": {
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "maxItems": 4096,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "artifactId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "calculationKind": {
+          "enum": ["single_point", "optimization", "frequency", "transition_state", "scan", "other"]
+        },
+        "charge": { "maximum": 100, "minimum": -100, "type": "integer" },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "energy": { "$ref": "common.schema.json#/$defs/energy" },
+        "engine": { "enum": ["xtb", "gaussian", "orca"] },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "heading": { "$ref": "#/$defs/shortText" },
+        "kind": { "$ref": "#/$defs/artifactKind" },
+        "method": { "maxLength": 128, "minLength": 1, "pattern": "^\\S(?:.*\\S)?$", "type": "string" },
+        "multiplicity": { "maximum": 100, "minimum": 1, "type": "integer" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "ruleIds": {
+          "items": { "$ref": "#/$defs/safeKey" },
+          "maxItems": 128,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "summary": { "$ref": "#/$defs/safeText" },
+        "verdict": { "enum": ["passed", "warning", "failed", "denied"] }
+      },
+      "required": [
+        "artifactId",
+        "kind",
+        "heading",
+        "summary",
+        "documentId",
+        "revision",
+        "geometryHash",
+        "charge",
+        "multiplicity",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "studioAgentCapabilityManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "generatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "items": {
+          "items": { "$ref": "#/$defs/capability" },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "projectId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "threadId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["projectId", "threadId", "generatedAt", "items", "extensions"],
+      "type": "object"
+    },
+    "studioAgentComposerIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": { "enum": ["inspect", "plan", "act", "navigation"] },
+        "contextRefs": {
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "intentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "kind": { "enum": ["inspect", "plan", "dry_run", "review", "history", "new", "context"] },
+        "prompt": { "$ref": "#/$defs/safeText" },
+        "requiresExecutionApproval": { "type": "boolean" }
+      },
+      "required": ["intentId", "kind", "capability", "contextRefs", "requiresExecutionApproval", "extensions"],
+      "type": "object"
+    },
+    "studioAgentTurnEvent": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": ["tool_started", "permission_waiting", "tool_progress", "tool_succeeded", "tool_failed"]
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": { "required": ["tool"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "permission_waiting" } },
+            "required": ["kind"]
+          },
+          "then": { "properties": { "status": { "const": "waiting" } }, "required": ["approvalRef"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "artifact_published" } },
+            "required": ["kind"]
+          },
+          "then": { "properties": { "status": { "const": "succeeded" } }, "required": ["artifact"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "answer_published" } },
+            "required": ["kind"]
+          },
+          "then": { "properties": { "status": { "const": "succeeded" } }, "required": ["answer"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "turn_terminal" } },
+            "required": ["kind"]
+          },
+          "then": { "required": ["outcome"] }
+        }
+      ],
+      "properties": {
+        "answer": { "$ref": "#/$defs/studioAgentAnswer" },
+        "approvalRef": { "$ref": "common.schema.json#/$defs/stableId" },
+        "artifact": { "$ref": "#/$defs/studioAgentArtifact" },
+        "eventId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "kind": { "$ref": "#/$defs/turnEventKind" },
+        "outcome": { "$ref": "#/$defs/terminalOutcome" },
+        "sequence": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+        "status": { "$ref": "#/$defs/turnEventStatus" },
+        "summary": { "$ref": "#/$defs/safeText" },
+        "threadId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "tool": { "$ref": "#/$defs/toolProjection" },
+        "turnId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["eventId", "threadId", "turnId", "sequence", "timestamp", "kind", "status", "summary", "extensions"],
+      "type": "object"
+    },
+    "terminalOutcome": {
+      "enum": ["completed", "denied", "failed", "cancelled", "needs_user"]
+    },
+    "toolProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "argumentKeys": {
+          "items": { "$ref": "#/$defs/safeKey" },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "durationMs": { "maximum": 86400000, "minimum": 0, "type": "integer" },
+        "purpose": { "$ref": "#/$defs/shortText" },
+        "resultKeys": {
+          "items": { "$ref": "#/$defs/safeKey" },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "ruleIds": {
+          "items": { "$ref": "#/$defs/safeKey" },
+          "maxItems": 128,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "toolCallId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "toolName": { "$ref": "#/$defs/safeKey" },
+        "verdict": { "$ref": "#/$defs/safeKey" }
+      },
+      "required": ["toolCallId", "toolName", "purpose"],
+      "type": "object"
+    },
+    "turnEventKind": {
+      "enum": [
+        "user_message",
+        "reasoning_summary",
+        "tool_started",
+        "permission_waiting",
+        "tool_progress",
+        "tool_succeeded",
+        "tool_failed",
+        "artifact_published",
+        "answer_published",
+        "turn_terminal"
+      ]
+    },
+    "turnEventStatus": {
+      "enum": ["queued", "running", "waiting", "succeeded", "failed", "denied", "cancelled", "needs_user"]
+    },
+    "turnPage": {
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "items": { "$ref": "#/$defs/studioAgentTurnEvent" },
+          "maxItems": 100,
+          "type": "array"
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "nextBeforeSequence": {
+          "oneOf": [{ "maximum": 2147483647, "minimum": 0, "type": "integer" }, { "type": "null" }]
+        },
+        "threadId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["threadId", "events", "nextBeforeSequence", "extensions"],
+      "type": "object"
+    },
+    "turnPageRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "beforeSequence": {
+          "oneOf": [{ "maximum": 2147483647, "minimum": 0, "type": "integer" }, { "type": "null" }]
+        },
+        "limit": { "maximum": 100, "minimum": 1, "type": "integer" },
+        "threadId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["threadId", "beforeSequence", "limit"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v1/studio-agent-workbench.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Additive v1 human projection for the ChemSmart Agent workbench. All identities are issued by Electron main. Provider payloads, raw reasoning, credentials, and filesystem paths are outside this contract.",
+  "oneOf": [
+    { "$ref": "#/$defs/studioAgentTurnEvent" },
+    { "$ref": "#/$defs/studioAgentAnswer" },
+    { "$ref": "#/$defs/studioAgentArtifact" },
+    { "$ref": "#/$defs/studioAgentCapabilityManifest" },
+    { "$ref": "#/$defs/studioAgentComposerIntent" },
+    { "$ref": "#/$defs/reportStudioResultInput" },
+    { "$ref": "#/$defs/turnPage" },
+    { "$ref": "#/$defs/turnPageRequest" },
+    { "$ref": "#/$defs/capabilityManifestRequest" }
+  ],
+  "title": "StudioAgentWorkbench"
+}

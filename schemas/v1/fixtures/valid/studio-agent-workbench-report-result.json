@@ -1,0 +1,36 @@
+{
+  "answer": {
+    "answerId": "answer-h2o-inspection",
+    "extensions": {},
+    "heading": "Water molecule inspection",
+    "sections": [
+      {
+        "heading": "Composition",
+        "kind": "finding",
+        "summary": "The molecule contains one oxygen atom and two hydrogen atoms."
+      },
+      {
+        "heading": "Electronic state",
+        "kind": "evidence",
+        "summary": "Charge is zero and multiplicity is one."
+      }
+    ],
+    "summary": "The visible molecule is neutral water with three atoms."
+  },
+  "artifacts": [
+    {
+      "artifactId": "artifact-h2o-verification",
+      "charge": 0,
+      "documentId": "document-h2o",
+      "extensions": {},
+      "geometryHash": "sha256:198f4eb20db4e11c9d6842a35baace776d47e4d66fe2fe2679c502c7f9f62231",
+      "heading": "Molecule verification",
+      "kind": "verification",
+      "multiplicity": 1,
+      "revision": 2,
+      "ruleIds": ["studio.visible_molecule_identity"],
+      "summary": "The displayed document identity matches the inspected snapshot.",
+      "verdict": "passed"
+    }
+  ]
+}

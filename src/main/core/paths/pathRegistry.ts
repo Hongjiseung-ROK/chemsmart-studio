@@ -151,6 +151,7 @@ export function buildPathRegistry() {
     'feature.chemsmart_studio.workspace': path.join(appUserDataData, 'ChemSmartStudio', 'Workspace'),
     'feature.chemsmart_studio.receipts': path.join(appUserDataData, 'ChemSmartStudio', 'Receipts'),
     'feature.chemsmart_studio.agent_sessions': path.join(appUserDataData, 'ChemSmartStudio', 'AgentSessions'),
+    'feature.chemsmart_studio.agent_threads': path.join(appUserDataData, 'ChemSmartStudio', 'AgentThreads'),
     'feature.chemsmart_studio.calculations': path.join(appUserDataData, 'ChemSmartStudio', 'Calculations'),
     'feature.chemsmart_studio.runtime': chemsmartStudioRuntime,
     'feature.chemsmart_studio.bridge.project': app.isPackaged

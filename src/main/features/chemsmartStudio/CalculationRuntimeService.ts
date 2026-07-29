@@ -357,7 +357,7 @@ export class CalculationRuntimeService extends BaseService {
     let response: ControlledCalculationHostResponse
     switch (request.tool) {
       case 'get_studio_context':
-        response = await this.getStudioContext(value.sessionId)
+        response = await this.getWorkspaceContext(value.sessionId)
         break
       case 'analyze_current_molecule':
         response = await this.analyzeCurrentMolecule(value.sessionId, request)
@@ -983,7 +983,7 @@ export class CalculationRuntimeService extends BaseService {
     }
   }
 
-  private async getStudioContext(sessionId: string): Promise<StudioControlledCalculationContext> {
+  async getWorkspaceContext(sessionId: string): Promise<StudioControlledCalculationContext> {
     const workspace = application.get('MoleculeWorkspaceService')
     const document = await workspace.getMoleculeDocument()
     const draft = workspace.getMoleculeDraft()

@@ -68,6 +68,41 @@ const validFinalGeometry = {
 }
 
 describe('ChemSmart Studio trusted control schemas', () => {
+  it('validates paginated Agent projection and capability routes without accepting paths', () => {
+    const pageRoute = chemsmartStudioRequestSchemas['chemsmart_studio.agent.turns']
+    const capabilityRoute = chemsmartStudioRequestSchemas['chemsmart_studio.agent.capabilities']
+    const event = {
+      eventId: 'event-1',
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      sequence: 0,
+      timestamp: '2026-07-29T00:00:00Z',
+      kind: 'user_message',
+      status: 'running',
+      summary: 'Inspect the visible molecule.',
+      extensions: {}
+    }
+
+    expect(pageRoute.input.safeParse({ threadId: 'thread-1', beforeSequence: null, limit: 50 }).success).toBe(true)
+    expect(pageRoute.input.safeParse({ threadId: 'thread-1', beforeSequence: null, limit: 101 }).success).toBe(false)
+    expect(
+      pageRoute.output.safeParse({
+        threadId: 'thread-1',
+        events: [event],
+        nextBeforeSequence: null,
+        extensions: {}
+      }).success
+    ).toBe(true)
+    expect(capabilityRoute.input.safeParse({ sessionId: 'session-1', threadId: 'thread-1' }).success).toBe(true)
+    expect(
+      capabilityRoute.input.safeParse({
+        sessionId: 'session-1',
+        threadId: 'thread-1',
+        projectPath: '/private/project'
+      }).success
+    ).toBe(false)
+  })
+
   it('validates a generated Studio draft snapshot with bundled local definitions', () => {
     const route = chemsmartStudioRequestSchemas['chemsmart_studio.molecule.draft_apply']
     const beforeHash = `sha256:${'1'.repeat(64)}`

@@ -19,6 +19,7 @@ export {
   studioAgentMoleculeRequestRuntimeSchema,
   studioAgentToolInputSchemas,
   studioAgentTraceEventRuntimeSchema,
+  studioAgentWorkbenchRuntimeSchema,
   studioApprovalRequestRuntimeSchema,
   studioApprovalRequestSchema,
   studioCommonSchema,
