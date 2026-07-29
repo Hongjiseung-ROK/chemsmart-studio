@@ -34,6 +34,17 @@ checks = []
 def record(name, status, detail, required=True):
     checks.append({"name": name, "status": status, "required": required, "detail": detail})
 
+def git(args, cwd=root):
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+        check=False,
+    )
+
 def version(name, args, required=True, predicate=None):
     executable = shutil.which(args[0])
     if not executable:
@@ -67,15 +78,37 @@ except Exception as exc:
     record("upstreams.lock", "error", str(exc))
 
 if lock:
-    expected_root = lock["upstreams"]["cherryStudio"]["commit"]
-    root_commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True).stdout.strip()
-    # A product branch may advance from the pinned Cherry base. The base must remain an ancestor.
-    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", expected_root, "HEAD"], cwd=root).returncode == 0
-    record("cherry-base", "ok" if ancestor else "mismatch", f"base={expected_root} head={root_commit}")
+    expected_root = lock["forkRoot"]["commit"]
+    expected_tree = lock["forkRoot"]["tree"]
+    head = git(["rev-parse", "HEAD"]).stdout.strip()
+    root_parent = git(["rev-parse", f"{expected_root}^"])
+    root_tree = git(["rev-parse", f"{expected_root}^{{tree}}"]).stdout.strip()
+    ancestor = git(["merge-base", "--is-ancestor", expected_root, "HEAD"]).returncode == 0
+    root_ok = (
+        len(head) == 40
+        and root_parent.returncode != 0
+        and root_tree == expected_tree
+        and ancestor
+    )
+    record(
+        "fork-root",
+        "ok" if root_ok else "mismatch",
+        (
+            f"commit={expected_root} tree={expected_tree} "
+            f"parentless={root_parent.returncode != 0} ancestor={ancestor} head={head}"
+        ),
+    )
+    cherry = lock["upstreams"]["cherryStudio"]
+    record(
+        "cherry-provenance",
+        "ok",
+        f"declared={cherry['commit']} integration={cherry['integration']}",
+        False,
+    )
     for key, rel in (("chemSmart", "vendor/chemsmart"),):
         expected = lock["upstreams"][key]["commit"]
-        actual = subprocess.run(["git", "-C", str(root / rel), "rev-parse", "HEAD"], text=True, capture_output=True).stdout.strip()
-        dirty = subprocess.run(["git", "-C", str(root / rel), "status", "--porcelain"], text=True, capture_output=True).stdout.strip()
+        actual = git(["rev-parse", "HEAD"], root / rel).stdout.strip()
+        dirty = git(["status", "--porcelain"], root / rel).stdout.strip()
         ok = expected == actual and not dirty
         record(f"submodule:{key}", "ok" if ok else "mismatch", f"expected={expected} actual={actual} dirty={bool(dirty)}")
 

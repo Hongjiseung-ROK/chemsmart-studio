@@ -4,11 +4,20 @@
   "title": "ChemSmart Studio upstream lock",
   "type": "object",
   "additionalProperties": false,
-  "required": ["auditDate", "productLicense", "upstreams", "excludedRuntimeSources"],
+  "required": ["auditDate", "productLicense", "forkRoot", "upstreams", "excludedRuntimeSources"],
   "properties": {
     "$schema": { "type": "string" },
     "auditDate": { "type": "string", "format": "date" },
     "productLicense": { "type": "string" },
+    "forkRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
     "upstreams": {
       "type": "object",
       "additionalProperties": false,

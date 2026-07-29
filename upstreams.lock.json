@@ -6,6 +6,10 @@
     "/Users/hongjiseung/developer/chemsmart/frontend",
     "/Users/hongjiseung/developer/chemsmart/chemsmart/gui"
   ],
+  "forkRoot": {
+    "commit": "e9eb43e49d361c58bd020982063a9c824b4d56e4",
+    "tree": "9aa83272eccb36b1d8ae0b52e1883349f841246a"
+  },
   "productLicense": "AGPL-3.0-only",
   "upstreams": {
     "chemSmart": {
@@ -17,7 +21,7 @@
     },
     "cherryStudio": {
       "commit": "ab7b418abe8e28ce6706f307b9a1112225ebdd24",
-      "integration": "fork-root",
+      "integration": "declarative-source",
       "license": "AGPL-3.0-only",
       "patchState": "product-fork",
       "url": "https://github.com/CherryHQ/cherry-studio.git"
