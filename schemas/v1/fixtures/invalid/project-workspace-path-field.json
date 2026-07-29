@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "1",
+  "projectName": "b3lyp-water",
+  "program": "gaussian",
+  "yamlText": "gas:\n  functional: b3lyp\n",
+  "path": "/private/research/gaussian/b3lyp-water.yaml",
+  "extensions": {}
+}

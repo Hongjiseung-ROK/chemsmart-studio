@@ -1,0 +1,6 @@
+{
+  "method": "molecule.get_snapshot",
+  "params": {},
+  "payloadJson": "{}",
+  "sessionId": "session-1"
+}

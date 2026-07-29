@@ -1,0 +1,105 @@
+# Logs
+logs
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.yarn-cache
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Yarn
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Windows
+Thumbs.db
+
+# Project
+node_modules
+.pnpm-store/
+dist
+out
+mcp_server
+stats.html
+.eslintcache
+# Downloaded native binaries (mise, etc.)
+resources/binaries/
+
+# ENV
+.env
+.env.*
+!.env.example
+/api.env
+
+# Local
+local
+.aider*
+.cursorrules
+.cursor/*
+.claude/
+.agents/
+.gjc/
+.context/
+.studio-upstreams/
+.gemini/*
+.qwen/*
+.trae/*
+.claude-code-router/*
+.codebuddy/*
+.antigravitycli/*
+.zed/*
+!.zed/settings.json.example
+**/CLAUDE.md
+**/CLAUDE.local.md
+**/AGENTS.md
+**/AGENTS.override.md
+
+# vitest
+coverage
+.vitest-cache
+vitest.config.*.timestamp-*
+
+# TanStack Router (generated code-splitting cache)
+.tanstack/
+
+# TypeScript incremental build
+.tsbuildinfo
+
+# ChemSmart Studio local Python and native build state
+__pycache__/
+*.py[cod]
+services/chemsmart_bridge/.venv/
+build/native/
+build/compliance/
+
+# Icon generation cache
+.icons-hash.json
+
+# playwright
+playwright-report
+test-results
+
+.sessions/
+.devtools
+.omo/
+
+# Local agent plans, receipts, and validation evidence
+/docs/validation/

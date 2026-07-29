@@ -1,0 +1,11 @@
+{
+  "method": "viewport.capture_frame",
+  "params": {
+    "afterSequence": 0,
+    "capability": "cpu_bgra8",
+    "generation": 1,
+    "maxHeight": 480,
+    "maxWidth": 641,
+    "viewportInstanceId": "viewport-main-1"
+  }
+}

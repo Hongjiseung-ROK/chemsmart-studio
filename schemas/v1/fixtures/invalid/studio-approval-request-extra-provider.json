@@ -1,0 +1,10 @@
+{
+  "arguments": {
+    "expected_revision": 7,
+    "preview_id": "preview-1"
+  },
+  "provider": "untrusted",
+  "requestId": "request-commit-1",
+  "sessionId": "session-1",
+  "tool": "commit_molecule_preview"
+}

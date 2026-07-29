@@ -1,0 +1,14 @@
+{
+  "sessionId": "session-1",
+  "method": "molecule.preview_patch",
+  "params": {
+    "patch": {
+      "operationId": "operation-1",
+      "baseRevision": 7,
+      "actor": "agent",
+      "previewOnly": true,
+      "operations": [{ "op": "set_selection", "atomIds": ["a-2"] }],
+      "extensions": {}
+    }
+  }
+}

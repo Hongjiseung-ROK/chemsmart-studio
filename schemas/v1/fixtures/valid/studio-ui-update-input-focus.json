@@ -1,0 +1,9 @@
+{
+  "kind": "molecule_focus",
+  "message": "Highlighting the constrained bond.",
+  "documentId": "mol-1",
+  "revision": 3,
+  "atomIds": ["a-1", "a-2"],
+  "bondIds": ["b-1"],
+  "extensions": {}
+}

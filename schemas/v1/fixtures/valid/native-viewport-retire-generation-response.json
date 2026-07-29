@@ -1,0 +1,9 @@
+{
+  "accepted": true,
+  "lifecycleState": "generation_retired",
+  "viewportInstanceId": "viewport-main-1",
+  "viewportLeaseId": "viewport-lease-7",
+  "editorEpoch": 4,
+  "generation": 9,
+  "reason": "renderer_replaced"
+}

@@ -1,0 +1,9 @@
+{
+  "event": {
+    "expectedRevision": 4,
+    "geometryHash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "runId": "run-1",
+    "timestamp": "2026-07-28T12:00:00Z",
+    "type": "optimization_final_accept_requested"
+  }
+}

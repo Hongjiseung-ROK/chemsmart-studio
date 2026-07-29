@@ -1,0 +1,33 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '../../packages/ui/src/styles/theme.css';
+
+@source '../../src/renderer/components/ChemSmartStudio/**/*.tsx';
+@source '../../packages/ui/src/**/*.{ts,tsx}';
+@source './**/*.tsx';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Matches the renderer shell: icons inherit the secondary foreground unless a component overrides it. */
+@layer base {
+  .lucide:not(.lucide-custom) {
+    color: var(--color-foreground-secondary);
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    font-weight: normal;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}

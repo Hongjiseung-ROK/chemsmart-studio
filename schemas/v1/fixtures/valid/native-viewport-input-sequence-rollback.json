@@ -1,0 +1,9 @@
+{
+  "accepted": false,
+  "currentGeneration": 3,
+  "errorCode": "SEQUENCE_ROLLBACK",
+  "generation": 3,
+  "lastAcceptedSequence": 18,
+  "sequence": 17,
+  "viewportInstanceId": "viewport-main-1"
+}

@@ -1,0 +1,31 @@
+{
+  "method": "viewport.gpu_frame",
+  "params": {
+    "alphaMode": "opaque",
+    "capability": "iosurface_bgra8",
+    "colorSpace": {
+      "matrix": "rgb",
+      "primaries": "bt709",
+      "range": "full",
+      "transfer": "linear"
+    },
+    "devicePixelRatio": 1,
+    "editorEpoch": 4,
+    "generation": 10,
+    "logicalExtent": { "height": 600, "width": 960 },
+    "pixelExtent": { "height": 600, "width": 960 },
+    "pixelFormat": "bgra8",
+    "producedAt": "2026-07-27T10:00:01Z",
+    "renderBinding": {
+      "baseRevision": 7,
+      "displayState": "preview",
+      "documentId": "document-water",
+      "previewId": "preview-add-hydrogen"
+    },
+    "rowOrigin": "top_left",
+    "sequence": 43,
+    "surfaceSlot": 2,
+    "viewportInstanceId": "viewport-main-1",
+    "viewportLeaseId": "viewport-lease-7"
+  }
+}

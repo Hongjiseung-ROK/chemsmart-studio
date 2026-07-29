@@ -1,0 +1,6 @@
+{
+  "generation": 1,
+  "selectedCapability": "cpu_bgra8",
+  "supportedCapabilities": ["overlay", "cpu_bgra8"],
+  "viewportInstanceId": "viewport-main-1"
+}

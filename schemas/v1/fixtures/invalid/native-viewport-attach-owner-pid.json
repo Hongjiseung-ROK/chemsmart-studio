@@ -1,0 +1,6 @@
+{
+  "method": "viewport.attach",
+  "params": {
+    "ownerPid": 4102
+  }
+}

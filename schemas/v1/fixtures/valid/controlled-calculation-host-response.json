@@ -1,0 +1,11 @@
+{
+  "activeRun": null,
+  "document": {
+    "documentId": "ethanol",
+    "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "revision": 3
+  },
+  "extensions": {},
+  "sessionId": "session-1",
+  "type": "studio_context"
+}

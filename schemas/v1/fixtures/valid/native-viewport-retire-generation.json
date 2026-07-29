@@ -1,0 +1,11 @@
+{
+  "method": "viewport.retire_generation",
+  "params": {
+    "viewportInstanceId": "viewport-main-1",
+    "viewportLeaseId": "viewport-lease-7",
+    "editorEpoch": 4,
+    "generation": 9,
+    "retired": true,
+    "reason": "renderer_replaced"
+  }
+}

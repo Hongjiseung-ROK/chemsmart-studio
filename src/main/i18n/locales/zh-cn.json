@@ -1,0 +1,156 @@
+{
+  "agent": {
+    "builtin": {
+      "cherry_assistant": {
+        "description": "ChemSmart Studio 内置使用顾问。诊断问题、引导操作、收录 FAQ、提交 Bug/需求、搜索和创建 Skills"
+      }
+    },
+    "session": {
+      "workspace_status": {
+        "inaccessible": "工作区路径不可访问：{{path}}",
+        "missing": "工作区路径不存在：{{path}}",
+        "not_directory": "工作区路径不是目录：{{path}}"
+      }
+    }
+  },
+  "appMenu": {
+    "about": "关于",
+    "close": "关闭窗口",
+    "copy": "复制",
+    "cut": "剪切",
+    "delete": "删除",
+    "documentation": "文档",
+    "edit": "编辑",
+    "feedback": "反馈",
+    "file": "文件",
+    "forceReload": "强制重新加载",
+    "front": "全部置于顶层",
+    "help": "帮助",
+    "hide": "隐藏",
+    "hideOthers": "隐藏其他",
+    "minimize": "最小化",
+    "paste": "粘贴",
+    "quit": "退出",
+    "redo": "重做",
+    "releases": "版本发布",
+    "reload": "重新加载",
+    "resetZoom": "实际大小",
+    "selectAll": "全选",
+    "services": "服务",
+    "toggleDevTools": "切换开发者工具",
+    "toggleFullscreen": "切换全屏",
+    "undo": "撤销",
+    "unhide": "全部显示",
+    "view": "视图",
+    "website": "网站",
+    "window": "窗口",
+    "zoom": "缩放",
+    "zoomIn": "放大",
+    "zoomOut": "缩小"
+  },
+  "chemsmart_studio": {
+    "agent_state": {
+      "awaiting_calculation_approval": "正在等待计算批准",
+      "awaiting_final_geometry_decision": "正在等待最终几何结构决定",
+      "awaiting_preview_decision": "正在等待分子预览决定",
+      "completed": "Agent 任务已完成",
+      "failed": "Agent 任务需要处理",
+      "idle": "已准备好执行科学任务",
+      "inspecting_molecule": "正在检查已提交的分子",
+      "preparing_calculation": "正在准备受控计算",
+      "preparing_preview": "正在准备分子预览",
+      "recovering": "正在恢复科学工作区",
+      "reviewing_trajectory": "正在检查优化轨迹",
+      "running_calculation": "正在监控受控计算",
+      "understanding_request": "正在理解科学请求",
+      "validating_intent": "正在检查请求意图",
+      "validating_semantics": "正在检查化学与修订安全性"
+    },
+    "control_activity": {
+      "action_denied_summary": "已拒绝 {{tool}}。",
+      "action_denied_title": "操作已拒绝",
+      "approve_calculation_summary": "{{engine}}/{{method}} 正在等待一次性决定。",
+      "approve_calculation_title": "批准启动计算",
+      "approve_execution_summary": "{{tool}} 正在等待精确的一次性决定。",
+      "approve_execution_title": "批准智能体执行",
+      "draft_staged_summary": "{{count}} 项智能体与研究者更改已暂存，将在保存或运行时审核。",
+      "draft_staged_title": "分子草稿已更新",
+      "final_geometry_accepted_summary": "运行 {{runId}} 已提交分子修订版 {{revision}}。",
+      "final_geometry_accepted_title": "已接受最终几何结构",
+      "final_geometry_rejected_summary": "已拒绝运行 {{runId}}；保留已提交的修订版 {{revision}}。",
+      "final_geometry_rejected_title": "已拒绝最终几何结构",
+      "mode_allow_summary": "智能体的每个操作都会先征求确认。",
+      "mode_allow_title": "逐次确认模式",
+      "mode_execute_summary": "本次会话中可撤销的智能体操作将不再逐次确认；计算仍需确认。",
+      "mode_execute_title": "执行模式",
+      "one_shot_approved_summary": "已一次性批准 {{tool}}。",
+      "one_shot_approved_title": "一次性操作已批准",
+      "optimization_cancelled_summary": "运行 {{runId}} 在 {{stepCount}} 帧后停止。",
+      "optimization_cancelled_title": "优化已取消",
+      "optimization_failed_summary": "运行 {{runId}} 在最终几何结构可用前结束。",
+      "optimization_failed_title": "优化失败",
+      "optimization_started_summary": "{{engine}}/{{method}} 正在从修订版 {{revision}} 开始运行。",
+      "optimization_started_title": "优化已启动",
+      "pre_authorized_summary": "未经确认即执行。{{reason}}",
+      "pre_authorized_title": "执行模式下已预先授权",
+      "preview_committed_summary": "已在修订版 {{revision}} 提交预览 {{previewId}}。",
+      "preview_committed_title": "分子预览已提交",
+      "preview_discarded_summary": "已丢弃预览 {{previewId}}，未更改已提交状态。",
+      "preview_discarded_title": "分子预览已丢弃",
+      "preview_prepared_summary": "预览 {{previewId}} 包含 {{operationCount}} 个操作。",
+      "preview_prepared_title": "分子预览已准备",
+      "request_rejected_calculation_summary": "计算请求与支持的已提交状态不匹配。",
+      "request_rejected_preview_summary": "预览标识或修订版与可信状态不匹配。",
+      "request_rejected_title": "Studio 请求已拒绝",
+      "review_final_geometry_summary": "运行 {{runId}} 生成了 {{stepCount}} 帧，正在等待一次性决定。",
+      "review_final_geometry_title": "检查最终几何结构",
+      "review_preview_summary": "预览 {{previewId}} 正在等待一次性决定。",
+      "review_preview_title": "检查分子预览",
+      "trusted_control_required_summary": "{{tool}} 只能通过主进程签发的一次性控件执行。",
+      "trusted_control_required_title": "请使用可信 Studio 控件"
+    }
+  },
+  "common": {
+    "copy": "复制",
+    "cut": "剪切",
+    "inspect": "检查",
+    "paste": "粘贴"
+  },
+  "dialog": {
+    "all_files": "所有文件",
+    "chemsmart_project": "ChemSmart Studio 项目",
+    "html_files": "HTML 文件",
+    "molecule_files": "分子文件",
+    "open_file": "打开文件",
+    "pdf_files": "PDF 文件",
+    "png_image": "PNG 图片",
+    "save_as_html": "保存为 HTML",
+    "save_as_pdf": "保存为 PDF",
+    "save_file": "保存文件",
+    "select_folder": "选择文件夹",
+    "word_document": "Word 文档"
+  },
+  "paintings": {
+    "generate_failed": "生成图像失败",
+    "image_mix_failed": "图像混合失败"
+  },
+  "selection": {
+    "name": "划词助手"
+  },
+  "settings": {
+    "mcp": {
+      "oauth": {
+        "callback": {
+          "message": "您可以关闭此页面并返回 ChemSmart Studio",
+          "title": "认证成功"
+        }
+      }
+    },
+    "title": "设置"
+  },
+  "tray": {
+    "quit": "退出",
+    "show_quick_assistant": "快捷助手",
+    "show_window": "显示窗口"
+  }
+}

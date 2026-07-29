@@ -1,0 +1,26 @@
+{
+  "$schema": "./schemas/upstreams-lock.schema.json",
+  "auditDate": "2026-07-28",
+  "excludedRuntimeSources": [
+    "/Users/hongjiseung/developer/chemsmart-chat-interface",
+    "/Users/hongjiseung/developer/chemsmart/frontend",
+    "/Users/hongjiseung/developer/chemsmart/chemsmart/gui"
+  ],
+  "productLicense": "AGPL-3.0-only",
+  "upstreams": {
+    "chemSmart": {
+      "commit": "84243f892d7b16d3a9308a3cf5816ef1aee633fd",
+      "integration": "git-submodule:vendor/chemsmart",
+      "license": "GPL-3.0-only",
+      "patchState": "patched",
+      "url": "https://github.com/Hongjiseung-ROK/chemsmart.git"
+    },
+    "cherryStudio": {
+      "commit": "ab7b418abe8e28ce6706f307b9a1112225ebdd24",
+      "integration": "fork-root",
+      "license": "AGPL-3.0-only",
+      "patchState": "product-fork",
+      "url": "https://github.com/CherryHQ/cherry-studio.git"
+    }
+  }
+}

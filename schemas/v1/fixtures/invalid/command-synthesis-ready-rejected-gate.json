@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1",
+  "synthesisId": "synthesis-drift",
+  "sessionId": "session-1",
+  "status": "ready",
+  "command": "chemsmart run -f water.xyz xtb -c 0 -m 1 opt",
+  "commandDigest": "acec9392f29193c0be1b2ef3da851d50c50cb0325f4da189113a3cdf21a7df66",
+  "explanation": "A ready result cannot carry a rejected intent gate.",
+  "projectName": null,
+  "missingInfo": [],
+  "intent": {
+    "verdict": "reject",
+    "failedRuleIds": ["intent.charge"],
+    "message": "The requested charge was not preserved.",
+    "extensions": {}
+  },
+  "semantic": {
+    "verdict": "ok",
+    "failedRuleIds": [],
+    "message": "The command is valid.",
+    "extensions": {}
+  },
+  "publicEvidence": [],
+  "executionPerformed": false,
+  "approvalRequiredForExecution": true,
+  "extensions": {}
+}

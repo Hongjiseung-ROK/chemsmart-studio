@@ -1,0 +1,13 @@
+{
+  "operationId": "op-invalid-element",
+  "baseRevision": 7,
+  "actor": "human",
+  "previewOnly": true,
+  "operations": [
+    {
+      "op": "set_atomic_numbers",
+      "atoms": [{ "atomId": "atom-1", "atomicNumber": 119 }]
+    }
+  ],
+  "extensions": {}
+}

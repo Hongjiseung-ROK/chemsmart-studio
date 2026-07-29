@@ -1,0 +1,156 @@
+{
+  "agent": {
+    "builtin": {
+      "cherry_assistant": {
+        "description": "Built-in ChemSmart Studio advisor. Diagnose issues, guide operations, collect FAQs, submit bugs/feature requests, and search/create Skills"
+      }
+    },
+    "session": {
+      "workspace_status": {
+        "inaccessible": "Calea către spațiul de lucru nu este accesibilă: {{path}}",
+        "missing": "Calea către spațiul de lucru nu există: {{path}}",
+        "not_directory": "Calea spațiului de lucru nu este un director: {{path}}"
+      }
+    }
+  },
+  "appMenu": {
+    "about": "Despre",
+    "close": "Închide fereastra",
+    "copy": "Copiază",
+    "cut": "Decupează",
+    "delete": "Șterge",
+    "documentation": "Documentație",
+    "edit": "Editare",
+    "feedback": "Feedback",
+    "file": "Fișier",
+    "forceReload": "Reîncărcare forțată",
+    "front": "Adu toate în față",
+    "help": "Ajutor",
+    "hide": "Ascunde",
+    "hideOthers": "Ascunde celelalte",
+    "minimize": "Minimizează",
+    "paste": "Lipește",
+    "quit": "Ieșire",
+    "redo": "Refă",
+    "releases": "Lansări",
+    "reload": "Reîncarcă",
+    "resetZoom": "Dimensiune reală",
+    "selectAll": "Selectează tot",
+    "services": "Servicii",
+    "toggleDevTools": "Comută instrumentele pentru dezvoltatori",
+    "toggleFullscreen": "Comută ecranul complet",
+    "undo": "Anulează",
+    "unhide": "Afișează toate",
+    "view": "Vizualizare",
+    "website": "Site web",
+    "window": "Fereastră",
+    "zoom": "Zoom",
+    "zoomIn": "Mărește",
+    "zoomOut": "Micșorează"
+  },
+  "chemsmart_studio": {
+    "agent_state": {
+      "awaiting_calculation_approval": "[to be translated]:Waiting for calculation approval",
+      "awaiting_final_geometry_decision": "[to be translated]:Waiting for the final geometry decision",
+      "awaiting_preview_decision": "[to be translated]:Waiting for the molecule preview decision",
+      "completed": "[to be translated]:Agent task completed",
+      "failed": "[to be translated]:Agent task needs attention",
+      "idle": "[to be translated]:Ready for a scientific task",
+      "inspecting_molecule": "[to be translated]:Inspecting the committed molecule",
+      "preparing_calculation": "[to be translated]:Preparing the controlled calculation",
+      "preparing_preview": "[to be translated]:Preparing a molecule preview",
+      "recovering": "[to be translated]:Recovering the scientific workspace",
+      "reviewing_trajectory": "[to be translated]:Reviewing the optimization trajectory",
+      "running_calculation": "[to be translated]:Monitoring the controlled calculation",
+      "understanding_request": "[to be translated]:Understanding the scientific request",
+      "validating_intent": "[to be translated]:Checking the requested intent",
+      "validating_semantics": "[to be translated]:Checking chemical and revision safety"
+    },
+    "control_activity": {
+      "action_denied_summary": "[to be translated]:{{tool}} was denied.",
+      "action_denied_title": "[to be translated]:Action denied",
+      "approve_calculation_summary": "[to be translated]:{{engine}}/{{method}} is waiting for a one-shot decision.",
+      "approve_calculation_title": "[to be translated]:Approve calculation start",
+      "approve_execution_summary": "[to be translated]:{{tool}} is waiting for an exact one-shot decision.",
+      "approve_execution_title": "[to be translated]:Approve agent execution",
+      "draft_staged_summary": "[to be translated]:{{count}} agent and researcher change(s) are staged for Save or Run review.",
+      "draft_staged_title": "[to be translated]:Molecule draft updated",
+      "final_geometry_accepted_summary": "[to be translated]:Run {{runId}} committed molecule revision {{revision}}.",
+      "final_geometry_accepted_title": "[to be translated]:Final geometry accepted",
+      "final_geometry_rejected_summary": "[to be translated]:Run {{runId}} was rejected; committed revision {{revision}} was preserved.",
+      "final_geometry_rejected_title": "[to be translated]:Final geometry rejected",
+      "mode_allow_summary": "[to be translated]:Every agent action asks before it runs.",
+      "mode_allow_title": "[to be translated]:Allow mode",
+      "mode_execute_summary": "[to be translated]:Reversible agent actions run without asking for the rest of this session. Calculations still ask.",
+      "mode_execute_title": "[to be translated]:Execute mode",
+      "one_shot_approved_summary": "[to be translated]:{{tool}} was approved once.",
+      "one_shot_approved_title": "[to be translated]:One-shot action approved",
+      "optimization_cancelled_summary": "[to be translated]:Run {{runId}} stopped after {{stepCount}} frame(s).",
+      "optimization_cancelled_title": "[to be translated]:Optimization cancelled",
+      "optimization_failed_summary": "[to be translated]:Run {{runId}} ended before a final geometry was available.",
+      "optimization_failed_title": "[to be translated]:Optimization failed",
+      "optimization_started_summary": "[to be translated]:{{engine}}/{{method}} is running from revision {{revision}}.",
+      "optimization_started_title": "[to be translated]:Optimization started",
+      "pre_authorized_summary": "[to be translated]:Ran without asking. {{reason}}",
+      "pre_authorized_title": "[to be translated]:Pre-authorized in Execute mode",
+      "preview_committed_summary": "[to be translated]:Committed preview {{previewId}} at revision {{revision}}.",
+      "preview_committed_title": "[to be translated]:Molecule preview committed",
+      "preview_discarded_summary": "[to be translated]:Preview {{previewId}} was discarded without changing committed state.",
+      "preview_discarded_title": "[to be translated]:Molecule preview discarded",
+      "preview_prepared_summary": "[to be translated]:Preview {{previewId}} contains {{operationCount}} operation(s).",
+      "preview_prepared_title": "[to be translated]:Molecule preview prepared",
+      "request_rejected_calculation_summary": "[to be translated]:Calculation request does not match the supported committed state.",
+      "request_rejected_preview_summary": "[to be translated]:Preview identity or revision does not match trusted state.",
+      "request_rejected_title": "[to be translated]:Studio request rejected",
+      "review_final_geometry_summary": "[to be translated]:Run {{runId}} produced {{stepCount}} frame(s) and is waiting for a one-shot decision.",
+      "review_final_geometry_title": "[to be translated]:Review final geometry",
+      "review_preview_summary": "[to be translated]:Preview {{previewId}} is waiting for a one-shot decision.",
+      "review_preview_title": "[to be translated]:Review molecule preview",
+      "trusted_control_required_summary": "[to be translated]:{{tool}} is available only through a main-issued one-shot control.",
+      "trusted_control_required_title": "[to be translated]:Use the trusted Studio control"
+    }
+  },
+  "common": {
+    "copy": "Copiază",
+    "cut": "Decupează",
+    "inspect": "Inspectează",
+    "paste": "Lipește"
+  },
+  "dialog": {
+    "all_files": "Toate fișierele",
+    "chemsmart_project": "[to be translated]:ChemSmart Studio Project",
+    "html_files": "Fișiere HTML",
+    "molecule_files": "[to be translated]:Molecule Files",
+    "open_file": "Deschide fișier",
+    "pdf_files": "Fișiere PDF",
+    "png_image": "Imagine PNG",
+    "save_as_html": "Salvează ca HTML",
+    "save_as_pdf": "Salvează ca PDF",
+    "save_file": "Salvează fișier",
+    "select_folder": "Selectează folderul",
+    "word_document": "Document Word"
+  },
+  "paintings": {
+    "generate_failed": "Nu s-a putut genera imaginea",
+    "image_mix_failed": "Nu s-au putut combina imaginile"
+  },
+  "selection": {
+    "name": "Asistent de selecție"
+  },
+  "settings": {
+    "mcp": {
+      "oauth": {
+        "callback": {
+          "message": "Poți închide această pagină și te poți întoarce la ChemSmart Studio",
+          "title": "Autentificare reușită"
+        }
+      }
+    },
+    "title": "Setări"
+  },
+  "tray": {
+    "quit": "Ieșire",
+    "show_quick_assistant": "Asistent rapid",
+    "show_window": "Afișează fereastra"
+  }
+}

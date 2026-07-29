@@ -1,0 +1,156 @@
+{
+  "agent": {
+    "builtin": {
+      "cherry_assistant": {
+        "description": "ChemSmart Studio 內建使用顧問。診斷問題、引導操作、收錄 FAQ、提交 Bug/需求、搜尋和建立 Skills"
+      }
+    },
+    "session": {
+      "workspace_status": {
+        "inaccessible": "工作區路徑無法存取：{{path}}",
+        "missing": "工作區路徑不存在：{{path}}",
+        "not_directory": "工作區路徑不是目錄：{{path}}"
+      }
+    }
+  },
+  "appMenu": {
+    "about": "關於",
+    "close": "關閉視窗",
+    "copy": "複製",
+    "cut": "剪下",
+    "delete": "刪除",
+    "documentation": "文件",
+    "edit": "編輯",
+    "feedback": "回饋",
+    "file": "檔案",
+    "forceReload": "強制重新載入",
+    "front": "全部置於頂層",
+    "help": "幫助",
+    "hide": "隱藏",
+    "hideOthers": "隱藏其他",
+    "minimize": "最小化",
+    "paste": "貼上",
+    "quit": "結束",
+    "redo": "重做",
+    "releases": "版本發布",
+    "reload": "重新載入",
+    "resetZoom": "實際大小",
+    "selectAll": "全選",
+    "services": "服務",
+    "toggleDevTools": "切換開發者工具",
+    "toggleFullscreen": "切換全螢幕",
+    "undo": "復原",
+    "unhide": "全部顯示",
+    "view": "檢視",
+    "website": "網站",
+    "window": "視窗",
+    "zoom": "縮放",
+    "zoomIn": "放大",
+    "zoomOut": "縮小"
+  },
+  "chemsmart_studio": {
+    "agent_state": {
+      "awaiting_calculation_approval": "[to be translated]:Waiting for calculation approval",
+      "awaiting_final_geometry_decision": "[to be translated]:Waiting for the final geometry decision",
+      "awaiting_preview_decision": "[to be translated]:Waiting for the molecule preview decision",
+      "completed": "[to be translated]:Agent task completed",
+      "failed": "[to be translated]:Agent task needs attention",
+      "idle": "[to be translated]:Ready for a scientific task",
+      "inspecting_molecule": "[to be translated]:Inspecting the committed molecule",
+      "preparing_calculation": "[to be translated]:Preparing the controlled calculation",
+      "preparing_preview": "[to be translated]:Preparing a molecule preview",
+      "recovering": "[to be translated]:Recovering the scientific workspace",
+      "reviewing_trajectory": "[to be translated]:Reviewing the optimization trajectory",
+      "running_calculation": "[to be translated]:Monitoring the controlled calculation",
+      "understanding_request": "[to be translated]:Understanding the scientific request",
+      "validating_intent": "[to be translated]:Checking the requested intent",
+      "validating_semantics": "[to be translated]:Checking chemical and revision safety"
+    },
+    "control_activity": {
+      "action_denied_summary": "[to be translated]:{{tool}} was denied.",
+      "action_denied_title": "[to be translated]:Action denied",
+      "approve_calculation_summary": "[to be translated]:{{engine}}/{{method}} is waiting for a one-shot decision.",
+      "approve_calculation_title": "[to be translated]:Approve calculation start",
+      "approve_execution_summary": "[to be translated]:{{tool}} is waiting for an exact one-shot decision.",
+      "approve_execution_title": "[to be translated]:Approve agent execution",
+      "draft_staged_summary": "[to be translated]:{{count}} agent and researcher change(s) are staged for Save or Run review.",
+      "draft_staged_title": "[to be translated]:Molecule draft updated",
+      "final_geometry_accepted_summary": "[to be translated]:Run {{runId}} committed molecule revision {{revision}}.",
+      "final_geometry_accepted_title": "[to be translated]:Final geometry accepted",
+      "final_geometry_rejected_summary": "[to be translated]:Run {{runId}} was rejected; committed revision {{revision}} was preserved.",
+      "final_geometry_rejected_title": "[to be translated]:Final geometry rejected",
+      "mode_allow_summary": "[to be translated]:Every agent action asks before it runs.",
+      "mode_allow_title": "[to be translated]:Allow mode",
+      "mode_execute_summary": "[to be translated]:Reversible agent actions run without asking for the rest of this session. Calculations still ask.",
+      "mode_execute_title": "[to be translated]:Execute mode",
+      "one_shot_approved_summary": "[to be translated]:{{tool}} was approved once.",
+      "one_shot_approved_title": "[to be translated]:One-shot action approved",
+      "optimization_cancelled_summary": "[to be translated]:Run {{runId}} stopped after {{stepCount}} frame(s).",
+      "optimization_cancelled_title": "[to be translated]:Optimization cancelled",
+      "optimization_failed_summary": "[to be translated]:Run {{runId}} ended before a final geometry was available.",
+      "optimization_failed_title": "[to be translated]:Optimization failed",
+      "optimization_started_summary": "[to be translated]:{{engine}}/{{method}} is running from revision {{revision}}.",
+      "optimization_started_title": "[to be translated]:Optimization started",
+      "pre_authorized_summary": "[to be translated]:Ran without asking. {{reason}}",
+      "pre_authorized_title": "[to be translated]:Pre-authorized in Execute mode",
+      "preview_committed_summary": "[to be translated]:Committed preview {{previewId}} at revision {{revision}}.",
+      "preview_committed_title": "[to be translated]:Molecule preview committed",
+      "preview_discarded_summary": "[to be translated]:Preview {{previewId}} was discarded without changing committed state.",
+      "preview_discarded_title": "[to be translated]:Molecule preview discarded",
+      "preview_prepared_summary": "[to be translated]:Preview {{previewId}} contains {{operationCount}} operation(s).",
+      "preview_prepared_title": "[to be translated]:Molecule preview prepared",
+      "request_rejected_calculation_summary": "[to be translated]:Calculation request does not match the supported committed state.",
+      "request_rejected_preview_summary": "[to be translated]:Preview identity or revision does not match trusted state.",
+      "request_rejected_title": "[to be translated]:Studio request rejected",
+      "review_final_geometry_summary": "[to be translated]:Run {{runId}} produced {{stepCount}} frame(s) and is waiting for a one-shot decision.",
+      "review_final_geometry_title": "[to be translated]:Review final geometry",
+      "review_preview_summary": "[to be translated]:Preview {{previewId}} is waiting for a one-shot decision.",
+      "review_preview_title": "[to be translated]:Review molecule preview",
+      "trusted_control_required_summary": "[to be translated]:{{tool}} is available only through a main-issued one-shot control.",
+      "trusted_control_required_title": "[to be translated]:Use the trusted Studio control"
+    }
+  },
+  "common": {
+    "copy": "複製",
+    "cut": "剪下",
+    "inspect": "檢查",
+    "paste": "貼上"
+  },
+  "dialog": {
+    "all_files": "所有檔案",
+    "chemsmart_project": "[to be translated]:ChemSmart Studio Project",
+    "html_files": "HTML 檔案",
+    "molecule_files": "[to be translated]:Molecule Files",
+    "open_file": "開啟檔案",
+    "pdf_files": "PDF 檔案",
+    "png_image": "PNG 影像",
+    "save_as_html": "儲存為 HTML",
+    "save_as_pdf": "儲存為 PDF",
+    "save_file": "儲存檔案",
+    "select_folder": "選擇資料夾",
+    "word_document": "Word 文件"
+  },
+  "paintings": {
+    "generate_failed": "無法生成圖片",
+    "image_mix_failed": "無法混合圖片"
+  },
+  "selection": {
+    "name": "劃詞助手"
+  },
+  "settings": {
+    "mcp": {
+      "oauth": {
+        "callback": {
+          "message": "關閉此頁面後即可回到 ChemSmart Studio",
+          "title": "認證成功"
+        }
+      }
+    },
+    "title": "設定"
+  },
+  "tray": {
+    "quit": "結束",
+    "show_quick_assistant": "快捷助手",
+    "show_window": "顯示視窗"
+  }
+}

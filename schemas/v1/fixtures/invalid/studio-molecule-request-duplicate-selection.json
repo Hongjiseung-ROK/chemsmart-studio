@@ -1,0 +1,9 @@
+{
+  "method": "molecule.set_selection",
+  "params": {
+    "documentId": "molecule-1",
+    "expectedRevision": 7,
+    "atomIds": ["atom-1", "atom-1"]
+  },
+  "sessionId": "session-1"
+}

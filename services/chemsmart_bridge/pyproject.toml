@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chemsmart-studio-bridge"
+version = "0.1.0"
+description = "Bidirectional JSON-RPC adapter between Cherry Studio and ChemSmart AgentSession"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "chemsmart[agent]",
+  "jsonschema[format]>=4.25,<5",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3,<9"]
+
+[project.scripts]
+chemsmart-studio-bridge = "chemsmart_studio_bridge.__main__:main"
+
+[tool.uv.sources]
+chemsmart = { path = "../../vendor/chemsmart", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chemsmart_studio_bridge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

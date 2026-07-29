@@ -1,0 +1,29 @@
+{
+  "activity": [],
+  "extensions": {},
+  "molecule": {
+    "documentId": "document-p4",
+    "revision": 3
+  },
+  "optimization": null,
+  "pendingApprovals": [
+    {
+      "allowActionId": "action-allow",
+      "approvalId": "approval-execution",
+      "arguments": {
+        "execute": true,
+        "job": "job_c3d4",
+        "server": "cluster-a"
+      },
+      "denyActionId": "action-deny",
+      "expiresAt": "2026-07-28T13:10:00Z",
+      "kind": "execution_tool",
+      "requestId": "request-submit-hpc",
+      "requestedAt": "2026-07-28T13:05:00Z",
+      "risk": "calculation_execution",
+      "tool": "submit_hpc"
+    }
+  ],
+  "sessionId": "session-p4",
+  "snapshotRevision": 4
+}

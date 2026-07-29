@@ -1,0 +1,17 @@
+{
+  "atomIds": ["atom-o1"],
+  "atomicNumbers": [8],
+  "completed": false,
+  "engine": "orca",
+  "extensions": {},
+  "frames": [
+    {
+      "coordinateUnit": "angstrom",
+      "energy": { "unit": "hartree", "value": -75.0 },
+      "extensions": {},
+      "positions": [[0, 0, 0]],
+      "stepIndex": 0
+    }
+  ],
+  "type": "completed_log_replay"
+}

@@ -1,0 +1,18 @@
+{
+  "method": "viewport.bind_gpu_generation",
+  "params": {
+    "viewportInstanceId": "viewport-main-1",
+    "viewportLeaseId": "viewport-lease-8",
+    "editorEpoch": 4,
+    "generation": 10,
+    "logicalExtent": {
+      "width": 960,
+      "height": 600
+    },
+    "pixelExtent": {
+      "width": 1920,
+      "height": 1200
+    },
+    "devicePixelRatio": 2
+  }
+}

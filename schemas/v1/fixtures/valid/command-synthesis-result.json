@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1",
+  "synthesisId": "synthesis-1",
+  "sessionId": "session-1",
+  "status": "ready",
+  "command": "chemsmart run -f water.xyz xtb -c 0 -m 1 opt",
+  "commandDigest": "acec9392f29193c0be1b2ef3da851d50c50cb0325f4da189113a3cdf21a7df66",
+  "explanation": "The request maps to a neutral singlet GFN2-xTB geometry optimization.",
+  "projectName": null,
+  "missingInfo": [],
+  "intent": {
+    "verdict": "ok",
+    "failedRuleIds": [],
+    "message": "Charge, multiplicity, method, task, and input match the request.",
+    "extensions": {}
+  },
+  "semantic": {
+    "verdict": "ok",
+    "failedRuleIds": [],
+    "message": "The command is valid ChemSmart syntax.",
+    "extensions": {}
+  },
+  "publicEvidence": [
+    {
+      "evidenceId": "command-validation-1",
+      "kind": "commandValidation",
+      "verdict": "ok",
+      "summary": "Command syntax and requested chemistry both passed.",
+      "ruleIds": [],
+      "extensions": {}
+    }
+  ],
+  "executionPerformed": false,
+  "approvalRequiredForExecution": true,
+  "extensions": {}
+}

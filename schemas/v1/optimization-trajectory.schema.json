@@ -1,0 +1,224 @@
+{
+  "$defs": {
+    "appendFrameRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "$ref": "controlled-calculation.schema.json#/$defs/externalFrame" }
+      },
+      "required": ["frame"],
+      "type": "object"
+    },
+    "appendFrameResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": { "const": true },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "frameIndex": { "minimum": 0, "type": "integer" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["accepted", "runId", "frameIndex", "extensions"],
+      "type": "object"
+    },
+    "closeRunRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "terminal": { "$ref": "controlled-calculation.schema.json#/$defs/terminal" }
+      },
+      "required": ["terminal"],
+      "type": "object"
+    },
+    "closeRunResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "outcome": {
+          "enum": ["awaiting_final_geometry", "cancelled", "failed"]
+        },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["runId", "outcome", "extensions"],
+      "type": "object"
+    },
+    "decisionError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "type": "string"
+        },
+        "message": { "maxLength": 1024, "minLength": 1, "type": "string" }
+      },
+      "required": ["code", "message"],
+      "type": "object"
+    },
+    "finalAcceptFailed": {
+      "additionalProperties": false,
+      "properties": {
+        "error": { "$ref": "#/$defs/decisionError" },
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "type": { "const": "optimization_final_accept_failed" }
+      },
+      "required": ["type", "runId", "expectedRevision", "geometryHash", "timestamp", "error"],
+      "type": "object"
+    },
+    "finalAcceptRequested": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "type": { "const": "optimization_final_accept_requested" }
+      },
+      "required": ["type", "runId", "expectedRevision", "geometryHash", "timestamp"],
+      "type": "object"
+    },
+    "finalAccepted": {
+      "additionalProperties": false,
+      "properties": {
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "type": { "const": "optimization_final_accepted" }
+      },
+      "required": ["type", "runId", "revision", "geometryHash", "timestamp"],
+      "type": "object"
+    },
+    "finalDecisionEvent": {
+      "oneOf": [
+        { "$ref": "#/$defs/finalAcceptRequested" },
+        { "$ref": "#/$defs/finalRejectRequested" },
+        { "$ref": "#/$defs/finalAccepted" },
+        { "$ref": "#/$defs/finalRejected" },
+        { "$ref": "#/$defs/finalAcceptFailed" },
+        { "$ref": "#/$defs/finalRejectFailed" }
+      ]
+    },
+    "finalRejectFailed": {
+      "additionalProperties": false,
+      "properties": {
+        "error": { "$ref": "#/$defs/decisionError" },
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "type": { "const": "optimization_final_reject_failed" }
+      },
+      "required": ["type", "runId", "expectedRevision", "geometryHash", "timestamp", "error"],
+      "type": "object"
+    },
+    "finalRejectRequested": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "type": { "const": "optimization_final_reject_requested" }
+      },
+      "required": ["type", "runId", "expectedRevision", "geometryHash", "timestamp"],
+      "type": "object"
+    },
+    "finalRejected": {
+      "additionalProperties": false,
+      "properties": {
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "type": { "const": "optimization_final_rejected" }
+      },
+      "required": ["type", "runId", "revision", "geometryHash", "timestamp"],
+      "type": "object"
+    },
+    "openRunRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "inputSnapshotHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "inputTopologyHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "run": { "$ref": "optimization.schema.json#/$defs/run" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": ["run", "timestamp", "inputSnapshotHash", "inputTopologyHash"],
+      "type": "object"
+    },
+    "openRunResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["runId", "extensions"],
+      "type": "object"
+    },
+    "recordFinalEventRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "event": { "$ref": "#/$defs/finalDecisionEvent" }
+      },
+      "required": ["event"],
+      "type": "object"
+    },
+    "recordFinalEventResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": { "const": true },
+        "event": { "$ref": "#/$defs/finalDecisionEvent" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      },
+      "required": ["accepted", "event", "extensions"],
+      "type": "object"
+    },
+    "runStateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["runId"],
+      "type": "object"
+    },
+    "runStateResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "frameCount": { "minimum": 0, "type": "integer" },
+        "latestFinalEvent": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/finalDecisionEvent" }]
+        },
+        "latestFrame": {
+          "oneOf": [{ "type": "null" }, { "$ref": "controlled-calculation.schema.json#/$defs/externalFrame" }]
+        },
+        "outcome": {
+          "enum": ["running", "awaiting_final_geometry", "accepted", "rejected", "cancelled", "failed"]
+        },
+        "run": { "$ref": "optimization.schema.json#/$defs/run" },
+        "terminal": {
+          "oneOf": [{ "type": "null" }, { "$ref": "controlled-calculation.schema.json#/$defs/terminal" }]
+        }
+      },
+      "required": ["run", "frameCount", "latestFrame", "terminal", "outcome", "latestFinalEvent", "extensions"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v1/optimization-trajectory.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    { "$ref": "#/$defs/openRunRequest" },
+    { "$ref": "#/$defs/openRunResponse" },
+    { "$ref": "#/$defs/appendFrameRequest" },
+    { "$ref": "#/$defs/appendFrameResponse" },
+    { "$ref": "#/$defs/closeRunRequest" },
+    { "$ref": "#/$defs/closeRunResponse" },
+    { "$ref": "#/$defs/recordFinalEventRequest" },
+    { "$ref": "#/$defs/recordFinalEventResponse" },
+    { "$ref": "#/$defs/runStateRequest" },
+    { "$ref": "#/$defs/runStateResponse" }
+  ],
+  "title": "Optimization trajectory write and recovery contracts"
+}

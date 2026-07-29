@@ -1,0 +1,9 @@
+{
+  "method": "viewport.set_bounds",
+  "params": {
+    "height": 480,
+    "width": 0,
+    "x": 0,
+    "y": 0
+  }
+}

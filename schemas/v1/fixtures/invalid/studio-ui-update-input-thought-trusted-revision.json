@@ -1,0 +1,7 @@
+{
+  "extensions": {},
+  "kind": "agent_thought",
+  "message": "A thought may not claim a revision it does not own.",
+  "phase": "validating_intent",
+  "revision": -1
+}

@@ -1,0 +1,12 @@
+{
+  "viewportInstanceId": "viewport-1",
+  "generation": 3,
+  "activeTool": "navigate",
+  "tools": [
+    { "tool": "navigate", "enabled": true, "disabledReason": null },
+    { "tool": "draw", "enabled": false, "disabledReason": "mutation_locked" },
+    { "tool": "manipulate", "enabled": false, "disabledReason": "mutation_locked" },
+    { "tool": "select", "enabled": true, "disabledReason": null },
+    { "tool": "measure", "enabled": true, "disabledReason": null }
+  ]
+}

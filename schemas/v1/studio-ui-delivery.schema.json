@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/studio-ui-delivery.schema.json",
+  "title": "StudioUiDelivery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["accepted"],
+  "properties": {
+    "accepted": { "type": "boolean" },
+    "eventId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "enum": [
+            "SCHEMA_INVALID",
+            "EVENT_INVALID",
+            "EVENT_TOO_LARGE",
+            "LEDGER_WRITE_FAILED",
+            "DELIVERY_REJECTED",
+            "EVENT_OUT_OF_ORDER",
+            "REVISION_CONFLICT",
+            "EDITOR_UNAVAILABLE",
+            "RPC_TIMEOUT"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    }
+  },
+  "dependentRequired": {
+    "eventId": ["sequence"],
+    "sequence": ["eventId"]
+  },
+  "oneOf": [
+    {
+      "properties": { "accepted": { "const": true } },
+      "required": ["accepted", "eventId", "sequence"]
+    },
+    {
+      "properties": { "accepted": { "const": false } },
+      "required": ["accepted", "error"]
+    }
+  ]
+}

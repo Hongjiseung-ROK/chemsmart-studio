@@ -1,0 +1,30 @@
+{
+  "activity": [],
+  "agent": {
+    "activeTool": "get_studio_context",
+    "currentObject": "molecule",
+    "extensions": {},
+    "focus": {
+      "atomIds": ["a-1"],
+      "bondIds": []
+    },
+    "latestGate": "passed",
+    "pendingTrustedAction": null,
+    "phase": "inspecting_molecule",
+    "progress": null,
+    "recoverySequence": 3,
+    "requiresUserInput": false,
+    "statusSummary": "Inspecting the selected atom",
+    "terminalResult": null,
+    "updatedAt": "2026-07-25T00:00:00Z"
+  },
+  "extensions": {},
+  "molecule": {
+    "documentId": "water",
+    "revision": 0
+  },
+  "optimization": null,
+  "pendingApprovals": [],
+  "sessionId": "session-agent-workspace",
+  "snapshotRevision": 3
+}

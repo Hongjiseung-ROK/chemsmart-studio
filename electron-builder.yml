@@ -1,0 +1,128 @@
+appId: com.chemsmart.studio
+productName: ChemSmart Studio
+copyright: Copyright © 2026 Zhang Lab
+electronLanguages:
+  - zh-CN
+  - zh-TW
+  - en-US
+  - ja # macOS/linux/win
+  - ru # macOS/linux/win
+  - zh_CN # for macOS
+  - zh_TW # for macOS
+  - en # for macOS
+  - de
+directories:
+  buildResources: build
+
+protocols:
+  - name: ChemSmart Studio
+    schemes:
+      - chemsmart-studio
+files:
+  - "**/*"
+  - "!**/{.vscode,.yarn,.yarn-lock,.github,.cursorrules,.prettierrc}"
+  - "!electron.vite.config.{js,ts,mjs,cjs}}"
+  - "!.*"
+  - "!components.json"
+  - "!**/{.eslintignore,.eslintrc.js,.eslintrc.json,.eslintcache,root.eslint.config.js,eslint.config.js,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,eslint.config.mjs,CHANGELOG.md,README.md,biome.jsonc}"
+  - "!**/{.env,.env.*,.npmrc,pnpm-lock.yaml}"
+  - "!**/{tsconfig.json,tsconfig.tsbuildinfo,tsconfig.node.json,tsconfig.web.json}"
+  - "!**/{.editorconfig,.jekyll-metadata}"
+  - "!src"
+  - "!services/chemsmart_bridge/.venv/**"
+  - "!config"
+  - "!patches"
+  - "!**/node_modules/**/*.cpp"
+  - "!**/node_modules/node-addon-api/**"
+  - "!**/node_modules/prebuild-install/**"
+  - "!scripts"
+  - "!local"
+  - "!docs"
+  - "!packages"
+  - "!.swc"
+  - "!.bin"
+  - "!._*"
+  - "!*.log"
+  - "!stats.html"
+  - "!*.md"
+  - "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+  - "!**/*.{map,ts,tsx,jsx,less,scss,sass,css.d.ts,d.cts,d.mts,md,markdown,yaml,yml}"
+  - "!**/{test,tests,__tests__,powered-test,coverage}/**"
+  - "!**/{example,examples}/**"
+  - "!**/*.{spec,test}.{js,jsx,ts,tsx}"
+  - "!**/*.min.*.map"
+  - "!**/*.d.ts"
+  - "!**/dist/es6/**"
+  - "!**/dist/demo/**"
+  - "!**/amd/**"
+  - "!**/{.DS_Store,Thumbs.db,thumbs.db,__pycache__}"
+  - "!**/{LICENSE,license,LICENSE.*,*.LICENSE.txt,NOTICE.txt,README.md,readme.md,CHANGELOG.md}"
+  - "!node_modules/rollup-plugin-visualizer"
+  - "!node_modules/js-tiktoken"
+  - "!node_modules/@tavily/core/node_modules/js-tiktoken"
+  - "!node_modules/pdf-parse/lib/pdf.js/{v1.9.426,v1.10.88,v2.0.550}"
+  - "!node_modules/mammoth/{mammoth.browser.js,mammoth.browser.min.js}"
+  - "!node_modules/tesseract.js-core/{tesseract-core.js,tesseract-core.wasm,tesseract-core.wasm.js}" # we don't need source files
+  - "!node_modules/tesseract.js-core/{tesseract-core-lstm.js,tesseract-core-lstm.wasm,tesseract-core-lstm.wasm.js}" # we don't need source files
+  - "!node_modules/tesseract.js-core/{tesseract-core-simd-lstm.js,tesseract-core-simd-lstm.wasm,tesseract-core-simd-lstm.wasm.js}" # we don't need source files
+  - "!node_modules/onnxruntime-web/**" # transformers.js's browser/WASM backend; local inference always runs onnxruntime-node instead
+  - "!node_modules/@huggingface/transformers/node_modules/onnxruntime-web/**" # same package, nested copy
+  - "!node_modules/onnxruntime-node/bin/**" # native binary is downloaded on first use (Toolchain/onnxruntime), never bundled — see OnnxRuntimeBinaryService
+  - "!**/*.{h,iobj,ipdb,tlog,recipe,vcxproj,vcxproj.filters,Makefile,*.Makefile}" # filter .node build files
+  - "resources/**/*" # include all files in resources, and unpack them from asar for runtime access
+  - "!resources/devtools/**" # dev-only extensions are loaded from source in development
+asarUnpack:
+  - resources/**
+  - "!resources/devtools/**"
+  - "**/*.{metal,exp,lib}"
+  - "node_modules/@img/sharp-*/**"
+  - "node_modules/@anthropic-ai/claude-agent-sdk-*/**" # native CLI binary must live on disk to be spawned
+  - "node_modules/@aiany/sqlite-vec-*/**" # sqlite-vec extension (.dylib/.so/.dll) is dlopen'd at runtime — must live on disk
+extraResources:
+  - from: "migrations/sqlite-drizzle"
+    to: "migrations/sqlite-drizzle"
+  - from: "packages/provider-registry/data"
+    to: "provider-registry"
+  - from: "build/chemsmart-bridge/.venv"
+    to: "chemsmart-studio/bridge/.venv"
+  - from: "build/chemsmart-bridge/runtime-manifest.json"
+    to: "chemsmart-studio/bridge/runtime-manifest.json"
+  - from: "services/chemsmart_bridge/src"
+    to: "chemsmart-studio/bridge/src"
+  - from: "services/chemsmart_bridge/pyproject.toml"
+    to: "chemsmart-studio/bridge/pyproject.toml"
+  - from: "upstreams.lock.json"
+    to: "chemsmart-studio/legal/upstreams.lock.json"
+  - from: "THIRD_PARTY_NOTICES.md"
+    to: "chemsmart-studio/legal/THIRD_PARTY_NOTICES.md"
+  - from: "LICENSE"
+    to: "chemsmart-studio/legal/LICENSE.AGPL-3.0.txt"
+  - from: "vendor/chemsmart/LICENSE"
+    to: "chemsmart-studio/legal/LICENSE.ChemSmart.GPL-3.0.txt"
+  - from: "build/compliance/studio-sbom.cdx.json"
+    to: "chemsmart-studio/legal/studio-sbom.cdx.json"
+  - from: "build/compliance/corresponding-source.json"
+    to: "chemsmart-studio/legal/corresponding-source.json"
+mac:
+  category: public.app-category.developer-tools
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+  artifactName: ChemSmart-Studio-${version}-${arch}.${ext}
+  extendInfo:
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  target:
+    - target: zip
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+beforePack: scripts/before-pack.js
+releaseInfo:
+  releaseNotes: |
+    ChemSmart Studio 0.1.0 Internal Stable for Zhang Lab.
+
+    - Apple Silicon only.
+    - Distributed as an ad-hoc-signed application ZIP.
+    - Not notarized; use Finder's Open command on first launch.
+    - Updates are installed manually from this private repository.
+    - P6 protocol-v2 activation and P7 integrated acceptance remain open, so
+      this internal build is not a public production-ready release.

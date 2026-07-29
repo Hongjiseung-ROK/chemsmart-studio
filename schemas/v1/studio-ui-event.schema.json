@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/studio-ui-event.schema.json",
+  "title": "StudioUiEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "sessionId", "sequence", "timestamp", "source", "kind", "payload", "extensions"],
+  "properties": {
+    "eventId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "source": { "enum": ["model_tool", "runtime"] },
+    "kind": { "enum": ["status", "progress", "molecule_focus", "notice", "agent_thought", "inspector_target"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message"],
+      "properties": {
+        "message": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "atomIds": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stableId" }
+        },
+        "bondIds": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stableId" }
+        },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "stepIndex": { "type": "integer", "minimum": 0 },
+        "totalSteps": { "type": "integer", "minimum": 1 },
+        "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+        "phase": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "toolName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "target": { "enum": ["coordinates", "measurements", "constraints", "decisions", "activity"] }
+      }
+    },
+    "extensions": { "$ref": "#/$defs/extensions" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "molecule_focus" } }, "required": ["kind"] },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": ["documentId", "revision"],
+            "anyOf": [{ "required": ["atomIds"] }, { "required": ["bondIds"] }]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "progress" } }, "required": ["kind"] },
+      "then": {
+        "properties": {
+          "payload": { "required": ["runId", "stepIndex", "progress"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "agent_thought" } }, "required": ["kind"] },
+      "then": {
+        "properties": {
+          "payload": { "required": ["phase"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "inspector_target" } }, "required": ["kind"] },
+      "then": {
+        "properties": {
+          "payload": { "required": ["target"] }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9]*)+$" },
+      "additionalProperties": { "type": "object" }
+    }
+  }
+}

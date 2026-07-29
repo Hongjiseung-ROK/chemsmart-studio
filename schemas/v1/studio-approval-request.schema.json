@@ -1,0 +1,200 @@
+{
+  "$defs": {
+    "acceptOptimizationGeometry": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "expected_revision": { "$ref": "common.schema.json#/$defs/revision" },
+            "run_id": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["run_id", "expected_revision"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "accept_optimization_geometry" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "cancelMoleculeOptimization": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "run_id": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["run_id"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "cancel_molecule_optimization" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "commitMoleculePreview": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "expected_revision": { "$ref": "common.schema.json#/$defs/revision" },
+            "preview_id": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["preview_id", "expected_revision"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "commit_molecule_preview" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "executeChemsmartCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "command": { "$ref": "command-synthesis.schema.json#/$defs/command" },
+            "test": { "type": "boolean" },
+            "timeout_s": { "maximum": 86400, "minimum": 1, "type": "integer" }
+          },
+          "required": ["command"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "execute_chemsmart_command" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "rejectOptimizationGeometry": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "run_id": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["run_id"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "reject_optimization_geometry" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "runLocal": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "job": {
+              "description": "Opaque job handle returned by build_job.",
+              "pattern": "^job_[0-9a-f]{4,}$",
+              "type": "string"
+            }
+          },
+          "required": ["job"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "run_local" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "startMoleculeOptimization": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "engine": { "$ref": "optimization.schema.json#/$defs/run/properties/engine" },
+            "expected_revision": { "$ref": "common.schema.json#/$defs/revision" },
+            "method": { "$ref": "optimization.schema.json#/$defs/run/properties/method" },
+            "settings": { "$ref": "optimization.schema.json#/$defs/run/properties/settings" }
+          },
+          "required": ["engine", "method", "settings", "expected_revision"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "start_molecule_optimization" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "startPreparedOptimization": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "controlled-calculation.schema.json#/$defs/startPreparedOptimizationInput" },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "start_prepared_optimization" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    },
+    "submitHpc": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": false,
+          "properties": {
+            "execute": { "type": "boolean" },
+            "job": {
+              "description": "Opaque job handle returned by build_job.",
+              "pattern": "^job_[0-9a-f]{4,}$",
+              "type": "string"
+            },
+            "server": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "required": ["job"],
+          "type": "object"
+        },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "tool": { "const": "submit_hpc" }
+      },
+      "required": ["sessionId", "requestId", "tool", "arguments"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v1/studio-approval-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    { "$ref": "#/$defs/commitMoleculePreview" },
+    { "$ref": "#/$defs/startMoleculeOptimization" },
+    { "$ref": "#/$defs/startPreparedOptimization" },
+    { "$ref": "#/$defs/runLocal" },
+    { "$ref": "#/$defs/submitHpc" },
+    { "$ref": "#/$defs/executeChemsmartCommand" },
+    { "$ref": "#/$defs/cancelMoleculeOptimization" },
+    { "$ref": "#/$defs/acceptOptimizationGeometry" },
+    { "$ref": "#/$defs/rejectOptimizationGeometry" }
+  ],
+  "title": "StudioApprovalRequest"
+}

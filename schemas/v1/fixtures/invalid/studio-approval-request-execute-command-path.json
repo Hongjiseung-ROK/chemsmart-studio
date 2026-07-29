@@ -1,0 +1,8 @@
+{
+  "arguments": {
+    "command": "chemsmart run xtb /tmp/sample.xyz"
+  },
+  "requestId": "request-execute-command",
+  "sessionId": "session-p4",
+  "tool": "execute_chemsmart_command"
+}

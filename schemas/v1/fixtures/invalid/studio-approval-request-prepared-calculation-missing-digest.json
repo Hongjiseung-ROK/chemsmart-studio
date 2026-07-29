@@ -1,0 +1,8 @@
+{
+  "arguments": {
+    "plan_id": "plan-xtb-1"
+  },
+  "requestId": "request-calculation-1",
+  "sessionId": "session-1",
+  "tool": "start_prepared_optimization"
+}

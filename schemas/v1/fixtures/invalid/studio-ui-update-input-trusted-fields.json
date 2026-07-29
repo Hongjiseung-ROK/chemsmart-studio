@@ -1,0 +1,7 @@
+{
+  "kind": "notice",
+  "message": "A model cannot choose trusted identity fields.",
+  "eventId": "model-chosen-event",
+  "approvalId": "model-chosen-approval",
+  "extensions": {}
+}

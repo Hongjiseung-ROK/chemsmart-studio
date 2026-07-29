@@ -1,0 +1,11 @@
+{
+  "request": {
+    "arguments": {
+      "expected_revision": 4
+    },
+    "tool": "analyze_current_molecule",
+    "type": "studio_agent_tool_request"
+  },
+  "sessionId": "session-1",
+  "type": "controlled_calculation_host_request"
+}

@@ -1,0 +1,23 @@
+{
+  "activity": [
+    {
+      "activityId": "activity-1",
+      "argumentsJson": "{\"includeCoordinates\":true}",
+      "extensions": {},
+      "kind": "tool_call",
+      "payloadJson": "{\"coordinates\":[[0,0,0]]}",
+      "sequence": 0,
+      "status": "completed",
+      "summary": "Read committed molecule revision 2.",
+      "timestamp": "2026-07-22T00:00:30Z",
+      "title": "Read molecule",
+      "toolName": "get_molecule_snapshot"
+    }
+  ],
+  "extensions": {},
+  "molecule": { "documentId": "mol-water", "revision": 2 },
+  "optimization": null,
+  "pendingApprovals": [],
+  "sessionId": "session-water",
+  "snapshotRevision": 1
+}

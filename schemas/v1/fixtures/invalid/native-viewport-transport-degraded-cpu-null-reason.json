@@ -1,0 +1,10 @@
+{
+  "activeCapability": "cpu_bgra8",
+  "fallbackReason": null,
+  "generation": 3,
+  "outstandingFrames": 0,
+  "producerSlotsInUse": 0,
+  "state": "degraded_cpu",
+  "stateSequence": 5,
+  "viewportInstanceId": "viewport-main-1"
+}

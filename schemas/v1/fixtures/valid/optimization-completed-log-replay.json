@@ -1,0 +1,24 @@
+{
+  "atomIds": ["atom-o1", "atom-c1", "atom-o2"],
+  "atomicNumbers": [8, 6, 8],
+  "completed": true,
+  "engine": "gaussian",
+  "extensions": {},
+  "frames": [
+    {
+      "coordinateUnit": "angstrom",
+      "energy": { "unit": "hartree", "value": -188.440236949 },
+      "extensions": {},
+      "positions": [[-1.16, 0, 0], [0, 0, 0], [1.16, 0, 0]],
+      "stepIndex": 0
+    },
+    {
+      "coordinateUnit": "angstrom",
+      "energy": { "unit": "hartree", "value": -188.444679593 },
+      "extensions": {},
+      "positions": [[-1.156195, 0, 0], [0, 0, 0], [1.156195, 0, 0]],
+      "stepIndex": 1
+    }
+  ],
+  "type": "completed_log_replay"
+}

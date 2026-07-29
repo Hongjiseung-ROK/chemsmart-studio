@@ -1,0 +1,12 @@
+{
+  "eventId": "ui-evt-12",
+  "extensions": {},
+  "kind": "agent_thought",
+  "payload": {
+    "message": "A thought with no phase cannot be placed on the trail."
+  },
+  "sequence": 11,
+  "sessionId": "session-1",
+  "source": "runtime",
+  "timestamp": "2026-07-25T05:10:10Z"
+}

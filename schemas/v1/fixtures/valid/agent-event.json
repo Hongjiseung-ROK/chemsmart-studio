@@ -1,0 +1,9 @@
+{
+  "eventId": "event-1",
+  "sessionId": "session-1",
+  "sequence": 0,
+  "type": "approval_request",
+  "timestamp": "2026-07-22T00:03:00Z",
+  "payload": { "tool": "commit_molecule_preview", "previewId": "preview-1", "extensions": {} },
+  "extensions": {}
+}

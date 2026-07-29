@@ -1,0 +1,35 @@
+{
+  "activity": [],
+  "extensions": {},
+  "molecule": { "documentId": "mol-water", "revision": 2 },
+  "optimization": {
+    "extensions": {},
+    "finalGeometry": null,
+    "frameCount": 13,
+    "latestFrame": {
+      "convergence": { "converged": true },
+      "energy": { "unit": "hartree", "value": -76.1 },
+      "forceMetrics": { "max": 0.0002, "rms": 0.0001, "unit": "hartree/bohr" },
+      "runId": "run-1",
+      "stepIndex": 12,
+      "structureHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "timestamp": "2026-07-22T00:10:00Z"
+    },
+    "run": {
+      "constraintIds": [],
+      "createdAt": "2026-07-22T00:03:00Z",
+      "documentId": "mol-water",
+      "engine": "xtb",
+      "extensions": {},
+      "frozenAtomIds": [],
+      "inputRevision": 2,
+      "method": "GFN2-xTB",
+      "runId": "run-1",
+      "settings": { "extensions": {}, "maxSteps": 100 },
+      "status": "awaiting_final_geometry"
+    }
+  },
+  "pendingApprovals": [],
+  "sessionId": "session-water",
+  "snapshotRevision": 5
+}

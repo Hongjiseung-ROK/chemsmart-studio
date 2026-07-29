@@ -1,0 +1,18 @@
+{
+  "atomIds": ["atom-o1", "atom-h1"],
+  "atomicNumbers": [8, 1],
+  "completed": true,
+  "engine": "xtb",
+  "extensions": {},
+  "frames": [
+    {
+      "atomIds": ["atom-h1", "atom-o1"],
+      "coordinateUnit": "angstrom",
+      "energy": { "unit": "hartree", "value": -5.0 },
+      "extensions": {},
+      "positions": [[0, 0, 0], [1, 0, 0]],
+      "stepIndex": 0
+    }
+  ],
+  "type": "completed_log_replay"
+}

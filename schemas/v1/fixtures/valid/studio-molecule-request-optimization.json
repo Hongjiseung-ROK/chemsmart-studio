@@ -1,0 +1,13 @@
+{
+  "method": "optimization.start",
+  "params": {
+    "engine": "xtb",
+    "expectedRevision": 7,
+    "method": "GFN2-xTB",
+    "settings": {
+      "extensions": {},
+      "maxSteps": 250
+    }
+  },
+  "sessionId": "session-1"
+}

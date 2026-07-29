@@ -1,0 +1,14 @@
+{
+  "arguments": {
+    "engine": "xtb",
+    "expected_revision": 7,
+    "method": "GFN2-xTB",
+    "settings": {
+      "extensions": {},
+      "maxIterations": 250
+    }
+  },
+  "requestId": "request-calculation-1",
+  "sessionId": "session-1",
+  "tool": "start_molecule_optimization"
+}

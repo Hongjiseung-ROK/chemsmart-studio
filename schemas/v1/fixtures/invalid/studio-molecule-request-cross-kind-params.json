@@ -1,0 +1,7 @@
+{
+  "method": "optimization.cancel",
+  "params": {
+    "previewId": "preview-1"
+  },
+  "sessionId": "session-1"
+}

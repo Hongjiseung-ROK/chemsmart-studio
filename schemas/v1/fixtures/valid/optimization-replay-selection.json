@@ -1,0 +1,17 @@
+{
+  "documentId": "mol-1",
+  "extensions": {},
+  "frame": {
+    "convergence": { "converged": false, "threshold": 0.001 },
+    "energy": { "unit": "kJ/mol", "value": -10.0 },
+    "forceMetrics": { "max": 0.4, "rms": 0.2, "unit": "kJ/mol/angstrom" },
+    "runId": "run-1",
+    "stepIndex": 0,
+    "timestamp": "2026-07-22T18:01:01.000Z"
+  },
+  "frameCount": 2,
+  "revision": 1,
+  "runId": "run-1",
+  "stepIndex": 0,
+  "viewing": true
+}

@@ -1,0 +1,11 @@
+{
+  "method": "viewport.bootstrap_gpu_transport",
+  "params": {
+    "nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "transportEpoch": 5,
+    "editorEpoch": 4,
+    "inheritedPortSlot": 0,
+    "viewportLeaseDigest": "dfdvGi_IXfx2fJcF4JUGqT1jtZEidFLOAL-ulHEa7uA",
+    "generation": 9
+  }
+}

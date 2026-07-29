@@ -1,0 +1,11 @@
+{
+  "operationId": "op-move-hydrogen",
+  "baseRevision": 0,
+  "actor": "agent",
+  "previewOnly": true,
+  "operations": [
+    { "op": "set_positions", "positions": [{ "atomId": "a-2", "position": [0.98, 0.0, 0.0] }] },
+    { "op": "set_selection", "atomIds": ["a-2"] }
+  ],
+  "extensions": {}
+}

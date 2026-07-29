@@ -1,0 +1,15 @@
+{
+  "method": "viewport.tool_changed",
+  "params": {
+    "viewportInstanceId": "viewport-1",
+    "generation": 3,
+    "activeTool": "measure",
+    "tools": [
+      { "tool": "navigate", "enabled": true, "disabledReason": null },
+      { "tool": "draw", "enabled": true, "disabledReason": null },
+      { "tool": "manipulate", "enabled": true, "disabledReason": null },
+      { "tool": "select", "enabled": true, "disabledReason": null },
+      { "tool": "measure", "enabled": true, "disabledReason": null }
+    ]
+  }
+}

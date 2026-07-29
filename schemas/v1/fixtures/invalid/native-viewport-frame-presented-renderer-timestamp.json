@@ -1,0 +1,13 @@
+{
+  "method": "viewport.frame_presented",
+  "params": {
+    "editorEpoch": 4,
+    "generation": 12,
+    "presented": true,
+    "presentedAt": "2026-07-27T10:00:03.016Z",
+    "sequence": 45,
+    "surfaceSlot": 1,
+    "viewportInstanceId": "viewport-main-1",
+    "viewportLeaseId": "viewport-lease-7"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "atomIds": ["atom-1"],
+  "atomicNumbers": [6],
+  "coordinateUnit": "nanometer",
+  "engineStepIndex": 0,
+  "extensions": {},
+  "frameIndex": 0,
+  "positions": [[0.0, 0.0, 0.0]],
+  "provenance": {
+    "atomOrder": "document_stable_id_order",
+    "coordinateSource": "engine",
+    "transformation": "none"
+  },
+  "runId": "run-1",
+  "structureHash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "timestamp": "2026-07-23T05:02:00Z",
+  "type": "controlled_calculation_frame"
+}

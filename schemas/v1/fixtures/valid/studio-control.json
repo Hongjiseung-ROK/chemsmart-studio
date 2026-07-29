@@ -1,0 +1,94 @@
+{
+  "activity": [
+    {
+      "activityId": "activity-1",
+      "extensions": {},
+      "kind": "tool_call",
+      "sequence": 3,
+      "status": "completed",
+      "summary": "Read committed molecule revision 2.",
+      "timestamp": "2026-07-22T00:00:30Z",
+      "title": "Read molecule",
+      "toolName": "get_molecule_snapshot"
+    }
+  ],
+  "extensions": {},
+  "molecule": {
+    "documentId": "mol-water",
+    "revision": 2
+  },
+  "optimization": {
+    "cancelActionId": "action-cancel-run-active",
+    "extensions": {},
+    "finalGeometry": null,
+    "frameCount": 1,
+    "latestFrame": {
+      "convergence": { "converged": false },
+      "energy": { "unit": "kJ/mol", "value": -0.42 },
+      "forceMetrics": { "max": 0.3, "rms": 0.1, "unit": "kJ/mol/angstrom" },
+      "runId": "run-active",
+      "stepIndex": 0,
+      "structureHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "timestamp": "2026-07-22T00:03:10Z"
+    },
+    "run": {
+      "constraintIds": [],
+      "createdAt": "2026-07-22T00:03:00Z",
+      "documentId": "mol-water",
+      "engine": "avogadro",
+      "extensions": {},
+      "frozenAtomIds": [],
+      "inputRevision": 2,
+      "method": "UFF",
+      "runId": "run-active",
+      "settings": { "extensions": {}, "maxSteps": 50 },
+      "status": "running"
+    }
+  },
+  "pendingApprovals": [
+    {
+      "approvalId": "approval-preview-1",
+      "commitActionId": "action-commit-preview-1",
+      "discardActionId": "action-discard-preview-1",
+      "expiresAt": "2026-07-22T00:06:00Z",
+      "kind": "preview_commit",
+      "receipt": {
+        "affectedAtomIds": ["a-2"],
+        "affectedBondIds": [],
+        "afterHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "baseRevision": 2,
+        "beforeHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "createdAt": "2026-07-22T00:01:00Z",
+        "diff": { "movedAtomCount": 1 },
+        "extensions": {},
+        "operationId": "op-move-hydrogen",
+        "previewId": "preview-1"
+      },
+      "requestId": "request-preview-1",
+      "requestedAt": "2026-07-22T00:01:00Z",
+      "risk": "molecule_mutation"
+    },
+    {
+      "allowActionId": "action-allow-run-1",
+      "approvalId": "approval-run-1",
+      "denyActionId": "action-deny-run-1",
+      "documentId": "mol-water",
+      "engine": "xtb",
+      "expectedRevision": 2,
+      "expiresAt": "2026-07-22T00:07:00Z",
+      "kind": "calculation_start",
+      "method": "GFN2-xTB",
+      "requestId": "request-run-1",
+      "requestedAt": "2026-07-22T00:02:00Z",
+      "risk": "calculation_execution",
+      "settings": {
+        "charge": 0,
+        "extensions": {},
+        "maxSteps": 100,
+        "multiplicity": 1
+      }
+    }
+  ],
+  "sessionId": "session-water",
+  "snapshotRevision": 4
+}

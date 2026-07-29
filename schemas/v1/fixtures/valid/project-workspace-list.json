@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1",
+  "programs": [
+    {
+      "program": "gaussian",
+      "projectRequired": true,
+      "projectNames": ["b3lyp-water"],
+      "extensions": {}
+    },
+    {
+      "program": "orca",
+      "projectRequired": true,
+      "projectNames": [],
+      "extensions": {}
+    },
+    {
+      "program": "xtb",
+      "projectRequired": false,
+      "projectNames": [],
+      "extensions": {}
+    }
+  ],
+  "extensions": {}
+}

@@ -1,0 +1,28 @@
+{
+  "activity": [],
+  "extensions": {},
+  "molecule": { "documentId": "mol-water", "revision": 2 },
+  "optimization": {
+    "cancelActionId": "action-cancel-run-1",
+    "extensions": {},
+    "finalGeometry": null,
+    "frameCount": 1,
+    "latestFrame": null,
+    "run": {
+      "constraintIds": [],
+      "createdAt": "2026-07-22T00:03:00Z",
+      "documentId": "mol-water",
+      "engine": "xtb",
+      "extensions": {},
+      "frozenAtomIds": [],
+      "inputRevision": 2,
+      "method": "GFN2-xTB",
+      "runId": "run-1",
+      "settings": { "extensions": {}, "maxSteps": 100 },
+      "status": "running"
+    }
+  },
+  "pendingApprovals": [],
+  "sessionId": "session-water",
+  "snapshotRevision": 4
+}

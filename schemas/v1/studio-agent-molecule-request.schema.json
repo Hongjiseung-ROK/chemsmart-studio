@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v1/studio-agent-molecule-request.schema.json",
+  "title": "StudioAgentMoleculeRequest",
+  "oneOf": [
+    { "$ref": "studio-molecule-request.schema.json#/$defs/getSnapshot" },
+    { "$ref": "studio-molecule-request.schema.json#/$defs/previewPatch" },
+    { "$ref": "studio-molecule-request.schema.json#/$defs/commitPreview" },
+    { "$ref": "studio-molecule-request.schema.json#/$defs/discardPreview" },
+    { "$ref": "studio-molecule-request.schema.json#/$defs/startOptimization" },
+    { "$ref": "studio-molecule-request.schema.json#/$defs/cancelOptimization" },
+    { "$ref": "studio-molecule-request.schema.json#/$defs/acceptFinalGeometry" },
+    { "$ref": "studio-molecule-request.schema.json#/$defs/rejectFinalGeometry" }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "capability": "cpu_bgra8",
+  "frame": {
+    "alphaMode": "opaque",
+    "capturedAt": "2026-07-26T01:00:00Z",
+    "colorSpace": "srgb",
+    "contentHash": "sha256:e3820096cb82366b860b8a4e668453a7aaaf423af03bdf289fa308ea03a79332",
+    "documentId": "document-ethanol",
+    "generation": 1,
+    "height": 1,
+    "logicalHeight": 400,
+    "logicalWidth": 640,
+    "pixelFormat": "bgra8",
+    "revision": 4,
+    "rowOrigin": "top_left",
+    "scaleFactor": 2,
+    "sequence": 1,
+    "strideBytes": 4,
+    "viewportInstanceId": "viewport-main-1",
+    "width": 1
+  },
+  "payloadByteLength": 1228801,
+  "pixelsBase64": "AAAA/w=="
+}

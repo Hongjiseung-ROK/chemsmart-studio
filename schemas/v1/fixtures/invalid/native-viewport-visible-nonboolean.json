@@ -1,0 +1,6 @@
+{
+  "method": "viewport.set_visible",
+  "params": {
+    "visible": "yes"
+  }
+}

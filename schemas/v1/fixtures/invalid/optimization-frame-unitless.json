@@ -1,0 +1,12 @@
+{
+  "runId": "run-invalid",
+  "stepIndex": 0,
+  "atomIds": ["a-1"],
+  "positions": [[0.0, 0.0, 0.0]],
+  "energy": { "value": -1.0 },
+  "forceMetrics": { "max": 0.1 },
+  "convergence": {},
+  "structureHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "timestamp": "2026-07-22T00:04:00Z",
+  "extensions": {}
+}

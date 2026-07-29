@@ -1,0 +1,10 @@
+{
+  "eventId": "ui-invalid-1",
+  "sessionId": "session-1",
+  "sequence": 3,
+  "timestamp": "2026-07-22T04:10:03Z",
+  "source": "model_tool",
+  "kind": "progress",
+  "payload": { "message": "Missing trusted run context." },
+  "extensions": {}
+}

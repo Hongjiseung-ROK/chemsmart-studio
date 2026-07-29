@@ -1,0 +1,12 @@
+{
+  "documentId": "mol-invalid",
+  "revision": 0,
+  "atoms": [],
+  "bonds": [],
+  "selections": [],
+  "frozenAxes": {},
+  "constraints": [],
+  "properties": {},
+  "extensions": {},
+  "unexpected": true
+}

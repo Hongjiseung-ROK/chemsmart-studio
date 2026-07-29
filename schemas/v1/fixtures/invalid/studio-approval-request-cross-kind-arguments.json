@@ -1,0 +1,9 @@
+{
+  "arguments": {
+    "expected_revision": 7,
+    "preview_id": "preview-1"
+  },
+  "requestId": "request-cancel-1",
+  "sessionId": "session-1",
+  "tool": "cancel_molecule_optimization"
+}
