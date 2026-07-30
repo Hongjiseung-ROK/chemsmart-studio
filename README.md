@@ -3,7 +3,7 @@
 ![ChemSmart Studio icon](build/icons/128x128.png)
 
 ChemSmart Studio combines a professional molecular workbench with an
-agent-native computational-chemistry console. Version `0.1.4` is the current
+agent-native computational-chemistry console. Version `0.1.5` is the current
 Zhang Lab internal stable build for Apple Silicon.
 
 Copyright © 2026 Zhang Lab. Maintained by Jiseung Hong.
@@ -13,7 +13,7 @@ Copyright © 2026 Zhang Lab. Maintained by Jiseung Hong.
 1. Open the private repository's
    [Releases](https://github.com/Hongjiseung-ROK/chemsmart-studio/releases)
    page.
-2. Download `ChemSmart-Studio-0.1.4-arm64.zip`.
+2. Download `ChemSmart-Studio-0.1.5-arm64.zip`.
 3. Expand the ZIP and move `ChemSmart Studio.app` to `Applications`.
 4. On first launch, Control-click the app in Finder, choose **Open**, then
    confirm **Open**.
@@ -31,7 +31,7 @@ project backup is still recommended before updating.
 
 ## Current scope
 
-The `0.1.4` workbench includes:
+The `0.1.5` workbench includes:
 
 - main-owned molecule documents, revisions, draft history, undo, and redo;
 - a Three.js molecular stage with periodic-table insertion, collision-safe
@@ -46,7 +46,11 @@ The `0.1.4` workbench includes:
   provider reasoning or private training capture;
 - explicit decisions for calculation execution and final geometry;
 - a guided Click-derived Console with semantic completion, deterministic
-  preflight, and molecule/YAML tab opening;
+  preflight, decision-tree suggestions, coordinate drag-and-drop, and
+  molecule/YAML tab opening;
+- six explicit Agent workflows (`general`, `project-setup`, `command`,
+  `molecule`, `calculation`, and `results`) with capability ceilings and
+  canonical terminal outcomes;
 - a read-only semantic project-YAML renderer and approval-bound Gaussian/ORCA
   YAML proposals;
 - Protocol v2 runtime contracts with version/hash handshake and narrow v1

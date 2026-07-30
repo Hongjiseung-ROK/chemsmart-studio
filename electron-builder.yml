@@ -121,25 +121,33 @@ electronDownload:
 beforePack: scripts/before-pack.js
 releaseInfo:
   releaseNotes: |
-    ChemSmart Studio 0.1.4 Internal Stable for Zhang Lab.
+    ChemSmart Studio 0.1.5 Internal Stable for Zhang Lab.
 
     - Apple Silicon only.
     - Distributed as an ad-hoc-signed application ZIP.
     - Not notarized; use Finder's Open command on first launch.
     - Updates are installed manually from this private repository.
-    - Streams ChemSmart Agent answers as they are generated and groups trusted
-      tool activity into compact, reviewable scientific work items.
+    - Adds six explicit Agent workflows with bounded capabilities for general
+      inspection, project setup, commands, molecules, calculations, and results.
+    - Fixes false Agent failure banners by binding every displayed result to one
+      canonical terminal outcome while keeping transport failures local to the
+      composer.
     - Activates Protocol v2 for the Studio runtime while retaining narrow,
       read-only compatibility with historical project data.
     - Adds collision-aware coordination placement guides, clearer molecular
       editing tools, and visible constraint and Agent action overlays.
-    - Adds Click-grounded Console completion with semantic command guidance,
-      safe preflight notices, and direct molecule or project-YAML opening.
+    - Refines Click-grounded Console completion into a staged decision tree with
+      reliable keyboard navigation, collision-aware overlay placement, and a
+      separate More disclosure for advanced commands.
+    - Keeps agent and config out of Console suggestions, preserves manually
+      entered valid commands, and never injects an xTB project YAML requirement.
+    - Adds verified coordinate-file completion and single-file drag-and-drop,
+      including draft review before a molecule is imported into a new 3D tab.
     - Adds a lossless, read-only Gaussian and ORCA project-YAML renderer plus
       approval-bound Agent YAML previews.
     - Fixes Agent and Console panels that could not be reopened after closing.
     - Fixes stale Console completion results reappearing after input is erased
-      and presents completion as a compact overlay that does not resize Console.
+      and keeps selected rows visible without moving focus out of the input.
     - Keeps provider reasoning, filesystem paths, credentials, and private
       training data out of Agent history and the application bundle.
     - This remains a private Zhang Lab internal build and is not notarized for
