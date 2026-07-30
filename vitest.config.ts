@@ -168,6 +168,7 @@ export default defineConfig({
         test: {
           name: 'ui',
           environment: 'node',
+          setupFiles: ['tests/jest-dom.setup.ts'],
           include: [
             'packages/ui/scripts/**/*.{test,spec}.{ts,tsx}',
             'packages/ui/src/**/*.{test,spec}.{ts,tsx}',

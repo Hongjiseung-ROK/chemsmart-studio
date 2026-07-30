@@ -182,7 +182,7 @@ describe('controlled calculation test harness', () => {
     })
 
     const paused = e7XtbTestModelResponse(messages)
-    expect(responseToolCall(paused)).toBeUndefined()
+    expect(responseToolCall(paused)?.function.name).toBe('report_studio_result')
     expect(JSON.stringify(paused)).toContain('awaiting separate start approval')
     expect(responseToolCall(e7XtbTestModelResponse(messages, startPreparedTool))?.function.name).toBe(
       'start_prepared_optimization'
@@ -308,7 +308,7 @@ describe('controlled calculation test harness', () => {
       })
     )
 
-    expect(responseToolCall(response)).toBeUndefined()
+    expect(responseToolCall(response)?.function.name).toBe('report_studio_result')
     expect(JSON.stringify(response)).toContain('discarded or denied')
   })
 
@@ -338,7 +338,7 @@ describe('controlled calculation test harness', () => {
     }
     const response = e7XtbTestModelResponse(messagesAfter([], analysisCall, { ...waterAnalysis(), atomCount: 4 }))
 
-    expect(responseToolCall(response)).toBeUndefined()
+    expect(responseToolCall(response)?.function.name).toBe('report_studio_result')
     expect(JSON.stringify(response)).toContain('requires the checked-in three-atom neutral-singlet water fixture')
   })
 
@@ -369,7 +369,7 @@ describe('controlled calculation test harness', () => {
         error: { type: 'PermissionDenied', message: 'Denied', tool: 'start_prepared_optimization' }
       })
     )
-    expect(responseToolCall(response)).toBeUndefined()
+    expect(responseToolCall(response)?.function.name).toBe('report_studio_result')
     expect(JSON.stringify(response)).toContain('denied; no calculation started')
   })
 
@@ -401,7 +401,7 @@ describe('controlled calculation test harness', () => {
       })
     )
 
-    expect(responseToolCall(response)).toBeUndefined()
+    expect(responseToolCall(response)?.function.name).toBe('report_studio_result')
     expect(JSON.stringify(response)).toContain('denied; no calculation started')
   })
 })
