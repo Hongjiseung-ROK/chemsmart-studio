@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import userEvent from '@testing-library/user-event'
+import { type ReactNode, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import type { StudioPaneId } from '../studioLayout'
 import type { StudioLayoutTier } from '../useContainerTier'
-import { reconcilePanel, WorkspaceDock } from '../WorkspaceDock'
+import { WorkspaceDock } from '../WorkspaceDock'
 
 const { usePersistCacheMock } = vi.hoisted(() => ({
   usePersistCacheMock: vi.fn(() => [null, vi.fn()])
@@ -27,7 +29,7 @@ function dock(
     inspectorActivatedAt?: number
     inspectorOpen?: boolean
     onSheetOpenChange?: (open: boolean) => void
-    sheetPane?: 'agent' | null
+    sheetPane?: StudioPaneId | null
     tier?: StudioLayoutTier
   } = {}
 ) {
@@ -41,7 +43,15 @@ function dock(
         normalizedSize: 0.3,
         lastActivatedAt: overrides.bottomActivatedAt ?? 1
       }}
-      bottomPresentation={bottomOpen && overrides.tier !== 'viewport-only' ? 'docked' : 'hidden'}
+      bottomPresentation={
+        bottomOpen
+          ? overrides.tier === 'viewport-only'
+            ? overrides.sheetPane === 'console'
+              ? 'relative-sheet'
+              : 'hidden'
+            : 'docked'
+          : 'hidden'
+      }
       center={overrides.center ?? <p>center content</p>}
       inspector={overrides.inspector ?? <p>inspector content</p>}
       inspectorIntent={{
@@ -49,7 +59,15 @@ function dock(
         normalizedSize: 0.28,
         lastActivatedAt: overrides.inspectorActivatedAt ?? 2
       }}
-      inspectorPresentation={inspectorOpen && overrides.tier !== 'viewport-only' ? 'docked' : 'hidden'}
+      inspectorPresentation={
+        inspectorOpen
+          ? overrides.tier === 'viewport-only'
+            ? overrides.sheetPane === 'agent'
+              ? 'relative-sheet'
+              : 'hidden'
+            : 'docked'
+          : 'hidden'
+      }
       rail={<p>rail content</p>}
       railExpanded
       sheetContexts={{}}
@@ -67,6 +85,28 @@ function dock(
 
 function renderDock(overrides: Parameters<typeof dock>[0] = {}) {
   return render(dock(overrides))
+}
+
+function DockToggleHarness({ pane, tier }: { pane: 'agent' | 'console'; tier: StudioLayoutTier }) {
+  const [open, setOpen] = useState(true)
+  const sheetPane = tier === 'viewport-only' && open ? pane : null
+
+  return (
+    <div>
+      <button aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        Toggle {pane}
+      </button>
+      {dock({
+        bottom: <input aria-label="console input" defaultValue="preserved command" />,
+        bottomOpen: pane === 'console' ? open : true,
+        inspector: <input aria-label="agent composer" defaultValue="preserved request" />,
+        inspectorOpen: pane === 'agent' ? open : true,
+        onSheetOpenChange: setOpen,
+        sheetPane,
+        tier
+      })}
+    </div>
+  )
 }
 
 const regionIds = ['workspace-dock-rail', 'workspace-dock-center', 'workspace-dock-inspector', 'workspace-dock-bottom']
@@ -219,39 +259,48 @@ describe('WorkspaceDock', () => {
       unmount()
     }
   })
-})
 
-/**
- * The panel group sizes itself over several frames and silently drops imperative commands issued while it is
- * still measuring. Asserting intent only once left the inspector and the command workbench rendered open
- * while their toggles said closed — visible, `inert`, and off by one on every press.
- */
-describe('reconcilePanel', () => {
-  it('keeps asserting a closed panel until the group obeys', () => {
-    expect(reconcilePanel({ dragged: false, open: true, pending: true, size: null })).toBe('collapse')
-  })
+  it.each(['wide', 'focused'] as const)(
+    'reopens Agent and Console repeatedly at the %s tier without a recursive render',
+    async (tier) => {
+      for (const pane of ['agent', 'console'] as const) {
+        const user = userEvent.setup()
+        const { unmount } = render(<DockToggleHarness pane={pane} tier={tier} />)
+        const toggle = screen.getByRole('button', { name: `Toggle ${pane}` })
+        const region = screen.getByTestId(pane === 'agent' ? 'workspace-dock-inspector' : 'workspace-dock-bottom')
 
-  it('keeps asserting an open panel until the group obeys', () => {
-    expect(reconcilePanel({ dragged: false, open: false, pending: true, size: '28%' })).toBe('expand')
-  })
+        for (let index = 0; index < 20; index += 1) {
+          await user.click(toggle)
+          expect(toggle).toHaveAttribute('aria-expanded', 'false')
+          expect(region).toHaveAttribute('hidden')
+          await user.click(toggle)
+          expect(toggle).toHaveAttribute('aria-expanded', 'true')
+          expect(region).not.toHaveAttribute('hidden')
+        }
+        unmount()
+      }
+    }
+  )
 
-  it('does nothing once the panel already matches the intent', () => {
-    expect(reconcilePanel({ dragged: false, open: true, pending: true, size: '28%' })).toBe('none')
-    expect(reconcilePanel({ dragged: false, open: false, pending: true, size: null })).toBe('none')
-  })
+  it.each(['agent', 'console'] as const)(
+    'reopens the compact %s Sheet repeatedly and returns focus to its toggle',
+    async (pane) => {
+      const user = userEvent.setup()
+      render(<DockToggleHarness pane={pane} tier="viewport-only" />)
+      const toggle = screen.getByRole('button', { name: `Toggle ${pane}` })
 
-  it('re-applies a pixel target, because the icon rail is a fixed width', () => {
-    expect(reconcilePanel({ dragged: false, open: true, pending: false, size: '48px' })).toBe('resize')
-  })
+      fireEvent.keyDown(screen.getByTestId('studio-pane-sheet'), { key: 'Escape' })
+      await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'))
 
-  it('follows a panel the researcher dragged shut instead of fighting it', () => {
-    expect(reconcilePanel({ dragged: true, open: false, pending: false, size: '28%' })).toBe('follow')
-    expect(reconcilePanel({ dragged: true, open: true, pending: false, size: null })).toBe('follow')
-  })
-
-  it('never rewrites intent from a disagreement no drag caused', () => {
-    // Reading a settling group as a drag reverted `Review`, which opens the inspector on the decisions tab.
-    expect(reconcilePanel({ dragged: false, open: false, pending: false, size: '28%' })).toBe('none')
-    expect(reconcilePanel({ dragged: false, open: true, pending: false, size: null })).toBe('none')
-  })
+      for (let index = 0; index < 5; index += 1) {
+        toggle.focus()
+        await user.click(toggle)
+        expect(toggle).toHaveAttribute('aria-expanded', 'true')
+        const sheet = await screen.findByTestId('studio-pane-sheet')
+        fireEvent.keyDown(sheet, { key: 'Escape' })
+        await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'))
+        await waitFor(() => expect(toggle).toHaveFocus())
+      }
+    }
+  )
 })

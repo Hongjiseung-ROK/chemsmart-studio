@@ -1,10 +1,4 @@
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  type ResizablePanelHandle,
-  useResizablePanelRef
-} from '@cherrystudio/ui'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup, useResizablePanelRef } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from 'react'
@@ -69,45 +63,13 @@ function useSeparatorDragging(rootRef: RefObject<HTMLDivElement | null>) {
 
 /** A panel narrower than this counts as closed however it got there. */
 const OPEN_THRESHOLD_PERCENT = 1
-
-/**
- * What has to happen for a panel to match the researcher's intent. `follow` means the panel changed on its
- * own — the researcher dragged it — and the intent should be updated to match instead of fought.
- */
-export type PanelReconciliation = 'collapse' | 'expand' | 'follow' | 'none' | 'resize'
-
-/**
- * The panel group sizes itself asynchronously, and its imperative `collapse`/`resize` are dropped while it
- * is still measuring. So intent is re-asserted after every commit until the panel obeys, and once it has
- * obeyed, any later disagreement is the researcher's own drag.
- */
-export function reconcilePanel({
-  dragged,
-  open,
-  pending,
-  size
-}: {
-  /** True only once the researcher has dragged this panel's separator since the last intent change. */
-  dragged: boolean
-  open: boolean
-  pending: boolean
-  /** Target size; `null` asks for a closed panel. */
-  size: string | null
-}): PanelReconciliation {
-  const wantsOpen = size !== null
-  if (wantsOpen !== open) {
-    if (pending) return wantsOpen ? 'expand' : 'collapse'
-    // Only a drag may rewrite intent. Any other disagreement is the group still settling, and rewriting
-    // intent from it would undo the toggle that just asked for this state.
-    return dragged ? 'follow' : 'none'
-  }
-  // A pixel target (the dense icon rail) is a fixed width, so it is re-applied even when already open.
-  return size !== null && size.endsWith('px') ? 'resize' : 'none'
-}
+const PANEL_PERCENT_EPSILON = 0.1
+const PANEL_PIXEL_EPSILON = 1
+const MAX_RECONCILIATION_FRAMES = 24
 
 /**
  * Drives one panel from a target size: `null` collapses it. A percentage target reopens at whatever size
- * the researcher last dragged the panel to; an explicit pixel target (the dense icon rail) always wins.
+ * the pane intent stores; an explicit pixel target (the dense icon rail) always wins.
  * `onOpenChange` reports a panel the researcher dragged open or closed, so the toggle that owns it never
  * claims the opposite of what is on screen.
  */
@@ -127,75 +89,77 @@ function useSizedPanel({
   size: string | null
 }) {
   const panelRef = useResizablePanelRef()
-  const lastSizeRef = useRef<string | null>(null)
-  // A freshly mounted panel has not obeyed anything yet, so the first pass always asserts.
-  const pendingRef = useRef(true)
-  const draggedRef = useRef(false)
-  const [, setObservedSize] = useState<number | null>(null)
+  const draggingRef = useRef(dragging)
+  const lastNormalizedSizeRef = useRef<number | null>(null)
+  const lastReportedOpenRef = useRef(size !== null)
+  const reconciliationIdRef = useRef(0)
+  const reconcilingTargetRef = useRef<number | null>(null)
+
+  draggingRef.current = dragging
 
   const handleResize = useCallback(
     (panelSize: { asPercentage: number; inPixels: number }) => {
-      if (
+      // Imperative collapse/expand/resize also emits onResize. Only a pointer drag is allowed to rewrite the
+      // researcher's pane intent, otherwise opening a panel feeds its own measured size back into React and
+      // starts another reconciliation pass.
+      if (!draggingRef.current || reconcilingTargetRef.current !== null) return
+
+      const open =
         panelSize.asPercentage >= OPEN_THRESHOLD_PERCENT &&
         (minimumPixels === undefined || panelSize.inPixels >= minimumPixels)
-      ) {
-        lastSizeRef.current = `${panelSize.asPercentage}%`
-        onNormalizedSizeChange?.(panelSize.asPercentage / 100)
+      if (open) {
+        const normalizedSize = panelSize.asPercentage / 100
+        if (
+          lastNormalizedSizeRef.current === null ||
+          Math.abs(lastNormalizedSizeRef.current - normalizedSize) >= PANEL_PERCENT_EPSILON / 100
+        ) {
+          lastNormalizedSizeRef.current = normalizedSize
+          onNormalizedSizeChange?.(normalizedSize)
+        }
       }
-      setObservedSize(panelSize.asPercentage)
+      if (lastReportedOpenRef.current !== open) {
+        lastReportedOpenRef.current = open
+        onOpenChange?.(open)
+      }
     },
-    [minimumPixels, onNormalizedSizeChange]
+    [minimumPixels, onNormalizedSizeChange, onOpenChange]
   )
 
   useEffect(() => {
-    pendingRef.current = true
-    draggedRef.current = false
+    lastReportedOpenRef.current = size !== null
   }, [size])
 
   useEffect(() => {
-    if (dragging) draggedRef.current = true
-  }, [dragging])
+    const reconciliationId = reconciliationIdRef.current + 1
+    reconciliationIdRef.current = reconciliationId
+    reconcilingTargetRef.current = reconciliationId
 
-  // Intentionally runs after every commit: the group settles over several frames and the panel must not be
-  // left contradicting the toggle that opened it.
-  useEffect(() => {
-    const panel: ResizablePanelHandle | null = mounted ? panelRef.current : null
-    if (!panel) return
-
-    const panelSize = panel.getSize()
-    if (size !== null && minimumPixels !== undefined && panelSize.inPixels < minimumPixels) {
-      panel.resize(size)
+    if (!mounted) {
+      reconcilingTargetRef.current = null
       return
     }
-    const open = !panel.isCollapsed() && panelSize.asPercentage >= OPEN_THRESHOLD_PERCENT
-    switch (reconcilePanel({ dragged: draggedRef.current, open, pending: pendingRef.current, size })) {
-      case 'collapse':
-        panel.collapse()
-        return
-      case 'expand':
-        panel.resize(size!.endsWith('px') ? size! : (lastSizeRef.current ?? size!))
-        return
-      case 'resize':
-        panel.resize(size!)
-        pendingRef.current = false
-        return
-      case 'follow':
-        onOpenChange?.(open)
-        return
-      default:
-        pendingRef.current = false
-    }
-  })
-
-  useEffect(() => {
-    if (!mounted) return
 
     let animationFrame = 0
     let attempts = 0
     let cancelled = false
+    const finish = () => {
+      if (reconcilingTargetRef.current === reconciliationId) reconcilingTargetRef.current = null
+    }
     const assertIntent = () => {
-      if (cancelled || attempts >= 20) return
+      if (cancelled || reconciliationIdRef.current !== reconciliationId) return
+      if (attempts >= MAX_RECONCILIATION_FRAMES) {
+        finish()
+        return
+      }
       attempts += 1
+
+      // A real drag wins over a pending programmatic target. The drag callback will publish the new intent;
+      // the resulting target receives its own bounded reconciliation after the pointer settles.
+      if (draggingRef.current) {
+        finish()
+        return
+      }
+
       const panel = panelRef.current
       if (!panel) {
         animationFrame = requestAnimationFrame(assertIntent)
@@ -203,32 +167,31 @@ function useSizedPanel({
       }
 
       const panelSize = panel.getSize()
-      if (size !== null && minimumPixels !== undefined && panelSize.inPixels < minimumPixels) {
-        panel.resize(size)
+      const open = !panel.isCollapsed() && panelSize.asPercentage >= OPEN_THRESHOLD_PERCENT
+      if (size === null) {
+        if (!open) {
+          finish()
+          return
+        }
+        panel.collapse()
         animationFrame = requestAnimationFrame(assertIntent)
         return
       }
-      const open = !panel.isCollapsed() && panelSize.asPercentage >= OPEN_THRESHOLD_PERCENT
-      const reconciliation = reconcilePanel({
-        dragged: draggedRef.current,
-        open,
-        pending: pendingRef.current,
-        size
-      })
-      if (reconciliation === 'collapse') panel.collapse()
-      else if (reconciliation === 'expand') {
-        panel.resize(size!.endsWith('px') ? size! : (lastSizeRef.current ?? size!))
-      } else if (reconciliation === 'resize') {
-        panel.resize(size!)
-        pendingRef.current = false
-        return
-      } else if (reconciliation === 'follow') {
-        onOpenChange?.(open)
-        return
-      } else {
-        pendingRef.current = false
+
+      const targetValue = Number.parseFloat(size)
+      const sizeMatches = size.endsWith('px')
+        ? Math.abs(panelSize.inPixels - targetValue) < PANEL_PIXEL_EPSILON
+        : Math.abs(panelSize.asPercentage - targetValue) < PANEL_PERCENT_EPSILON
+      const meetsMinimum = minimumPixels === undefined || panelSize.inPixels >= minimumPixels
+      if (open && sizeMatches && meetsMinimum) {
+        finish()
         return
       }
+
+      if (!open) {
+        panel.expand()
+      }
+      panel.resize(size)
       animationFrame = requestAnimationFrame(assertIntent)
     }
 
@@ -236,8 +199,9 @@ function useSizedPanel({
     return () => {
       cancelled = true
       cancelAnimationFrame(animationFrame)
+      finish()
     }
-  }, [minimumPixels, mounted, onOpenChange, panelRef, size])
+  }, [minimumPixels, mounted, panelRef, size])
 
   return { onResize: handleResize, panelRef }
 }
