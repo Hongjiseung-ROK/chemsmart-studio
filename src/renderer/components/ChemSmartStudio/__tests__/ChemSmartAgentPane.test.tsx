@@ -19,7 +19,8 @@ const initialComposer: AgentComposerSnapshot = {
   selectionEnd: 0,
   selectionStart: 0,
   scrollTop: 0,
-  value: ''
+  value: '',
+  workflow: 'general'
 }
 
 function traceEvent(overrides: Partial<StudioAgentTurnEvent> = {}): StudioAgentTurnEvent {
@@ -73,15 +74,16 @@ function PaneHarness({
           label: 'Current molecule'
         },
         {
-          capability: 'inspect',
-          description: 'Inspect the visible molecule',
-          discovery: 'command',
-          key: 'inspect',
-          label: 'Inspect molecule'
+          capability: 'plan',
+          description: 'Prepare project YAML for review',
+          discovery: 'task',
+          key: 'project_setup',
+          label: 'Project setup',
+          workflow: 'project_setup'
         }
       ]}
       composer={composer}
-      failed={false}
+      preTurnNotice={false}
       pendingDecisionCount={pendingDecisionCount}
       reviewContent={<p>Trusted decision content</p>}
       reviewRequestId={0}
@@ -121,6 +123,8 @@ describe('ChemSmartAgentPane', () => {
     expect(screen.queryByRole('tab')).toBeNull()
     expect(screen.queryByText('chemsmart_studio.agent_mode.allow')).toBeNull()
     expect(screen.queryByText('chemsmart_studio.activity.title')).toBeNull()
+    expect(screen.getByTestId('agent-workflow-chip')).toHaveTextContent('@[general]')
+    expect(within(screen.getByTestId('agent-workflow-chip')).queryByRole('button')).toBeNull()
 
     for (const name of [
       'chemsmart_studio.agent_workbench.new',
@@ -130,6 +134,23 @@ describe('ChemSmartAgentPane', () => {
     ]) {
       expect(screen.getByRole('button', { name })).toHaveClass('size-8')
     }
+  })
+
+  it('replaces the immutable workflow chip through the task picker without inserting it into the prompt', async () => {
+    const user = userEvent.setup()
+    render(<PaneHarness />)
+    const composer = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
+
+    await user.click(composer)
+    fireEvent.change(composer, {
+      target: { selectionEnd: 5, selectionStart: 5, value: '@[pro' }
+    })
+    const option = screen.getByRole('option')
+    expect(option).toHaveTextContent('@[project-setup]')
+    await user.click(option)
+
+    expect(composer).toHaveValue('')
+    expect(screen.getByTestId('agent-workflow-chip')).toHaveTextContent('@[project-setup]')
   })
 
   it('discovers composer capabilities with the keyboard without submitting or invoking an action', async () => {
@@ -163,13 +184,15 @@ describe('ChemSmartAgentPane', () => {
     const composer = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
 
     await user.click(composer)
-    await user.type(composer, '/ins')
+    fireEvent.change(composer, {
+      target: { selectionEnd: 5, selectionStart: 5, value: '@[pro' }
+    })
     expect(composer).toHaveAttribute('aria-expanded', 'true')
     expect(composer).toHaveAttribute('aria-controls', 'chemsmart-agent-suggestions')
     expect(composer).toHaveAttribute('aria-activedescendant', 'chemsmart-agent-suggestion-0')
 
     await user.keyboard('{Escape}')
-    expect(composer).toHaveValue('/ins')
+    expect(composer).toHaveValue('@[pro')
     expect(composer).toHaveFocus()
     expect(composer).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('listbox')).toBeNull()

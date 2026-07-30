@@ -552,6 +552,28 @@ describe('StudioControlService trusted controls', () => {
     expect(JSON.stringify(service.getSnapshot(sessionId, senderId).agent)).not.toContain('reasoning')
   })
 
+  it.each([
+    ['completed', 'completed', 'completed', false],
+    ['failed', 'failed', 'failed', false],
+    ['denied', 'idle', 'denied', false],
+    ['cancelled', 'idle', 'cancelled', false],
+    ['needs_user', 'understanding_request', null, true]
+  ] as const)(
+    'settles the %s outcome without completing a negative turn',
+    (outcome, phase, terminalResult, requiresUserInput) => {
+      service.getSnapshot(sessionId, senderId)
+      service.beginAgentTurn(sessionId)
+
+      service.settleAgentTurn(sessionId, outcome)
+
+      expect(service.getSnapshot(sessionId, senderId).agent).toMatchObject({
+        phase,
+        terminalResult,
+        requiresUserInput
+      })
+    }
+  )
+
   it('marks calculation approval as a trusted user wait and records denial', async () => {
     service.getSnapshot(sessionId, senderId)
     const approval = service.requestApproval(preparedCalculationApproval())

@@ -52,11 +52,18 @@ const request = event({
   kind: 'user_message',
   sequence: 1,
   status: 'running',
-  summary: 'Inspect the visible water molecule',
+  summary: '@[general] Inspect the visible water molecule',
   turnId: 'turn-1'
 })
 
 describe('AgentTraceTimeline', () => {
+  it('renders the workflow tag separately from the user message', () => {
+    render(<AgentTraceTimeline events={[request]} />)
+
+    expect(screen.getByTestId('agent-workflow-tag')).toHaveTextContent('@[general]')
+    expect(screen.getByText('Inspect the visible water molecule')).toBeInTheDocument()
+  })
+
   it('streams safe Markdown and replaces transient prose with the canonical answer', () => {
     const { container, rerender } = render(
       <AgentTraceTimeline
@@ -115,6 +122,52 @@ describe('AgentTraceTimeline', () => {
     expect(screen.getAllByText('The canonical molecule contains three atoms.')).toHaveLength(1)
     expect(screen.queryByText('RAW_CHAIN_OF_THOUGHT')).toBeNull()
     expect(screen.queryByText('/Users/researcher/private.xyz')).toBeNull()
+  })
+
+  it('preserves safe lists, emphasis, and inline code without duplicating a Finding heading', () => {
+    render(
+      <AgentTraceTimeline
+        events={[
+          request,
+          event({
+            answer: {
+              answerId: 'answer-markdown',
+              extensions: {},
+              heading: 'Finding',
+              sections: [
+                {
+                  heading: 'Finding',
+                  kind: 'finding',
+                  summary: 'No calculation was started.'
+                }
+              ],
+              summary: '- **Neutral molecule**\n- Formula: `H2O`'
+            },
+            eventId: 'answer-markdown',
+            kind: 'answer_published',
+            sequence: 2,
+            status: 'succeeded',
+            summary: 'Published the verified answer',
+            turnId: 'turn-1'
+          }),
+          event({
+            eventId: 'terminal-completed',
+            kind: 'turn_terminal',
+            outcome: 'completed',
+            sequence: 3,
+            status: 'succeeded',
+            summary: 'Agent turn completed',
+            turnId: 'turn-1'
+          })
+        ]}
+      />
+    )
+
+    expect(screen.getAllByRole('heading', { name: 'Finding' })).toHaveLength(1)
+    expect(screen.getByText('Neutral molecule')).toBeInTheDocument()
+    expect(screen.getByText('H2O')).toBeInTheDocument()
+    expect(screen.getByText('No calculation was started.')).toBeInTheDocument()
+    expect(document.querySelector('.text-error-text')).toBeNull()
   })
 
   it('groups actual tool starts and collapses successful activity when narration begins', () => {

@@ -264,7 +264,8 @@ describe('controlled calculation sidecar integration', () => {
         modelId: e7XtbTestModelId,
         operationId: '11111111-1111-4111-8111-111111111111',
         request: 'Prepare and validate the bounded GFN2-xTB plan.',
-        capability: 'plan'
+        capability: 'act',
+        workflow: 'calculation'
       },
       30_000
     )) as {
@@ -327,7 +328,9 @@ describe('controlled calculation sidecar integration', () => {
       expect.arrayContaining([
         expect.objectContaining({
           role: 'user',
-          content: `Start the validated controlled plan ${xTBPlan.planId} ${xTBPlan.planDigest}.`
+          content: expect.stringContaining(
+            `Start the validated controlled plan ${xTBPlan.planId} ${xTBPlan.planDigest}.`
+          )
         })
       ])
     )

@@ -787,9 +787,10 @@ describe('ChemSmartStudioPanel', () => {
             {
               capability: 'inspect',
               description: 'Inspect the current scientific context.',
-              discovery: 'command',
-              key: 'inspect',
-              label: 'Inspect'
+              discovery: 'task',
+              key: 'general',
+              label: 'General',
+              workflow: 'general'
             }
           ],
           projectId: 'project-1',
@@ -821,12 +822,14 @@ describe('ChemSmartStudioPanel', () => {
 
     const composer = screen.getByRole('textbox', { name: 'chemsmart_studio.workspace.agent_request' })
     await user.click(composer)
-    await user.type(composer, '/ins')
+    fireEvent.change(composer, {
+      target: { selectionEnd: 5, selectionStart: 5, value: '@[gen' }
+    })
     expect(
       screen.getByRole('listbox', { name: 'chemsmart_studio.agent_workbench.discovery.label' })
     ).toBeInTheDocument()
     await user.keyboard('{Escape}')
-    expect(composer).toHaveValue('/ins')
+    expect(composer).toHaveValue('@[gen')
     expect(composer).toHaveFocus()
     expect(screen.getByTestId('studio-pane-sheet')).toHaveAttribute('data-pane', 'agent')
 
@@ -1565,7 +1568,7 @@ describe('ChemSmartStudioPanel', () => {
         return { deterministicModelId: 'deterministic::controlled-calculation' }
       }
       if (route === 'chemsmart_studio.control.snapshot') return emptyControlSnapshot()
-      if (route === 'chemsmart_studio.agent.run_turn') return { completed: true }
+      if (route === 'chemsmart_studio.agent.run_turn') return { turnId: 'turn-1', outcome: 'completed' }
       throw new Error(`Unexpected route: ${route}`)
     })
 
@@ -1582,7 +1585,15 @@ describe('ChemSmartStudioPanel', () => {
       sessionId: 'topic-a',
       modelId: 'deterministic::controlled-calculation',
       request: 'Inspect and prepare the controlled calculation.',
-      intent: null
+      intent: {
+        intentId: expect.stringMatching(/^intent-/),
+        kind: 'inspect',
+        capability: 'inspect',
+        workflow: 'general',
+        contextRefs: [],
+        requiresExecutionApproval: false,
+        extensions: {}
+      }
     })
     await waitFor(() => expect(request).toHaveValue(''))
   })

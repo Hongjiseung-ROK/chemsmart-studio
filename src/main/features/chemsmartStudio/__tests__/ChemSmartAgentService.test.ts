@@ -37,6 +37,7 @@ const {
   getCommandPreflightForApprovalMock,
   resolveCommandPreflightMock,
   requestApprovalMock,
+  settleAgentTurnMock,
   verifyReportedAgentArtifactMock
 } = vi.hoisted(() => ({
   appGetMock: vi.fn(),
@@ -73,6 +74,7 @@ const {
   getCommandPreflightForApprovalMock: vi.fn(),
   resolveCommandPreflightMock: vi.fn(),
   requestApprovalMock: vi.fn(),
+  settleAgentTurnMock: vi.fn(),
   verifyReportedAgentArtifactMock: vi.fn()
 }))
 
@@ -293,7 +295,8 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
           failAgentTurn: failAgentTurnMock,
           forwardMoleculeRequest: forwardMoleculeRequestMock,
           recordAgentToolCompletion: recordAgentToolCompletionMock,
-          requestApproval: requestApprovalMock
+          requestApproval: requestApprovalMock,
+          settleAgentTurn: settleAgentTurnMock
         }
       }
       if (name === 'MoleculeProjectStore') {
@@ -359,6 +362,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
             intentId: 'intent-run-1',
             kind: 'run',
             capability: 'act',
+            workflow: 'calculation',
             contextRefs: [],
             requiresExecutionApproval: true,
             extensions: {}
@@ -368,6 +372,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
               intentId: 'intent-plan-1',
               kind: 'plan',
               capability: 'plan',
+              workflow: 'command',
               contextRefs: [],
               requiresExecutionApproval: false,
               extensions: {}
@@ -578,9 +583,9 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       method === 'studio_ui.replay' ? { replayed: 0, nextSequence: 0 } : advisoryTurnResult
     )
 
-    await expect(
-      service.runTurn('session-1', 'provider::model', 'Inspect the molecule.', 'window-1')
-    ).resolves.toBeUndefined()
+    await expect(service.runTurn('session-1', 'provider::model', 'Inspect the molecule.', 'window-1')).resolves.toEqual(
+      { turnId: 'turn-1', outcome: 'completed' }
+    )
 
     expect(claimSessionControlMock).toHaveBeenCalledWith('session-1', 'window-1')
     expect(beginAgentTurnMock).toHaveBeenCalledWith('session-1')
@@ -592,13 +597,29 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         operationId: expect.any(String),
         request: 'Inspect the molecule.',
         capability: 'inspect',
-        intentKind: 'inspect'
+        intentKind: 'inspect',
+        workflow: 'general'
       },
       15 * 60 * 1000
     )
-    expect(completeAgentTurnMock).toHaveBeenCalledWith('session-1')
-    expect(failAgentTurnMock).not.toHaveBeenCalled()
+    expect(settleAgentTurnMock).toHaveBeenCalledWith('session-1', 'completed')
   })
+
+  it.each(['failed', 'denied', 'needs_user'] as const)(
+    'returns the canonical %s domain outcome without converting it to an IPC failure',
+    async (outcome) => {
+      localProcessRequestMock.mockImplementation(async (method: string) =>
+        method === 'studio_ui.replay' ? { replayed: 0, nextSequence: 0 } : { terminal_outcome: outcome }
+      )
+
+      await expect(
+        service.runTurn('session-1', 'provider::model', 'Inspect the molecule.', 'window-1')
+      ).resolves.toEqual({ turnId: 'turn-1', outcome })
+      expect(projectionTerminalizeMock).toHaveBeenCalledOnce()
+      expect(projectionTerminalizeMock).toHaveBeenCalledWith('session-1', 'turn-1', outcome, expect.any(String))
+      expect(settleAgentTurnMock).toHaveBeenCalledWith('session-1', outcome)
+    }
+  )
 
   it('publishes one schema-validated scientific result and rejects duplicate publication', async () => {
     processMessageMock.mockResolvedValue(modelSseResponse('The verified result is ready for review.'))
@@ -780,6 +801,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         intentId: 'intent-dry-run-1',
         kind: 'dry_run',
         capability: 'plan',
+        workflow: 'command',
         contextRefs: [],
         requiresExecutionApproval: false,
         extensions: {}
@@ -837,8 +859,11 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(agentTurnCount).toBe(1)
 
     releaseFirstTurn()
-    await expect(firstTurn).resolves.toBeUndefined()
-    await expect(service.runTurn('session-1', 'provider::model', 'Next request.', 'window-1')).resolves.toBeUndefined()
+    await expect(firstTurn).resolves.toEqual({ turnId: 'turn-1', outcome: 'completed' })
+    await expect(service.runTurn('session-1', 'provider::model', 'Next request.', 'window-1')).resolves.toEqual({
+      turnId: 'turn-1',
+      outcome: 'completed'
+    })
     expect(agentTurnCount).toBe(2)
   })
 
@@ -1175,14 +1200,14 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
 
     expect(claimSessionControlMock).toHaveBeenCalledWith('session-1', 'window-1')
     expect(beginAgentTurnMock).toHaveBeenCalledWith('session-1')
-    expect(failAgentTurnMock).toHaveBeenCalledWith('session-1')
-    expect(completeAgentTurnMock).not.toHaveBeenCalled()
+    expect(settleAgentTurnMock).toHaveBeenCalledWith('session-1', 'failed')
 
     localProcessRequestMock.mockResolvedValue(advisoryTurnResult)
-    await expect(
-      service.runTurn('session-1', 'provider::model', 'Retry after failure.', 'window-1')
-    ).resolves.toBeUndefined()
-    expect(completeAgentTurnMock).toHaveBeenCalledWith('session-1')
+    await expect(service.runTurn('session-1', 'provider::model', 'Retry after failure.', 'window-1')).resolves.toEqual({
+      turnId: 'turn-1',
+      outcome: 'completed'
+    })
+    expect(settleAgentTurnMock).toHaveBeenCalledWith('session-1', 'completed')
   })
 
   it('releases an active turn on stop and ignores its stale completion', async () => {
@@ -1205,12 +1230,12 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     await service.stopAgent()
     expect(failAgentTurnMock).toHaveBeenCalledWith('session-1')
 
-    await expect(
-      service.runTurn('session-1', 'provider::model', 'Request after stop.', 'window-1')
-    ).resolves.toBeUndefined()
+    await expect(service.runTurn('session-1', 'provider::model', 'Request after stop.', 'window-1')).resolves.toEqual({
+      turnId: 'turn-1',
+      outcome: 'completed'
+    })
     releaseStoppedTurn()
-    await expect(stoppedTurn).rejects.toMatchObject({ code: 'AGENT_UNAVAILABLE' })
-    expect(completeAgentTurnMock).toHaveBeenCalledTimes(1)
+    await expect(stoppedTurn).resolves.toEqual({ turnId: 'turn-1', outcome: 'cancelled' })
   })
 
   it('uses the explicit deterministic test model without touching the configured provider gateway', async () => {
@@ -1282,7 +1307,10 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     await expect(service.runTurn('session-1', 'provider::model', 'First.', 'window-1')).rejects.toThrow(
       'simulated outer timeout'
     )
-    await expect(service.runTurn('session-1', 'provider::model', 'Retry.', 'window-1')).resolves.toBeUndefined()
+    await expect(service.runTurn('session-1', 'provider::model', 'Retry.', 'window-1')).resolves.toEqual({
+      turnId: 'turn-1',
+      outcome: 'completed'
+    })
     expect(appGetMock).not.toHaveBeenCalledWith('ApiGatewayService')
   })
 
@@ -1305,7 +1333,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     })
     rejectTurn(new Error('provider aborted'))
 
-    await expect(turn).rejects.toThrow('provider aborted')
+    await expect(turn).resolves.toEqual({ turnId: 'turn-1', outcome: 'cancelled' })
     expect(denyPendingApprovalsMock).toHaveBeenCalledWith('session-1')
     expect(projectionTerminalizeMock).toHaveBeenCalledOnce()
     expect(projectionTerminalizeMock).toHaveBeenCalledWith('session-1', 'turn-1', 'cancelled', 'Agent turn cancelled')
@@ -1340,7 +1368,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     await service.controlTurn({ sessionId: 'session-1', action: 'steer', request: 'Steered request.' }, 'window-1')
     releaseBoundary()
 
-    await expect(first).rejects.toMatchObject({ code: -32003 })
+    await expect(first).resolves.toEqual({ turnId: 'turn-1', outcome: 'cancelled' })
     await vi.waitFor(() => expect(requests).toEqual(['First request.', 'Steered request.', 'Queued request.']))
     expect(projectionTerminalizeMock.mock.calls.map((call) => call[2])).toEqual(['cancelled', 'completed', 'completed'])
   })

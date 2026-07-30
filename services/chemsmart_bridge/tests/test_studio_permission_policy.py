@@ -9,7 +9,6 @@ from unittest import mock
 from chemsmart.agent.behavior_rules import load_behavior_rules
 from chemsmart.agent.permissions import ResolvedDecision
 from chemsmart.agent.runtime.contracts import ProviderRole, TaskPhase
-from chemsmart.agent.studio import StudioCapability
 from chemsmart.agent.provider_adapter import ToolRequest
 from chemsmart.agent.registry import ToolRegistry
 from chemsmart_studio_bridge.runtime import (
@@ -99,9 +98,9 @@ class StudioToolProfileTest(unittest.TestCase):
     """Studio exposes only the bounded tools assigned to each task phase."""
 
     def phase_tools(
-        self, capability: StudioCapability = StudioCapability.ACT
+        self, workflow: str = "calculation"
     ) -> dict[str, tuple[str, ...]]:
-        profile = _studio_agent_tool_profile(capability)
+        profile = _studio_agent_tool_profile(workflow)
         return {
             phase.name: profile.tools_for(phase, ProviderRole.CONTROLLER)
             for phase in TaskPhase
@@ -120,92 +119,117 @@ class StudioToolProfileTest(unittest.TestCase):
         for phase, tools in self.phase_tools().items():
             self.assertLessEqual(len(tools), 10, f"{phase} exposes {len(tools)} tools")
 
-    def test_synthesis_and_read_only_project_checks_are_reachable(self) -> None:
-        plan_tools = self.phase_tools(StudioCapability.PLAN)
-        inspect_tools = self.phase_tools(StudioCapability.INSPECT)
+    def test_all_six_workflows_end_in_the_terminal_report_tool(self) -> None:
+        for workflow in (
+            "general",
+            "project_setup",
+            "command",
+            "molecule",
+            "calculation",
+            "results",
+        ):
+            with self.subTest(workflow=workflow):
+                for tools in self.phase_tools(workflow).values():
+                    if not tools:
+                        continue
+                    self.assertEqual(tools[-1], "report_studio_result")
+                    self.assertLessEqual(len(tools), 10)
 
-        self.assertIn("synthesize_command", plan_tools["SYNTHESIS"])
-        self.assertIn("repair_command", plan_tools["REPAIR"])
-        self.assertIn("critic_project_yaml", plan_tools["PROJECT"])
-        self.assertIn("render_project_yaml", plan_tools["PROJECT"])
-        self.assertIn("validate_project_yaml", plan_tools["VALIDATION"])
-        self.assertIn("recommend_method", inspect_tools["SYNTHESIS"])
-        self.assertIn("inspect_calculation", inspect_tools["DIAGNOSTICS"])
-        # Routing has to be able to tell whether a project exists before choosing a program.
-        self.assertIn("read_project_yaml", plan_tools["ROUTE"])
+    def test_general_is_read_only_science_and_inspection(self) -> None:
+        exposed = set().union(*map(set, self.phase_tools("general").values()))
 
-    def test_dry_run_intent_excludes_molecule_execution_planning(self) -> None:
-        profile = _studio_agent_tool_profile(
-            StudioCapability.PLAN,
-            "dry_run",
-        )
+        self.assertIn("analyze_current_molecule", exposed)
+        self.assertIn("recommend_method", exposed)
+        self.assertNotIn("render_project_yaml", exposed)
+        self.assertNotIn("synthesize_command", exposed)
+        self.assertFalse(exposed & ALWAYS_STUDIO_APPROVAL)
 
-        exposed: set[str] = set()
-        for phase in TaskPhase:
-            tools = profile.tools_for(phase, ProviderRole.CONTROLLER)
-            exposed.update(tools)
-            self.assertNotIn("prepare_molecule_optimization", tools)
-            self.assertNotIn("start_prepared_optimization", tools)
+    def test_project_setup_is_yaml_preview_only(self) -> None:
+        exposed = set().union(*map(set, self.phase_tools("project_setup").values()))
+
+        for tool in (
+            "read_project_yaml",
+            "render_project_yaml",
+            "validate_project_yaml",
+            "critic_project_yaml",
+        ):
+            self.assertIn(tool, exposed)
+        self.assertNotIn("synthesize_command", exposed)
+        self.assertNotIn("execute_chemsmart_command", exposed)
+
+    def test_command_is_parser_owned_dry_run_without_yaml_or_execution(self) -> None:
+        exposed = set().union(*map(set, self.phase_tools("command").values()))
+
         self.assertIn("synthesize_command", exposed)
-        self.assertIn("report_studio_result", exposed)
+        self.assertIn("repair_command", exposed)
+        self.assertNotIn("render_project_yaml", exposed)
+        self.assertNotIn("execute_chemsmart_command", exposed)
+        self.assertFalse(exposed & ALWAYS_STUDIO_APPROVAL)
 
-    def test_run_intent_exposes_only_the_receipt_bound_command_path(self) -> None:
-        profile = _studio_agent_tool_profile(
-            StudioCapability.ACT,
-            "run",
-        )
+    def test_molecule_is_draft_editing_without_calculation(self) -> None:
+        exposed = set().union(*map(set, self.phase_tools("molecule").values()))
 
-        exposed: set[str] = set()
-        for phase in TaskPhase:
-            tools = profile.tools_for(phase, ProviderRole.CONTROLLER)
-            exposed.update(tools)
-            self.assertLessEqual(len(tools), 10)
-            self.assertNotIn("run_local", tools)
-            self.assertNotIn("submit_hpc", tools)
-            self.assertNotIn("start_prepared_optimization", tools)
-        self.assertIn("execute_chemsmart_command", exposed)
+        for tool in (
+            "get_molecule_snapshot",
+            "analyze_current_molecule",
+            "preview_molecule_patch",
+            "commit_molecule_preview",
+            "discard_molecule_preview",
+        ):
+            self.assertIn(tool, exposed)
+        self.assertNotIn("prepare_molecule_optimization", exposed)
+        self.assertNotIn("execute_chemsmart_command", exposed)
+
+    def test_calculation_is_preflight_plus_exact_approval_execution(self) -> None:
+        tools = self.phase_tools("calculation")
+        exposed = set().union(*map(set, tools.values()))
+
+        for tool in (
+            "prepare_molecule_optimization",
+            "validate_prepared_optimization",
+            "synthesize_command",
+            "start_prepared_optimization",
+            "run_local",
+            "submit_hpc",
+            "execute_chemsmart_command",
+        ):
+            self.assertIn(tool, exposed)
+        for tool in ("run_local", "submit_hpc", "execute_chemsmart_command"):
+            self.assertIn(tool, tools["EXECUTION"])
+            self.assertIn(tool, ALWAYS_STUDIO_APPROVAL)
+
+    def test_results_reads_run_artifact_trajectory_and_replay(self) -> None:
+        exposed = set().union(*map(set, self.phase_tools("results").values()))
+
+        for tool in (
+            "get_optimization_status",
+            "list_calculation_artifacts",
+            "read_calculation_artifact",
+            "get_optimization_replay",
+            "compare_optimization_frames",
+            "inspect_calculation",
+        ):
+            self.assertIn(tool, exposed)
+        self.assertFalse(exposed & ALWAYS_STUDIO_APPROVAL)
 
     def test_project_yaml_writes_are_not_model_reachable(self) -> None:
         for tool in ("write_project_yaml", "update_project_yaml"):
-            tools = self.phase_tools()
-            for phase_tools in tools.values():
-                self.assertNotIn(tool, phase_tools)
+            for workflow in (
+                "general",
+                "project_setup",
+                "command",
+                "molecule",
+                "calculation",
+                "results",
+            ):
+                for phase_tools in self.phase_tools(workflow).values():
+                    self.assertNotIn(tool, phase_tools)
             self.assertNotIn(tool, SAFE_STUDIO_TOOLS)
-
-    def test_yaml_rendering_is_plan_only_and_never_available_to_xtb_intents(self) -> None:
-        plan_tools = self.phase_tools(StudioCapability.PLAN)
-        inspect_tools = self.phase_tools(StudioCapability.INSPECT)
-        act_tools = self.phase_tools(StudioCapability.ACT)
-        dry_run = _studio_agent_tool_profile(StudioCapability.PLAN, "dry_run")
-        run = _studio_agent_tool_profile(StudioCapability.ACT, "run")
-
-        self.assertIn("render_project_yaml", plan_tools["PROJECT"])
-        for phase_tools in inspect_tools.values():
-            self.assertNotIn("render_project_yaml", phase_tools)
-        for phase_tools in act_tools.values():
-            self.assertNotIn("render_project_yaml", phase_tools)
-        for profile in (dry_run, run):
-            for phase in TaskPhase:
-                self.assertNotIn(
-                    "render_project_yaml",
-                    profile.tools_for(phase, ProviderRole.CONTROLLER),
-                )
-
-    def test_the_molecule_path_keeps_its_own_tools(self) -> None:
-        # Widening the profile for the harness must not cost the molecule and calculation flow its menu.
-        tools = self.phase_tools()
-
-        self.assertIn("commit_molecule_preview", tools["PROJECT_WRITE"])
-        self.assertIn("commit_molecule_preview", tools["SYNTHESIS"])
-        self.assertIn("commit_molecule_preview", tools["REPAIR"])
-        self.assertIn("prepare_molecule_optimization", tools["SYNTHESIS"])
-        self.assertIn("start_prepared_optimization", tools["EXECUTION"])
-        self.assertIn("compare_optimization_frames", tools["DIAGNOSTICS"])
 
     def test_execution_phase_exposes_only_the_three_generic_execution_tools(
         self,
     ) -> None:
-        tools = self.phase_tools()["EXECUTION"]
+        tools = self.phase_tools("calculation")["EXECUTION"]
 
         for name in ("run_local", "submit_hpc", "execute_chemsmart_command"):
             self.assertIn(name, tools)

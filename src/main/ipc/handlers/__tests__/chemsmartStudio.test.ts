@@ -52,6 +52,7 @@ const consoleService = {
   acceptCompletionContext: vi.fn(),
   cancel: vi.fn(),
   complete: vi.fn(),
+  prepareFileDrop: vi.fn(),
   preflight: vi.fn(),
   run: vi.fn()
 }
@@ -205,10 +206,10 @@ describe('chemsmartStudioHandlers', () => {
     expect(chemsmartStudioHandlers).not.toHaveProperty('chemsmart_studio.agent.respond_approval')
   })
 
-  it('keeps sidecar turn details and filesystem paths in Electron main', async () => {
+  it('returns only the canonical turn receipt from Electron main', async () => {
     agent.runTurn.mockResolvedValueOnce({
-      session_dir: '/private/main-only/session',
-      tool_outcomes: [{ result: { artifact_path: '/private/main-only/result.xyz' } }]
+      turnId: 'turn-1',
+      outcome: 'completed'
     })
 
     await expect(
@@ -220,7 +221,7 @@ describe('chemsmartStudioHandlers', () => {
         },
         ctx
       )
-    ).resolves.toEqual({ completed: true })
+    ).resolves.toEqual({ turnId: 'turn-1', outcome: 'completed' })
     expect(agent.runTurn).toHaveBeenCalledWith(
       'session-1',
       'deterministic::controlled-calculation',
@@ -399,6 +400,15 @@ describe('chemsmartStudioHandlers', () => {
       action: 'molecule'
     })
     consoleService.run.mockResolvedValueOnce({ runId: 'run-1' })
+    consoleService.complete.mockResolvedValueOnce({
+      commandPath: ['chemsmart'],
+      stage: 'subcommand',
+      disclosure: 'all',
+      hasMore: false,
+      replaceRange: { start: 10, end: 10 },
+      items: [],
+      semantic: { breadcrumb: ['chemsmart'], slots: [], ghostSuffix: '', complete: false }
+    })
 
     await expect(
       chemsmartStudioHandlers['chemsmart_studio.console.preflight']({ command: 'chemsmart --help' }, ctx)
@@ -412,11 +422,28 @@ describe('chemsmartStudioHandlers', () => {
         ctx
       )
     ).resolves.toEqual({ runId: 'run-1' })
+    await chemsmartStudioHandlers['chemsmart_studio.console.complete'](
+      { line: 'chemsmart ', cursor: 10, disclosure: 'all' },
+      ctx
+    )
 
     expect(consoleService.run).toHaveBeenCalledWith('chemsmart --help', 'a'.repeat(64))
+    expect(consoleService.complete).toHaveBeenCalledWith('chemsmart ', 10, 'all')
     await expect(
       chemsmartStudioHandlers['chemsmart_studio.console.preflight']({ command: 'chemsmart --help' }, { senderId: null })
     ).rejects.toMatchObject({ code: 'FORBIDDEN_SENDER' })
+  })
+
+  it('returns file-drop validation failures as typed errors without changing renderer input', async () => {
+    consoleService.prepareFileDrop.mockRejectedValueOnce(new Error('Drop the file in a filename slot'))
+
+    await expect(
+      chemsmartStudioHandlers['chemsmart_studio.console.prepare_file_drop'](
+        { line: 'chemsmart run xtb ', cursor: 18, filePath: '/external/water.xyz' },
+        ctx
+      )
+    ).rejects.toMatchObject({ code: 'SCHEMA_INVALID', message: 'Drop the file in a filename slot' })
+    expect(consoleService.prepareFileDrop).toHaveBeenCalledWith('chemsmart run xtb ', 18, '/external/water.xyz')
   })
 
   it('keeps Project YAML candidate reads and exact decisions behind a managed window', async () => {

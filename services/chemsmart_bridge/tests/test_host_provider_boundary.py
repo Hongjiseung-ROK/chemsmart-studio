@@ -380,6 +380,8 @@ class HostProviderBoundaryTest(unittest.TestCase):
                     return {
                         "session_id": internal_session_id,
                         "assistant_output": "",
+                        "terminal_outcome": "completed",
+                        "limit_reason": None,
                     }
 
                 @staticmethod
@@ -398,6 +400,7 @@ class HostProviderBoundaryTest(unittest.TestCase):
                         "modelId": "provider::model",
                         "operationId": OPERATION_ID,
                         "request": "Inspect the current molecule.",
+                        "workflow": "general",
                     },
                 )
 
@@ -457,7 +460,7 @@ class HostProviderBoundaryTest(unittest.TestCase):
                     0o600,
                 )
 
-    def test_incomplete_agent_turn_fails_the_host_request(self) -> None:
+    def test_incomplete_agent_turn_returns_a_bounded_failed_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             session_root = Path(directory)
             internal_session_id = "20260726T000000Z-deadbeef"
@@ -480,6 +483,7 @@ class HostProviderBoundaryTest(unittest.TestCase):
                         "session_id": internal_session_id,
                         "assistant_output": "",
                         "limit_reason": "provider_errors",
+                        "terminal_outcome": "failed",
                     }
 
             runtime = StudioAgentRuntime(session_root)
@@ -491,19 +495,61 @@ class HostProviderBoundaryTest(unittest.TestCase):
                 return_value=(Mock(), Mock())
             )
 
-            with self.assertRaisesRegex(
-                RpcFault,
-                "stopped before completion.*provider_errors",
-            ):
-                runtime(
-                    "agent.run_turn",
-                    {
-                        "sessionId": "session-1",
-                        "modelId": "provider::model",
-                        "operationId": OPERATION_ID,
-                        "request": "Inspect the current molecule.",
-                    },
-                )
+            result = runtime(
+                "agent.run_turn",
+                {
+                    "sessionId": "session-1",
+                    "modelId": "provider::model",
+                    "operationId": OPERATION_ID,
+                    "request": "Inspect the current molecule.",
+                    "workflow": "general",
+                },
+            )
+
+            self.assertEqual(result["terminal_outcome"], "failed")
+            self.assertEqual(result["limit_reason"], "provider_errors")
+
+    def test_domain_denial_returns_without_a_provider_follow_up(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            session_root = Path(directory)
+            internal_session_id = "20260726T000000Z-deadbeef"
+            internal_directory = session_root / internal_session_id
+            internal_directory.mkdir()
+            (internal_directory / "session.json").write_text("{}")
+            run_loop = Mock(
+                return_value={
+                    "session_id": internal_session_id,
+                    "assistant_output": "",
+                    "limit_reason": None,
+                    "terminal_outcome": "denied",
+                }
+            )
+            session = Mock()
+            session.run_loop = run_loop
+            runtime = StudioAgentRuntime(session_root)
+            peer = Mock()
+            peer.request.return_value = {"accepted": True}
+            runtime.bind_peer(peer)
+            runtime._sessions["session-1"] = session
+            runtime._provider_and_command_session = Mock(  # type: ignore[method-assign]
+                return_value=(Mock(), Mock())
+            )
+
+            result = runtime(
+                "agent.run_turn",
+                {
+                    "sessionId": "session-1",
+                    "modelId": "provider::model",
+                    "operationId": OPERATION_ID,
+                    "request": "Run the approved calculation.",
+                    "capability": "act",
+                    "intentKind": "run",
+                    "workflow": "calculation",
+                },
+            )
+
+            self.assertEqual(result["terminal_outcome"], "denied")
+            self.assertEqual(run_loop.call_count, 1)
 
     def test_tool_trace_projects_only_public_keys_and_trusted_lifecycle(
         self,

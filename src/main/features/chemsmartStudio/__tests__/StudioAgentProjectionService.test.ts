@@ -102,6 +102,7 @@ describe('StudioAgentProjectionService', () => {
         }
       }
       if (name === 'IpcApiService') return { broadcast: broadcastMock }
+      if (name === 'PreferenceService') return { get: vi.fn().mockReturnValue('en-US') }
       throw new Error(`unexpected service ${name}`)
     })
     BaseService.resetInstances()
@@ -123,7 +124,7 @@ describe('StudioAgentProjectionService', () => {
   })
 
   it('persists a normalized turn with monotonic identity and exactly one terminal event', async () => {
-    const started = await service.beginTurn(threadId, '/inspect the current molecule')
+    const started = await service.beginTurn(threadId, 'Inspect the current molecule', 'project_setup')
     const reasoning = await service.appendTurnEvent(threadId, started.turnId, {
       kind: 'reasoning_summary',
       status: 'running',
@@ -132,6 +133,7 @@ describe('StudioAgentProjectionService', () => {
     const terminal = await service.terminalize(threadId, started.turnId, 'completed', 'Inspection completed.')
 
     expect([started.sequence, reasoning.sequence, terminal.sequence]).toEqual([0, 1, 2])
+    expect(started.summary).toBe('@[project-setup] Inspect the current molecule')
     expect(terminal).toMatchObject({ kind: 'turn_terminal', outcome: 'completed', status: 'succeeded' })
     await expect(
       service.terminalize(threadId, started.turnId, 'completed', 'Duplicate terminal.')
@@ -220,15 +222,17 @@ describe('StudioAgentProjectionService', () => {
     expect(manifest.items.some((item) => item.key === 'current_molecule')).toBe(true)
     expect(manifest.items.some((item) => item.key === 'selection')).toBe(true)
     expect(manifest.items.some((item) => item.key === 'current_run_frame')).toBe(true)
-    expect(manifest.items.filter((item) => item.discovery === 'command').map((item) => item.key)).toEqual([
-      'inspect',
-      'plan',
-      'dry-run',
-      'run',
-      'review',
-      'history',
-      'new'
+    expect(
+      manifest.items.filter((item) => item.discovery === 'task').map((item) => [item.key, item.capability])
+    ).toEqual([
+      ['general', 'inspect'],
+      ['project_setup', 'plan'],
+      ['command', 'plan'],
+      ['molecule', 'plan'],
+      ['calculation', 'act'],
+      ['results', 'inspect']
     ])
+    expect(manifest.items.map((item) => item.key)).not.toEqual(expect.arrayContaining(['inspect', 'plan', 'run']))
     expect(JSON.stringify(manifest)).not.toContain('/Users/')
     expect(JSON.stringify(manifest)).not.toContain('/private/')
     for (const item of manifest.items.filter((candidate) => candidate.discovery === 'mention')) {

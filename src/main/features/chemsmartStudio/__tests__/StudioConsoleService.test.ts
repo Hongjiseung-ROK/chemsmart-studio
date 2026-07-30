@@ -72,6 +72,7 @@ describe('StudioConsoleService', () => {
     mocks.lstat.mockResolvedValue({
       dev: 1,
       ino: 1,
+      size: 24,
       isFile: () => true,
       isSymbolicLink: () => false
     })
@@ -264,6 +265,9 @@ describe('StudioConsoleService', () => {
 
     await expect(service.complete('chemsmart run ', 14)).resolves.toEqual({
       commandPath: [],
+      stage: 'root',
+      disclosure: 'primary',
+      hasMore: false,
       replaceRange: { start: 14, end: 14 },
       items: [],
       semantic: { breadcrumb: [], slots: [], ghostSuffix: '', complete: false }
@@ -352,6 +356,7 @@ describe('StudioConsoleService', () => {
 
     const result = await service.complete('chemsmart -f ', 14)
     const candidate = result.items.find((item) => item.label === 'water.xyz')
+    await service.complete('chemsmart -f ', 14)
 
     expect(candidate).toMatchObject({ kind: 'file', openAction: 'molecule' })
     await expect(service.acceptCompletionContext(candidate!.contextRef!)).resolves.toEqual({
@@ -369,10 +374,141 @@ describe('StudioConsoleService', () => {
     mocks.lstat.mockResolvedValueOnce({
       dev: 2,
       ino: 1,
+      size: 24,
       isFile: () => true,
       isSymbolicLink: () => false
     })
     await expect(service.acceptCompletionContext(changedCandidate!.contextRef!)).rejects.toThrow(/changed/)
+  })
+
+  it('prepares a regular molecule drop only in a filename slot without starting a process', async () => {
+    const body = {
+      description: 'ChemSmart command line.',
+      name: 'chemsmart',
+      options: [],
+      subcommands: {
+        run: {
+          description: 'Run a job locally.',
+          name: 'run',
+          options: [],
+          subcommands: {
+            xtb: {
+              description: 'Run xTB.',
+              name: 'xtb',
+              options: [
+                {
+                  choices: null,
+                  help: 'Input molecule.',
+                  is_flag: false,
+                  multiple: false,
+                  name: 'filename',
+                  nargs: 1,
+                  opts: ['-f', '--filename'],
+                  required: false,
+                  type: 'path'
+                },
+                {
+                  choices: ['gfn1', 'gfn2'],
+                  help: 'Method.',
+                  is_flag: false,
+                  multiple: false,
+                  name: 'method',
+                  nargs: 1,
+                  opts: ['--method'],
+                  required: false,
+                  type: 'str'
+                }
+              ],
+              subcommands: {}
+            }
+          }
+        }
+      }
+    }
+    mocks.readFile.mockResolvedValue(
+      JSON.stringify({
+        ...body,
+        _meta: {
+          chemsmart_commit: CHEMSMART_COMMIT,
+          schema_hash: createHash('sha256').update(JSON.stringify(body)).digest('hex')
+        }
+      })
+    )
+    const service = new StudioConsoleService()
+    const line = 'chemsmart run xtb -f old.xyz'
+
+    const result = await service.prepareFileDrop(line, line.length, '/external/My molecule.xyz')
+
+    expect(result).toMatchObject({
+      replaceRange: { start: line.indexOf('old.xyz'), end: line.length },
+      item: {
+        label: 'My molecule.xyz',
+        insertText: "'/external/My molecule.xyz'",
+        kind: 'file',
+        group: 'files',
+        openAction: 'molecule'
+      }
+    })
+    expect(mocks.spawn).not.toHaveBeenCalled()
+    expect(mocks.agentInspect).not.toHaveBeenCalled()
+
+    const methodLine = 'chemsmart run xtb --method '
+    await expect(service.prepareFileDrop(methodLine, methodLine.length, '/external/water.xyz')).rejects.toThrow(
+      /filename/
+    )
+    const filenameLine = 'chemsmart run xtb -f '
+    await expect(service.prepareFileDrop(filenameLine, filenameLine.length, '/external/water.txt')).rejects.toThrow(
+      /XYZ/
+    )
+  })
+
+  it('rejects a symlinked or oversized molecule drop', async () => {
+    const body = {
+      description: 'ChemSmart command line.',
+      name: 'chemsmart',
+      options: [
+        {
+          choices: null,
+          help: 'Input molecule.',
+          is_flag: false,
+          multiple: false,
+          name: 'filename',
+          nargs: 1,
+          opts: ['-f'],
+          required: false,
+          type: 'path'
+        }
+      ],
+      subcommands: {}
+    }
+    mocks.readFile.mockResolvedValue(
+      JSON.stringify({
+        ...body,
+        _meta: {
+          chemsmart_commit: CHEMSMART_COMMIT,
+          schema_hash: createHash('sha256').update(JSON.stringify(body)).digest('hex')
+        }
+      })
+    )
+    const service = new StudioConsoleService()
+    mocks.lstat.mockResolvedValueOnce({
+      dev: 1,
+      ino: 1,
+      size: 24,
+      isFile: () => true,
+      isSymbolicLink: () => true
+    })
+    await expect(service.prepareFileDrop('chemsmart -f ', 13, '/external/water.xyz')).rejects.toThrow(/regular/)
+
+    mocks.lstat.mockResolvedValueOnce({
+      dev: 1,
+      ino: 1,
+      size: 128 * 1024 * 1024 + 1,
+      isFile: () => true,
+      isSymbolicLink: () => false
+    })
+    await expect(service.prepareFileDrop('chemsmart -f ', 13, '/external/water.xyz')).rejects.toThrow(/size/)
+    expect(mocks.spawn).not.toHaveBeenCalled()
   })
 
   it('requires a digest-bound preflight before a ChemSmart command can start', async () => {
