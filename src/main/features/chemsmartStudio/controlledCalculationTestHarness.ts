@@ -10,6 +10,7 @@ export const moleculePreviewTestModelId = 'deterministic::molecule-preview'
 type HarnessMode = typeof HARNESS_NAME | typeof E7_XTB_HARNESS_NAME | typeof MOLECULE_PREVIEW_HARNESS_NAME
 
 interface HarnessToolCall {
+  arguments: Record<string, unknown> | null
   id: string
   name: string
 }
@@ -34,7 +35,15 @@ function lastToolResult(messages: unknown[]): HarnessToolResult | null {
       const candidate = objectValue(valueCall)
       const fn = objectValue(candidate?.function)
       if (typeof candidate?.id === 'string' && typeof fn?.name === 'string') {
-        call = { id: candidate.id, name: fn.name }
+        let argumentsValue: Record<string, unknown> | null = null
+        if (typeof fn.arguments === 'string') {
+          try {
+            argumentsValue = objectValue(JSON.parse(fn.arguments))
+          } catch {
+            argumentsValue = null
+          }
+        }
+        call = { arguments: argumentsValue, id: candidate.id, name: fn.name }
       }
     }
   }
@@ -80,6 +89,23 @@ function finalResponse(content: string): Record<string, unknown> {
     choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }],
     usage: { prompt_tokens: 1, completion_tokens: 1 }
   }
+}
+
+function reportStudioResult(content: string, index: number): Record<string, unknown> {
+  return toolResponse(
+    'report_studio_result',
+    {
+      answer: {
+        answerId: `answer-controlled-harness-${responseSequence + 1}`,
+        heading: 'Controlled calculation',
+        summary: content,
+        sections: [{ kind: 'finding', heading: 'Result', summary: content }],
+        extensions: {}
+      },
+      artifacts: []
+    },
+    index
+  )
 }
 
 function exposedToolNames(tools: unknown[]): Set<string> {
@@ -230,16 +256,24 @@ function testModelResponse(messages: unknown[], mode: HarnessMode, tools: unknow
     return toolResponse('analyze_current_molecule', {}, callIndex)
   }
   const result = latest.result
-  if (!result) return finalResponse('The deterministic test harness received an invalid tool result.')
+  if (!result) return reportStudioResult('The deterministic test harness received an invalid tool result.', callIndex)
+
+  if (latest.call.name === 'report_studio_result') {
+    const answer = objectValue(latest.call.arguments?.answer)
+    const summary = answer ? requiredString(answer, 'summary') : null
+    return finalResponse(summary ?? 'The deterministic Studio result was published.')
+  }
 
   if (latest.call.name === 'get_studio_context') {
     const document = objectValue(result.document)
-    if (!document) return finalResponse('No committed molecule is available for the deterministic test harness.')
+    if (!document) {
+      return reportStudioResult('No committed molecule is available for the deterministic test harness.', callIndex)
+    }
     const documentId = requiredString(document, 'documentId')
     const expectedRevision = requiredRevision(document, 'revision')
     const geometryHash = requiredString(document, 'geometryHash')
     if (!documentId || expectedRevision === null || !geometryHash) {
-      return finalResponse('The deterministic test harness rejected an invalid molecule binding.')
+      return reportStudioResult('The deterministic test harness rejected an invalid molecule binding.', callIndex)
     }
     if (mode !== HARNESS_NAME) {
       return toolResponse(
@@ -280,10 +314,11 @@ function testModelResponse(messages: unknown[], mode: HarnessMode, tools: unknow
       expectedRevision === null ||
       !geometryHash
     ) {
-      return finalResponse(
+      return reportStudioResult(
         mode === HARNESS_NAME
           ? 'The deterministic test harness rejected an invalid current-molecule analysis.'
-          : 'The E7 validation harness requires the checked-in three-atom neutral-singlet water fixture.'
+          : 'The E7 validation harness requires the checked-in three-atom neutral-singlet water fixture.',
+        callIndex
       )
     }
     if (mode === MOLECULE_PREVIEW_HARNESS_NAME) {
@@ -317,7 +352,7 @@ function testModelResponse(messages: unknown[], mode: HarnessMode, tools: unknow
     const planId = requiredString(result, 'planId')
     const planDigest = requiredString(result, 'planDigest')
     if (!planId || !planDigest || result.state !== 'prepared') {
-      return finalResponse('The deterministic test harness rejected an invalid prepared plan.')
+      return reportStudioResult('The deterministic test harness rejected an invalid prepared plan.', callIndex)
     }
     return toolResponse('validate_prepared_optimization', { plan_id: planId, plan_digest: planDigest }, callIndex)
   }
@@ -326,49 +361,54 @@ function testModelResponse(messages: unknown[], mode: HarnessMode, tools: unknow
     const planId = requiredString(result, 'planId')
     const planDigest = requiredString(result, 'planDigest')
     if (!planId || !planDigest || result.state !== 'validated') {
-      return finalResponse('The deterministic test harness rejected an invalid validated plan.')
+      return reportStudioResult('The deterministic test harness rejected an invalid validated plan.', callIndex)
     }
     if (!exposedTools.has('start_prepared_optimization')) {
       const message =
         mode === E7_XTB_HARNESS_NAME
           ? 'The bounded GFN2-xTB validation plan is validated and awaiting separate start approval.'
           : 'The deterministic controlled calculation plan is validated and awaiting separate start approval.'
-      return finalResponse(message)
+      return reportStudioResult(message, callIndex)
     }
     return toolResponse('start_prepared_optimization', { plan_id: planId, plan_digest: planDigest }, callIndex)
   }
 
   if (latest.call.name === 'start_prepared_optimization') {
     return result.type === 'controlled_calculation_reservation'
-      ? finalResponse(
+      ? reportStudioResult(
           mode === E7_XTB_HARNESS_NAME
             ? 'The bounded GFN2-xTB validation calculation was approved and started.'
-            : 'The deterministic controlled calculation was approved and started.'
+            : 'The deterministic controlled calculation was approved and started.',
+          callIndex
         )
-      : finalResponse('The deterministic controlled calculation was denied; no calculation started.')
+      : reportStudioResult('The deterministic controlled calculation was denied; no calculation started.', callIndex)
   }
 
   if (latest.call.name === 'start_molecule_optimization') {
-    return finalResponse('Direct legacy optimization starts are unsupported.')
+    return reportStudioResult('Direct legacy optimization starts are unsupported.', callIndex)
   }
 
   if (latest.call.name === 'preview_molecule_patch') {
     const previewId = requiredString(result, 'previewId')
     const baseRevision = requiredRevision(result, 'baseRevision')
     return previewId && baseRevision !== null
-      ? finalResponse(
-          `The molecule preview is ready. To request the trusted decision card, submit: Commit preview ${previewId} revision ${baseRevision}.`
+      ? reportStudioResult(
+          `The molecule preview is ready. To request the trusted decision card, submit: Commit preview ${previewId} revision ${baseRevision}.`,
+          callIndex
         )
-      : finalResponse('The deterministic molecule preview harness rejected an invalid preview receipt.')
+      : reportStudioResult('The deterministic molecule preview harness rejected an invalid preview receipt.', callIndex)
   }
 
   if (latest.call.name === 'commit_molecule_preview') {
     return requiredString(result, 'previewId') && requiredRevision(result, 'revision') !== null
-      ? finalResponse('The approved molecule preview was committed at the verified revision.')
-      : finalResponse('The molecule preview was discarded or denied; the committed molecule was not changed.')
+      ? reportStudioResult('The approved molecule preview was committed at the verified revision.', callIndex)
+      : reportStudioResult(
+          'The molecule preview was discarded or denied; the committed molecule was not changed.',
+          callIndex
+        )
   }
 
-  return finalResponse('The deterministic test harness stopped after an unexpected tool result.')
+  return reportStudioResult('The deterministic test harness stopped after an unexpected tool result.', callIndex)
 }
 
 export function controlledCalculationTestModelResponse(

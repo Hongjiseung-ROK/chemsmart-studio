@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import './jest-dom.setup'
 
 import { createRequire } from 'node:module'
 import { beforeAll, beforeEach, expect, vi } from 'vitest'

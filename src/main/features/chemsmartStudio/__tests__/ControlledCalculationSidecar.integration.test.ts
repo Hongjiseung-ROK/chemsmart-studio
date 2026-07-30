@@ -232,8 +232,12 @@ describe('controlled calculation sidecar integration', () => {
           return { decision: 'allow_once' }
         }
         if (method === 'calculation.request') {
-          calculationRequests.push(structuredClone(params))
-          const response = await calculationService.handleHostRequest(params)
+          const request =
+            params !== null && typeof params === 'object'
+              ? Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'operationId'))
+              : params
+          calculationRequests.push(structuredClone(request))
+          const response = await calculationService.handleHostRequest(request)
           calculationResponses.push(structuredClone(response))
           if ('type' in response && response.type === 'controlled_calculation_reservation') runId = response.runId
           if ('state' in response && response.state === 'validated') {
@@ -245,6 +249,7 @@ describe('controlled calculation sidecar integration', () => {
           agentTraceEvents.push(structuredClone(params))
           return { accepted: true }
         }
+        if (method === 'agent.report_result') return { accepted: true }
         if (method === 'agent.event') return { accepted: true }
         throw new Error(`Unexpected sidecar callback: ${method}`)
       },
@@ -257,6 +262,7 @@ describe('controlled calculation sidecar integration', () => {
       {
         sessionId: 'session-sidecar-integration',
         modelId: e7XtbTestModelId,
+        operationId: '11111111-1111-4111-8111-111111111111',
         request: 'Prepare and validate the bounded GFN2-xTB plan.',
         capability: 'plan'
       },
@@ -265,30 +271,25 @@ describe('controlled calculation sidecar integration', () => {
       assistant_output: string
       tool_outcomes: Array<{ status: string }>
     }
-    const currentMoleculeAnalysis = calculationResponses.find(
-      (response) =>
-        response !== null &&
-        typeof response === 'object' &&
-        'type' in response &&
-        response.type === 'current_molecule_analysis'
+    expect(calculationResponses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'current_molecule_analysis',
+          atomCount: 3,
+          bondCount: 2,
+          elementCounts: [
+            { atomicNumber: 1, count: 2 },
+            { atomicNumber: 8, count: 1 }
+          ],
+          formula: 'H2O',
+          charge: 0,
+          multiplicity: 1
+        })
+      ])
     )
-    expect(currentMoleculeAnalysis).toMatchObject({
-      type: 'current_molecule_analysis',
-      atomCount: 3,
-      bondCount: 2,
-      elementCounts: [
-        { atomicNumber: 1, count: 2 },
-        { atomicNumber: 8, count: 1 }
-      ],
-      formula: 'H2O',
-      charge: 0,
-      multiplicity: 1
-    })
 
-    expect(prepared.assistant_output).toBe(
-      'The bounded GFN2-xTB validation plan is validated and awaiting separate start approval.'
-    )
-    expect(prepared.tool_outcomes.map((outcome) => outcome.status)).toEqual(['ok', 'ok', 'ok'])
+    expect(prepared.assistant_output).toBe('')
+    expect(prepared.tool_outcomes.map((outcome) => outcome.status)).toEqual(['ok', 'ok', 'ok', 'ok'])
     expect(calculationRequests).toMatchObject([
       { request: { tool: 'analyze_current_molecule', arguments: {} } },
       { request: { tool: 'prepare_molecule_optimization' } },
@@ -312,6 +313,7 @@ describe('controlled calculation sidecar integration', () => {
       {
         sessionId: 'session-sidecar-integration',
         modelId: e7XtbTestModelId,
+        operationId: '22222222-2222-4222-8222-222222222222',
         request: `Start the validated controlled plan ${xTBPlan.planId} ${xTBPlan.planDigest}.`,
         capability: 'act'
       },
@@ -329,8 +331,8 @@ describe('controlled calculation sidecar integration', () => {
         })
       ])
     )
-    expect(started.assistant_output).toBe('The bounded GFN2-xTB validation calculation was approved and started.')
-    expect(started.tool_outcomes.map((outcome) => outcome.status)).toEqual(['ok'])
+    expect(started.assistant_output).toBe('')
+    expect(started.tool_outcomes.map((outcome) => outcome.status)).toEqual(['ok', 'ok'])
     expect(calculationRequests).toHaveLength(4)
     expect(approvalCount).toBe(1)
     expect(studioControl.consumePreparedCalculationGrant).toHaveBeenCalledWith(
