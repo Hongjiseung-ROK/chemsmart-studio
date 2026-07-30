@@ -4,7 +4,7 @@
   "title": "StudioConsoleCompletionResult",
   "type": "object",
   "additionalProperties": false,
-  "required": ["commandPath", "replaceRange", "items"],
+  "required": ["commandPath", "replaceRange", "items", "semantic"],
   "properties": {
     "commandPath": {
       "type": "array",
@@ -31,7 +31,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "label", "insertText", "kind", "detail", "appendSpace"],
+        "required": ["id", "label", "insertText", "kind", "group", "detail", "appendSpace"],
         "properties": {
           "id": { "$ref": "common.schema.json#/$defs/stableId" },
           "label": {
@@ -48,13 +48,80 @@
           "kind": {
             "enum": ["command", "option", "choice", "argument", "file", "project", "server"]
           },
+          "group": {
+            "enum": ["commands", "options", "values", "files", "projects", "servers"]
+          },
           "detail": {
             "type": "string",
             "maxLength": 512,
             "pattern": "^[^\\u0000\\r\\n]*$"
           },
-          "appendSpace": { "type": "boolean" }
+          "valueHint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\u0000\\r\\n]*$"
+          },
+          "appendSpace": { "type": "boolean" },
+          "contextRef": { "$ref": "common.schema.json#/$defs/stableId" },
+          "openAction": { "enum": ["molecule", "project_yaml"] }
         }
+      }
+    },
+    "semantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["breadcrumb", "slots", "ghostSuffix", "complete"],
+      "properties": {
+        "breadcrumb": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]*$"
+          }
+        },
+        "slots": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "insertText", "valueHint", "kind", "required", "consumed", "insertAt"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/stableId" },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[^\\u0000\\r\\n]*$"
+              },
+              "insertText": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^[^\\u0000\\r\\n;&|<>]*$"
+              },
+              "valueHint": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[^\\u0000\\r\\n]*$"
+              },
+              "kind": { "enum": ["leaf", "option"] },
+              "required": { "type": "boolean" },
+              "consumed": { "type": "boolean" },
+              "insertAt": { "type": "integer", "minimum": 0, "maximum": 8192 }
+            }
+          }
+        },
+        "ghostSuffix": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^[^\\u0000\\r\\n]*$"
+        },
+        "complete": { "type": "boolean" }
       }
     },
     "diagnostic": {
@@ -70,6 +137,88 @@
           "minLength": 1,
           "maxLength": 256,
           "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "preflightReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandDigest", "verdict", "summary", "failedRuleIds", "issues", "processStarted"],
+      "properties": {
+        "commandDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "verdict": { "enum": ["green", "warning", "rejected"] },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "program", "job", "inputName", "charge", "multiplicity"],
+          "properties": {
+            "kind": { "enum": ["shell", "chemsmart"] },
+            "program": { "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 128 }] },
+            "job": { "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 128 }] },
+            "inputName": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[^/\\\\\\u0000-\\u001F\\u007F]+$"
+                }
+              ]
+            },
+            "charge": { "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 128 }] },
+            "multiplicity": {
+              "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 128 }]
+            }
+          }
+        },
+        "failedRuleIds": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^(?:intent|cmd)\\.[a-z0-9_.-]+$"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ruleId", "severity", "message"],
+            "properties": {
+              "ruleId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^cmd\\.[a-z0-9_.-]+$"
+              },
+              "severity": { "enum": ["warn", "reject"] },
+              "message": { "type": "string", "minLength": 1, "maxLength": 2048 }
+            }
+          }
+        },
+        "processStarted": { "const": false }
+      }
+    },
+    "completionSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contextRef", "action", "displayName"],
+      "properties": {
+        "contextRef": { "$ref": "common.schema.json#/$defs/stableId" },
+        "action": { "enum": ["molecule", "project_yaml"] },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^\\u0000\\r\\n]*$"
         }
       }
     }

@@ -1,6 +1,8 @@
 import type {
+  ProjectWorkspaceCandidateStatus,
   ResearchProjectContext,
   StudioAgentActionCue,
+  StudioAgentArtifact,
   StudioAgentCapability,
   StudioAgentComposerIntent,
   StudioAgentLiveEvent,
@@ -16,6 +18,7 @@ import type { UniqueModelId } from '@shared/data/types/model'
 import { chemsmartStudioErrorCodes } from '@shared/ipc/errors/chemsmartStudio'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import type {
+  ChemSmartStudioConsoleCompletionSelection,
   ChemSmartStudioControlSnapshot,
   ChemSmartStudioMoleculeSummary,
   ChemSmartStudioOpenDocuments,
@@ -45,7 +48,7 @@ import { MoleculeDraftReviewDialog } from './MoleculeDraftReviewDialog'
 import { MoleculeInspector } from './MoleculeInspector'
 import { MoleculeStage } from './MoleculeStage'
 import { MoleculeTabs } from './MoleculeTabs'
-import { ProjectYamlPanel } from './ProjectYamlPanel'
+import { ProjectYamlCandidateReview, ProjectYamlPanel } from './ProjectYamlPanel'
 import { ResearchRail } from './ResearchRail'
 import { StudioActivityBar } from './StudioActivityBar'
 import { StudioCommandPalette } from './StudioCommandPalette'
@@ -66,6 +69,26 @@ const MAX_AGENT_TURN_EVENTS = 2_000
 const REPLAY_CATALOG_LIMIT = 50
 const REPLAY_TIMELINE_LIMIT = 500
 const REPLAY_STEP_DELAY_MS = 700
+
+function projectYamlArtifactMetadata(
+  artifact: StudioAgentArtifact
+): { previewId: string; program: 'gaussian' | 'orca'; projectName: string } | null {
+  const value = artifact.extensions['chemsmart.project-yaml']
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const metadata = value
+  if (
+    typeof metadata.previewId !== 'string' ||
+    (metadata.program !== 'gaussian' && metadata.program !== 'orca') ||
+    typeof metadata.projectName !== 'string'
+  ) {
+    return null
+  }
+  return {
+    previewId: metadata.previewId,
+    program: metadata.program,
+    projectName: metadata.projectName
+  }
+}
 
 type WorkspaceAction = 'activate_document' | 'import_molecule' | 'open_project' | 'save_as' | null
 type ControlActionFailure = 'generic' | 'revision_conflict' | 'schema_invalid'
@@ -185,6 +208,13 @@ export function ChemSmartWorkspace({
   const [bottomTab, setBottomTab] = useState<WorkbenchTab>('console')
   const [consoleDraft, setConsoleDraft] = useState('')
   const [projectYamlOpen, setProjectYamlOpen] = useState(false)
+  const [projectYamlSelection, setProjectYamlSelection] = useState<{
+    program: 'gaussian' | 'orca'
+    project: string
+  } | null>(null)
+  const [projectYamlCandidateStatuses, setProjectYamlCandidateStatuses] = useState<
+    Record<string, ProjectWorkspaceCandidateStatus>
+  >({})
   const molecule = useMoleculeDocument(sessionId, active)
   const [draftReview, setDraftReview] = useState<DraftReviewRequest | null>(null)
   const [draftReviewBusy, setDraftReviewBusy] = useState(false)
@@ -552,11 +582,26 @@ export function ChemSmartWorkspace({
     }
   }, [])
 
+  const openConsoleCompletion = useCallback(
+    (selection: ChemSmartStudioConsoleCompletionSelection) => {
+      if (selection.action === 'molecule') {
+        setProjectYamlOpen(false)
+        void refreshOpenDocuments()
+        return
+      }
+      if (!selection.program || !selection.projectName) return
+      setProjectYamlSelection({ program: selection.program, project: selection.projectName })
+      setProjectYamlOpen(true)
+    },
+    [refreshOpenDocuments]
+  )
+
   useEffect(() => {
     setAgentCapabilities([])
     setAgentLiveEvents([])
     setAgentTurnEvents([])
     setAgentActionCues([])
+    setProjectYamlCandidateStatuses({})
     actionCueTimersRef.current.forEach(clearTimeout)
     actionCueTimersRef.current.clear()
     setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
@@ -1097,6 +1142,11 @@ export function ChemSmartWorkspace({
     setAgentReviewRequestId((current) => current + 1)
   }, [inspectorPane, tier])
   const draftEntries = molecule.draft?.entries.slice(0, molecule.draft.cursor) ?? []
+  const updateProjectYamlCandidateStatus = useCallback((previewId: string, status: ProjectWorkspaceCandidateStatus) => {
+    setProjectYamlCandidateStatuses((current) =>
+      current[previewId] === status ? current : { ...current, [previewId]: status }
+    )
+  }, [])
   const agentArtifacts: AgentWorkbenchArtifact[] = []
   const publishedArtifacts = agentTurnEvents
     .flatMap((event) => (event.artifact ? [event.artifact] : []))
@@ -1105,6 +1155,24 @@ export function ChemSmartWorkspace({
         artifacts.findIndex((candidate) => candidate.artifactId === artifact.artifactId) === index
     )
   for (const artifact of publishedArtifacts) {
+    const yamlMetadata = projectYamlArtifactMetadata(artifact)
+    if (yamlMetadata) {
+      const status = projectYamlCandidateStatuses[yamlMetadata.previewId] ?? 'pending'
+      agentArtifacts.push({
+        id: artifact.artifactId,
+        status: status === 'pending' ? 'waiting' : 'ready',
+        title: artifact.heading,
+        summary: artifact.summary,
+        review: (
+          <ProjectYamlCandidateReview
+            previewId={yamlMetadata.previewId}
+            sessionId={sessionId}
+            onStatusChange={updateProjectYamlCandidateStatus}
+          />
+        )
+      })
+      continue
+    }
     agentArtifacts.push({
       id: artifact.artifactId,
       status: 'ready',
@@ -1376,7 +1444,13 @@ export function ChemSmartWorkspace({
             activeTab={bottomTab}
             onTabChange={setBottomTab}
             content={{
-              console: <CommandConsole draft={consoleDraft} onDraftChange={setConsoleDraft} />,
+              console: (
+                <CommandConsole
+                  draft={consoleDraft}
+                  onDraftChange={setConsoleDraft}
+                  onOpenCompletion={openConsoleCompletion}
+                />
+              ),
               jobs: (
                 <Scrollbar className="min-h-0 flex-1">
                   <section className="space-y-3 p-3" data-testid="studio-jobs-panel">
@@ -1504,7 +1578,7 @@ export function ChemSmartWorkspace({
                 }}
               />
               {projectYamlOpen ? (
-                <ProjectYamlPanel autoLoad={active} />
+                <ProjectYamlPanel autoLoad={active} initialSelection={projectYamlSelection} />
               ) : (
                 <MoleculeStage
                   actionCues={visibleActionCues}

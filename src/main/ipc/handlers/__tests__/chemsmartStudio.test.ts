@@ -28,6 +28,7 @@ const agent = {
   controlTurn: vi.fn()
 }
 const control = {
+  claimSessionControl: vi.fn(),
   getSnapshot: vi.fn(),
   performAction: vi.fn(),
   setHumanSelection: vi.fn(),
@@ -47,6 +48,17 @@ const sharedTexture = {
   acknowledgeFramePresented: vi.fn(),
   declareRendererReady: vi.fn()
 }
+const consoleService = {
+  acceptCompletionContext: vi.fn(),
+  cancel: vi.fn(),
+  complete: vi.fn(),
+  preflight: vi.fn(),
+  run: vi.fn()
+}
+const projectYaml = {
+  decideCandidate: vi.fn(),
+  getCandidate: vi.fn()
+}
 const ctx = { senderId: 'main-window' }
 
 beforeEach(() => {
@@ -57,6 +69,8 @@ beforeEach(() => {
     if (name === 'StudioControlService') return control
     if (name === 'NativeViewportHost') return viewport
     if (name === 'NativeViewportSharedTextureService') return sharedTexture
+    if (name === 'StudioConsoleService') return consoleService
+    if (name === 'ProjectYamlService') return projectYaml
     throw new Error(`Unexpected application.get(${name})`)
   })
 })
@@ -375,5 +389,66 @@ describe('chemsmartStudioHandlers', () => {
     await expect(
       chemsmartStudioHandlers['chemsmart_studio.control.snapshot']({ sessionId: 'session-1' }, { senderId: null })
     ).rejects.toMatchObject({ code: 'FORBIDDEN_SENDER' })
+  })
+
+  it('keeps completion contexts and preflight receipts behind the managed Console boundary', async () => {
+    consoleService.preflight.mockResolvedValueOnce({ commandDigest: 'a'.repeat(64), verdict: 'green' })
+    consoleService.acceptCompletionContext.mockResolvedValueOnce({
+      contextRef: 'completion-1',
+      displayName: 'water.xyz',
+      action: 'molecule'
+    })
+    consoleService.run.mockResolvedValueOnce({ runId: 'run-1' })
+
+    await expect(
+      chemsmartStudioHandlers['chemsmart_studio.console.preflight']({ command: 'chemsmart --help' }, ctx)
+    ).resolves.toMatchObject({ verdict: 'green' })
+    await expect(
+      chemsmartStudioHandlers['chemsmart_studio.console.accept_completion']({ contextRef: 'completion-1' }, ctx)
+    ).resolves.toMatchObject({ action: 'molecule' })
+    await expect(
+      chemsmartStudioHandlers['chemsmart_studio.console.run'](
+        { command: 'chemsmart --help', preflightDigest: 'a'.repeat(64) },
+        ctx
+      )
+    ).resolves.toEqual({ runId: 'run-1' })
+
+    expect(consoleService.run).toHaveBeenCalledWith('chemsmart --help', 'a'.repeat(64))
+    await expect(
+      chemsmartStudioHandlers['chemsmart_studio.console.preflight']({ command: 'chemsmart --help' }, { senderId: null })
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_SENDER' })
+  })
+
+  it('keeps Project YAML candidate reads and exact decisions behind a managed window', async () => {
+    projectYaml.getCandidate.mockResolvedValueOnce({ candidate: { previewId: 'yaml-preview-1' } })
+    projectYaml.decideCandidate.mockResolvedValueOnce({
+      previewId: 'yaml-preview-1',
+      candidateDigest: 'b'.repeat(64),
+      status: 'denied',
+      extensions: {}
+    })
+
+    await chemsmartStudioHandlers['chemsmart_studio.project.candidate'](
+      { sessionId: 'thread-1', previewId: 'yaml-preview-1', extensions: {} },
+      ctx
+    )
+    await chemsmartStudioHandlers['chemsmart_studio.project.candidate_decide'](
+      {
+        sessionId: 'thread-1',
+        previewId: 'yaml-preview-1',
+        baseDigest: null,
+        candidateDigest: 'b'.repeat(64),
+        expectedRevision: 2,
+        decision: 'deny',
+        extensions: {}
+      },
+      ctx
+    )
+
+    expect(projectYaml.getCandidate).toHaveBeenCalledWith('thread-1', 'yaml-preview-1')
+    expect(projectYaml.decideCandidate).toHaveBeenCalledWith(
+      'thread-1',
+      expect.objectContaining({ previewId: 'yaml-preview-1', decision: 'deny' })
+    )
   })
 })

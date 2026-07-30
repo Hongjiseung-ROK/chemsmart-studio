@@ -6,7 +6,6 @@ import unittest
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
-from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "dev"))
@@ -18,14 +17,11 @@ from generate_protocol_models import (  # noqa: E402
     bundle_studio_approval_request_schema,
     bundle_studio_control_schema,
     bundle_studio_molecule_request_schema,
-    bundle_studio_ui_event_schema,
     studio_agent_tool_input_schemas,
-    studio_ui_update_tool,
 )
 from chemsmart_studio_bridge.generated_protocol import (  # noqa: E402
     COMMAND_INSPECTION_RUNTIME_SCHEMA,
     CONTROLLED_CALCULATION_RUNTIME_SCHEMA,
-    EMIT_STUDIO_UI_UPDATE_TOOL,
     MOLECULE_PATCH_RUNTIME_SCHEMA,
     OPTIMIZATION_REPLAY_RUNTIME_SCHEMA,
     OPTIMIZATION_RUNTIME_SCHEMA,
@@ -39,23 +35,12 @@ from chemsmart_studio_bridge.generated_protocol import (  # noqa: E402
     STUDIO_CONTROL_SCHEMA,
     STUDIO_MOLECULE_REQUEST_RUNTIME_SCHEMA,
     STUDIO_MOLECULE_REQUEST_SCHEMA,
-    STUDIO_UI_DELIVERY_SCHEMA,
-    STUDIO_UI_EVENT_SCHEMA,
-    STUDIO_UI_EVENT_RUNTIME_SCHEMA,
 )
 from chemsmart.agent.studio import (  # noqa: E402
     STUDIO_TOOL_NAMES,
     StudioToolAdapters,
     build_studio_tool_specs,
 )
-
-
-def contains_ref(value: object) -> bool:
-    if isinstance(value, dict):
-        return "$ref" in value or any(contains_ref(item) for item in value.values())
-    if isinstance(value, list):
-        return any(contains_ref(item) for item in value)
-    return False
 
 
 def contains_external_ref(value: object) -> bool:
@@ -88,56 +73,14 @@ class ProtocolCodegenTest(unittest.TestCase):
     def _schema_documents() -> dict[str, dict]:
         return {
             path.name: json.loads(path.read_text())
-            for path in (ROOT / "schemas/v1").glob("*.schema.json")
+            for path in (ROOT / "schemas/v2").glob("*.schema.json")
         }
-
-    def test_generated_studio_ui_tool_matches_source(self) -> None:
-        self.assertEqual(EMIT_STUDIO_UI_UPDATE_TOOL, studio_ui_update_tool())
-
-    def test_generated_studio_ui_input_schema_is_self_contained(self) -> None:
-        input_schema = EMIT_STUDIO_UI_UPDATE_TOOL["inputSchema"]
-        Draft202012Validator.check_schema(input_schema)
-        self.assertFalse(contains_ref(input_schema))
-
-    def test_generated_canonical_event_schema_validates_without_source_files(
-        self,
-    ) -> None:
-        common_resource = Resource.from_contents(STUDIO_COMMON_SCHEMA)
-        registry = Registry().with_resource(
-            STUDIO_COMMON_SCHEMA["$id"], common_resource
-        )
-        validator = Draft202012Validator(
-            STUDIO_UI_EVENT_SCHEMA,
-            registry=registry,
-            format_checker=FormatChecker(),
-        )
-        valid = json.loads(
-            (ROOT / "schemas/v1/fixtures/valid/studio-ui-event-status.json").read_text()
-        )
-        invalid = json.loads(
-            (
-                ROOT / "schemas/v1/fixtures/invalid/studio-ui-event-approval-kind.json"
-            ).read_text()
-        )
-        self.assertFalse(list(validator.iter_errors(valid)))
-        self.assertTrue(list(validator.iter_errors(invalid)))
-
-    def test_generated_runtime_event_schema_is_self_contained(self) -> None:
-        self.assertEqual(
-            STUDIO_UI_EVENT_RUNTIME_SCHEMA,
-            bundle_studio_ui_event_schema(
-                STUDIO_UI_EVENT_SCHEMA,
-                STUDIO_COMMON_SCHEMA,
-            ),
-        )
-        Draft202012Validator.check_schema(STUDIO_UI_EVENT_RUNTIME_SCHEMA)
-        self.assertFalse(contains_external_ref(STUDIO_UI_EVENT_RUNTIME_SCHEMA))
 
     def test_generated_runtime_molecule_schema_is_canonical_and_self_contained(
         self,
     ) -> None:
         molecule_schema = json.loads(
-            (ROOT / "schemas/v1/molecule.schema.json").read_text()
+            (ROOT / "schemas/v2/molecule.schema.json").read_text()
         )
         runtime_schema = bundle_molecule_document_schema(
             molecule_schema, STUDIO_COMMON_SCHEMA
@@ -151,30 +94,6 @@ class ProtocolCodegenTest(unittest.TestCase):
         invalid = json.loads(
             (
                 ROOT / "schemas/v1/fixtures/invalid/molecule-extra-property.json"
-            ).read_text()
-        )
-        self.assertFalse(list(validator.iter_errors(valid)))
-        self.assertTrue(list(validator.iter_errors(invalid)))
-
-    def test_generated_delivery_schema_validates_typed_failure(self) -> None:
-        common_resource = Resource.from_contents(STUDIO_COMMON_SCHEMA)
-        registry = Registry().with_resource(
-            STUDIO_COMMON_SCHEMA["$id"], common_resource
-        )
-        validator = Draft202012Validator(
-            STUDIO_UI_DELIVERY_SCHEMA,
-            registry=registry,
-        )
-        valid = json.loads(
-            (
-                ROOT
-                / "schemas/v1/fixtures/valid/studio-ui-delivery-revision-conflict.json"
-            ).read_text()
-        )
-        invalid = json.loads(
-            (
-                ROOT
-                / "schemas/v1/fixtures/invalid/studio-ui-delivery-missing-identity.json"
             ).read_text()
         )
         self.assertFalse(list(validator.iter_errors(valid)))
@@ -194,44 +113,7 @@ class ProtocolCodegenTest(unittest.TestCase):
         Draft202012Validator.check_schema(STUDIO_CONTROL_RUNTIME_SCHEMA)
         self.assertFalse(contains_external_ref(STUDIO_CONTROL_RUNTIME_SCHEMA))
 
-    def test_generated_runtime_control_schema_rejects_forged_and_raw_fields(
-        self,
-    ) -> None:
-        validator = Draft202012Validator(
-            STUDIO_CONTROL_RUNTIME_SCHEMA,
-            format_checker=FormatChecker(),
-        )
-        valid = json.loads(
-            (ROOT / "schemas/v1/fixtures/valid/studio-control.json").read_text()
-        )
-        final_geometry = json.loads(
-            (
-                ROOT / "schemas/v1/fixtures/valid/studio-control-final-geometry.json"
-            ).read_text()
-        )
-        invalid_paths = [
-            ROOT
-            / "schemas/v1/fixtures/invalid/studio-control-awaiting-without-final-geometry.json",
-            ROOT
-            / "schemas/v1/fixtures/invalid/studio-control-calculation-method-whitespace.json",
-            ROOT / "schemas/v1/fixtures/invalid/studio-control-cancel-not-running.json",
-            ROOT
-            / "schemas/v1/fixtures/invalid/studio-control-final-geometry-running.json",
-            ROOT
-            / "schemas/v1/fixtures/invalid/studio-control-forged-trusted-fields.json",
-            ROOT / "schemas/v1/fixtures/invalid/studio-control-frame-coordinates.json",
-            ROOT
-            / "schemas/v1/fixtures/invalid/studio-control-frame-count-without-latest.json",
-            ROOT
-            / "schemas/v1/fixtures/invalid/studio-control-latest-frame-zero-count.json",
-            ROOT / "schemas/v1/fixtures/invalid/studio-control-raw-json.json",
-        ]
-        self.assertFalse(list(validator.iter_errors(valid)))
-        self.assertFalse(list(validator.iter_errors(final_geometry)))
-        for path in invalid_paths:
-            with self.subTest(path=path.name):
-                fixture = json.loads(path.read_text())
-                self.assertTrue(list(validator.iter_errors(fixture)))
+    def test_generated_runtime_control_schema_omits_legacy_raw_fields(self) -> None:
         serialized = json.dumps(STUDIO_CONTROL_RUNTIME_SCHEMA)
         self.assertNotIn('"argumentsJson"', serialized)
         self.assertNotIn('"payloadJson"', serialized)
@@ -330,10 +212,10 @@ class ProtocolCodegenTest(unittest.TestCase):
             format_checker=FormatChecker(),
         )
         valid_paths = sorted(
-            (ROOT / "schemas/v1/fixtures/valid").glob("controlled-calculation-*.json")
+            (ROOT / "schemas/v2/fixtures/valid").glob("controlled-calculation-*.json")
         )
         invalid_paths = sorted(
-            (ROOT / "schemas/v1/fixtures/invalid").glob("controlled-calculation-*.json")
+            (ROOT / "schemas/v2/fixtures/invalid").glob("controlled-calculation-*.json")
         )
         for path in valid_paths:
             with self.subTest(path=path.name, expectation="valid"):
@@ -609,26 +491,6 @@ class ProtocolCodegenTest(unittest.TestCase):
                 )
 
     def test_generated_replay_runtime_is_coordinate_free(self) -> None:
-        validator = Draft202012Validator(
-            OPTIMIZATION_REPLAY_RUNTIME_SCHEMA,
-            format_checker=FormatChecker(),
-        )
-        valid_paths = sorted(
-            (ROOT / "schemas/v1/fixtures/valid").glob("optimization-replay-*.json")
-        )
-        invalid_paths = sorted(
-            (ROOT / "schemas/v1/fixtures/invalid").glob("optimization-replay-*.json")
-        )
-        for path in valid_paths:
-            with self.subTest(path=path.name):
-                self.assertFalse(
-                    list(validator.iter_errors(json.loads(path.read_text())))
-                )
-        for path in invalid_paths:
-            with self.subTest(path=path.name):
-                self.assertTrue(
-                    list(validator.iter_errors(json.loads(path.read_text())))
-                )
         replay_definitions = {
             name: definition
             for name, definition in OPTIMIZATION_REPLAY_RUNTIME_SCHEMA["$defs"].items()

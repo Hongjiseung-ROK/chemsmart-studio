@@ -7,8 +7,27 @@
       "label": "--gfn",
       "insertText": "--gfn ",
       "kind": "option",
+      "group": "options",
       "detail": "Select the xTB parameterization.",
+      "valueHint": "gfn0 | gfn1 | gfn2 | gfnff",
       "appendSpace": true
     }
-  ]
+  ],
+  "semantic": {
+    "breadcrumb": ["chemsmart", "run", "xtb", "sp"],
+    "slots": [
+      {
+        "id": "option-filename",
+        "label": "[--filename <str>]",
+        "insertText": "--filename ",
+        "valueHint": "str",
+        "kind": "option",
+        "required": false,
+        "consumed": false,
+        "insertAt": 18
+      }
+    ],
+    "ghostSuffix": "[--filename <str>] … 5 options",
+    "complete": true
+  }
 }

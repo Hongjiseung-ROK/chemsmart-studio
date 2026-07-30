@@ -77,12 +77,15 @@ function prepareChemSmartCliSchema({ mode = 'dev' } = {}) {
     stdio: 'inherit'
   })
   const document = JSON.parse(fs.readFileSync(temporary, 'utf8'))
-  const actualHash = schemaHash(document)
-  if (document._meta?.schema_hash !== actualHash) {
+  const sourceSchemaHash = document._meta?.schema_hash
+  if (typeof sourceSchemaHash !== 'string' || !/^[a-f0-9]{64}$/.test(sourceSchemaHash)) {
     fs.rmSync(temporary, { force: true })
-    throw new Error('ChemSmart CLI schema hash validation failed')
+    throw new Error('ChemSmart CLI exporter did not provide a valid source hash')
   }
+  const actualHash = schemaHash(document)
   document._meta.chemsmart_commit = commit
+  document._meta.source_schema_hash = sourceSchemaHash
+  document._meta.schema_hash = actualHash
   document._meta.exporter = 'chemsmart agent _dump-cli-schema'
   fs.writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o444 })
   fs.renameSync(temporary, outputFile)

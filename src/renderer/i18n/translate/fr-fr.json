@@ -2135,15 +2135,32 @@
     },
     "console": {
       "cancel": "[to be translated]:Stop",
+      "charge": "[to be translated]:charge {{charge}}",
       "command": "[to be translated]:ChemSmart command",
       "completions": "[to be translated]:Command completions",
       "empty": "[to be translated]:Run a chemsmart command to see its output here.",
       "exit_code": "[to be translated]:Exited with code {{code}}",
       "exit_signal": "[to be translated]:Stopped by {{signal}}",
-      "hint": "[to be translated]:Enter runs · Tab completes · ↑ recalls a previous command",
+      "group": {
+        "commands": "[to be translated]:Commands",
+        "files": "[to be translated]:Files",
+        "options": "[to be translated]:Options",
+        "projects": "[to be translated]:Projects",
+        "servers": "[to be translated]:Servers",
+        "values": "[to be translated]:Values"
+      },
+      "guide": "[to be translated]:Semantic command guide",
+      "hint": "[to be translated]:Enter runs · Tab completes · Shift+Tab finds a required slot · ↑ recalls history",
+      "multiplicity": "[to be translated]:multiplicity {{multiplicity}}",
       "placeholder": "[to be translated]:chemsmart run gaussian opt -f molecule.xyz",
+      "preflight_details": "[to be translated]:Inspection details",
+      "preflight_ready": "[to be translated]:Ready",
+      "preflight_rejected": "[to be translated]:Blocked",
+      "preflight_warning": "[to be translated]:Review and press Enter again",
       "run": "[to be translated]:Run",
-      "run_failed": "[to be translated]:The command could not be started.\n"
+      "run_failed": "[to be translated]:The command could not be started.\n",
+      "shell_command": "[to be translated]:Shell command",
+      "warning_hint": "[to be translated]:No process has started · press Enter again to run the unchanged command"
     },
     "constraints": {
       "add": "[to be translated]:Hold value",

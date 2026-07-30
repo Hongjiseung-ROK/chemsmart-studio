@@ -466,7 +466,14 @@ export function MoleculeStage({
             'flex items-center justify-between gap-2 border-border border-t px-3 py-1.5',
             'text-foreground-muted text-xs'
           )}>
-          <span>{t('chemsmart_studio.stage.atom_count', { count: document.atoms.length })}</span>
+          <span>
+            {molecule.draft?.dirty
+              ? `${t('chemsmart_studio.coordinates.atom_count', { count: document.atoms.length })} · ${t(
+                  'chemsmart_studio.draft.status',
+                  { count: molecule.draft.cursor }
+                )}`
+              : t('chemsmart_studio.stage.atom_count', { count: document.atoms.length })}
+          </span>
           <span data-testid="stage-selection-count">
             {t('chemsmart_studio.coordinates.selected_count', { count: selection.length })}
           </span>

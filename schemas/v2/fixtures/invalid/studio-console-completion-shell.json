@@ -7,8 +7,15 @@
       "label": "unsafe",
       "insertText": "run; rm",
       "kind": "command",
+      "group": "commands",
       "detail": "Unsafe shell syntax.",
       "appendSpace": false
     }
-  ]
+  ],
+  "semantic": {
+    "breadcrumb": ["chemsmart", "run"],
+    "slots": [],
+    "ghostSuffix": "",
+    "complete": false
+  }
 }

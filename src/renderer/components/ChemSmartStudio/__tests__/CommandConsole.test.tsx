@@ -1,5 +1,5 @@
 import type * as CherryStudioUi from '@cherrystudio/ui'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +34,28 @@ function emit(event: 'chemsmart_studio.console.output' | 'chemsmart_studio.conso
 }
 
 const RUN_ID = '11111111-1111-4111-8111-111111111111'
+const COMMAND_DIGEST = '0'.repeat(64)
+const EMPTY_SEMANTIC = {
+  breadcrumb: ['chemsmart'],
+  slots: [],
+  ghostSuffix: '',
+  complete: false
+}
+const GREEN_PREFLIGHT = {
+  commandDigest: COMMAND_DIGEST,
+  verdict: 'green',
+  summary: {
+    kind: 'chemsmart',
+    program: 'xtb',
+    job: 'sp',
+    inputName: 'water.xyz',
+    charge: '0',
+    multiplicity: '1'
+  },
+  failedRuleIds: [],
+  issues: [],
+  processStarted: false
+}
 
 describe('CommandConsole', () => {
   beforeEach(() => {
@@ -42,8 +64,14 @@ describe('CommandConsole', () => {
     cacheMocks.history = []
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.console.complete') {
-        return { commandPath: ['chemsmart'], replaceRange: { start: 0, end: 0 }, items: [] }
+        return {
+          commandPath: ['chemsmart'],
+          replaceRange: { start: 0, end: 0 },
+          items: [],
+          semantic: EMPTY_SEMANTIC
+        }
       }
+      if (route === 'chemsmart_studio.console.preflight') return GREEN_PREFLIGHT
       if (route === 'chemsmart_studio.console.run') return { runId: RUN_ID }
       if (route === 'chemsmart_studio.console.cancel') return { cancelled: true }
       throw new Error(`Unexpected route: ${route}`)
@@ -59,7 +87,8 @@ describe('CommandConsole', () => {
 
     await waitFor(() =>
       expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.console.run', {
-        command: 'chemsmart run gaussian opt'
+        command: 'chemsmart run gaussian opt',
+        preflightDigest: COMMAND_DIGEST
       })
     )
     // No approval route is consulted: this is the researcher's own machine and their own command.
@@ -120,10 +149,18 @@ describe('CommandConsole', () => {
               label: '--multiplicity',
               insertText: '--multiplicity',
               kind: 'option',
+              group: 'options',
               detail: 'Multiplicity of the molecule.',
+              valueHint: 'int',
               appendSpace: true
             }
-          ]
+          ],
+          semantic: {
+            breadcrumb: ['chemsmart', 'run', 'gaussian'],
+            slots: [],
+            ghostSuffix: '[--multiplicity <int>]',
+            complete: false
+          }
         }
       }
       throw new Error(`Unexpected route: ${route}`)
@@ -135,6 +172,47 @@ describe('CommandConsole', () => {
     const popover = await screen.findByTestId('console-completions')
     expect(popover).toHaveTextContent('--multiplicity')
     expect(popover).toHaveTextContent('Multiplicity of the molecule.')
+  })
+
+  it('keeps a deleted completion request from restoring cached guidance', async () => {
+    let resolveCompletion: ((value: unknown) => void) | undefined
+    ipcMocks.request.mockImplementation((route: string) => {
+      if (route !== 'chemsmart_studio.console.complete') throw new Error(`Unexpected route: ${route}`)
+      return new Promise((resolve) => {
+        resolveCompletion = resolve
+      })
+    })
+    render(<CommandConsole />)
+
+    const input = screen.getByTestId('console-input')
+    fireEvent.change(input, { target: { value: 'chemsmart', selectionStart: 9 } })
+    expect(ipcMocks.request).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(input, { target: { value: '', selectionStart: 0 } })
+    expect(ipcMocks.request).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveCompletion?.({
+        commandPath: ['chemsmart'],
+        replaceRange: { start: 0, end: 9 },
+        items: [
+          {
+            id: 'run',
+            label: 'run',
+            insertText: 'run',
+            kind: 'command',
+            group: 'commands',
+            detail: 'Run a ChemSmart calculation.',
+            appendSpace: true
+          }
+        ],
+        semantic: EMPTY_SEMANTIC
+      })
+    })
+
+    expect(input).toHaveValue('')
+    expect(screen.queryByTestId('console-completions')).toBeNull()
+    expect(screen.queryByTestId('console-semantic-guide')).toBeNull()
   })
 
   it('completes the line in place when a candidate is chosen', async () => {
@@ -150,10 +228,17 @@ describe('CommandConsole', () => {
               label: 'gaussian',
               insertText: 'gaussian',
               kind: 'command',
+              group: 'commands',
               detail: 'Run a Gaussian calculation.',
               appendSpace: true
             }
-          ]
+          ],
+          semantic: {
+            breadcrumb: ['chemsmart', 'run'],
+            slots: [],
+            ghostSuffix: '⟨gaussian | orca | xtb⟩',
+            complete: false
+          }
         }
       }
       throw new Error(`Unexpected route: ${route}`)
@@ -179,9 +264,16 @@ describe('CommandConsole', () => {
             label,
             insertText: label,
             kind: 'command',
+            group: 'commands',
             detail: `${label} command`,
             appendSpace: true
-          }))
+          })),
+          semantic: {
+            breadcrumb: ['chemsmart', 'run', 'xtb'],
+            slots: [],
+            ghostSuffix: '⟨sp | opt | hess⟩',
+            complete: false
+          }
         }
       }
       throw new Error(`Unexpected route: ${route}`)
@@ -212,5 +304,138 @@ describe('CommandConsole', () => {
     render(<CommandConsole />)
 
     expect(screen.getByTestId('console-run')).toBeDisabled()
+  })
+
+  it('requires a second Enter for the same warning digest and starts no approval flow', async () => {
+    const user = userEvent.setup()
+    ipcMocks.request.mockImplementation(async (route: string) => {
+      if (route === 'chemsmart_studio.console.complete') {
+        return {
+          commandPath: ['chemsmart'],
+          replaceRange: { start: 0, end: 0 },
+          items: [],
+          semantic: EMPTY_SEMANTIC
+        }
+      }
+      if (route === 'chemsmart_studio.console.preflight') {
+        return {
+          ...GREEN_PREFLIGHT,
+          verdict: 'warning',
+          failedRuleIds: ['cmd.semantic.dry_run_required'],
+          issues: [
+            {
+              ruleId: 'cmd.semantic.dry_run_required',
+              severity: 'warn',
+              message: 'Review the dry-run requirement.'
+            }
+          ]
+        }
+      }
+      if (route === 'chemsmart_studio.console.run') return { runId: RUN_ID }
+      throw new Error(`Unexpected route: ${route}`)
+    })
+    render(<CommandConsole />)
+
+    await user.type(screen.getByTestId('console-input'), 'chemsmart run xtb -f water.xyz sp')
+    await user.click(screen.getByTestId('console-run'))
+
+    expect(await screen.findByTestId('console-preflight')).toHaveTextContent(
+      'chemsmart_studio.console.preflight_warning'
+    )
+    expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.console.run')
+
+    await user.click(screen.getByTestId('console-run'))
+    await waitFor(() =>
+      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.console.run', {
+        command: 'chemsmart run xtb -f water.xyz sp',
+        preflightDigest: COMMAND_DIGEST
+      })
+    )
+    expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.control.perform_action')
+  })
+
+  it('blocks a rejected preflight without starting a process', async () => {
+    const user = userEvent.setup()
+    ipcMocks.request.mockImplementation(async (route: string) => {
+      if (route === 'chemsmart_studio.console.complete') {
+        return {
+          commandPath: ['chemsmart'],
+          replaceRange: { start: 0, end: 0 },
+          items: [],
+          semantic: EMPTY_SEMANTIC
+        }
+      }
+      if (route === 'chemsmart_studio.console.preflight') {
+        return {
+          ...GREEN_PREFLIGHT,
+          verdict: 'rejected',
+          failedRuleIds: ['cmd.runtime.input_not_found'],
+          issues: [
+            {
+              ruleId: 'cmd.runtime.input_not_found',
+              severity: 'reject',
+              message: 'The input molecule is missing.'
+            }
+          ]
+        }
+      }
+      throw new Error(`Unexpected route: ${route}`)
+    })
+    render(<CommandConsole />)
+
+    await user.type(screen.getByTestId('console-input'), 'chemsmart run xtb sp')
+    await user.click(screen.getByTestId('console-run'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('chemsmart_studio.console.preflight_rejected')
+    expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.console.run')
+  })
+
+  it('resolves an exact molecule candidate through its opaque context handle', async () => {
+    const user = userEvent.setup()
+    const onOpenCompletion = vi.fn()
+    ipcMocks.request.mockImplementation(async (route: string) => {
+      if (route === 'chemsmart_studio.console.complete') {
+        return {
+          commandPath: ['chemsmart', 'run', 'xtb'],
+          replaceRange: { start: 22, end: 22 },
+          items: [
+            {
+              id: 'water-file',
+              label: 'water.xyz',
+              insertText: 'water.xyz',
+              kind: 'file',
+              group: 'files',
+              detail: 'Studio project artifact',
+              valueHint: 'path',
+              appendSpace: true,
+              contextRef: 'completion-water',
+              openAction: 'molecule'
+            }
+          ],
+          semantic: {
+            breadcrumb: ['chemsmart', 'run', 'xtb'],
+            slots: [],
+            ghostSuffix: '',
+            complete: false
+          }
+        }
+      }
+      if (route === 'chemsmart_studio.console.accept_completion') {
+        return { contextRef: 'completion-water', action: 'molecule', displayName: 'water.xyz' }
+      }
+      throw new Error(`Unexpected route: ${route}`)
+    })
+    render(<CommandConsole onOpenCompletion={onOpenCompletion} />)
+
+    await user.type(screen.getByTestId('console-input'), 'chemsmart run xtb -f ')
+    await user.click(await screen.findByRole('button', { name: /water\.xyz/ }))
+
+    await waitFor(() =>
+      expect(onOpenCompletion).toHaveBeenCalledWith({
+        contextRef: 'completion-water',
+        action: 'molecule',
+        displayName: 'water.xyz'
+      })
+    )
   })
 })

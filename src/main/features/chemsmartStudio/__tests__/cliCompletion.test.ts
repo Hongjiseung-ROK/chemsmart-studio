@@ -34,12 +34,17 @@ const schema = command('chemsmart', [
       [
         option('charge', ['-c', '--charge'], { type: { type: 'int', min: -10, max: 10 } }),
         option('method', ['--method'], { choices: ['gfn1', 'gfn2'] }),
-        option('filename', ['-f', '--filename'], { type: { type: 'path', exists: true, file_okay: true } })
+        option('filename', ['-f', '--filename'], {
+          type: { type: 'path', exists: true, file_okay: true }
+        })
       ]
     )
   ]),
   command('sub', [], [option('server', ['-s', '--server'])])
 ])
+schema.subcommands.run.subcommands.xtb.semantic = {
+  required_options: [{ name: 'filename', label: 'file' }]
+}
 
 describe('tokenize', () => {
   it('preserves decoded text and exact raw ranges', () => {
@@ -66,6 +71,12 @@ describe('resolveCompletions', () => {
       'hess'
     ])
     expect(result.items.some((item) => item.label === '-p')).toBe(false)
+    expect(result.semantic).toMatchObject({
+      breadcrumb: ['chemsmart', 'run', 'xtb'],
+      complete: false
+    })
+    expect(result.semantic.ghostSuffix).toContain('⟨file⟩')
+    expect(result.semantic.ghostSuffix).toContain('⟨sp | opt | hess⟩')
   })
 
   it('does not interpret an option value as a subcommand', () => {
@@ -102,15 +113,34 @@ describe('resolveCompletions', () => {
         insertText: 'water.xyz',
         kind: 'file',
         detail: 'Studio project artifact',
+        optionNames: ['filename'],
+        contextRef: 'completion-water',
+        openAction: 'molecule'
+      }
+    ])
+    expect(result.items).toContainEqual(
+      expect.objectContaining({
+        label: 'water.xyz',
+        kind: 'file',
+        group: 'files',
+        contextRef: 'completion-water',
+        openAction: 'molecule'
+      })
+    )
+  })
+
+  it('fails closed for shell operators and completes safely inside an open quote', () => {
+    expect(resolveCompletions(schema, 'chemsmart run | ', 16).diagnostic?.code).toBe('unsupported_shell_syntax')
+    const result = resolveCompletions(schema, 'chemsmart run xtb -f "my', 24, [
+      {
+        label: 'my file.xyz',
+        insertText: 'my file.xyz',
+        kind: 'file',
+        detail: 'Studio project artifact',
         optionNames: ['filename']
       }
     ])
-    expect(result.items).toContainEqual(expect.objectContaining({ label: 'water.xyz', kind: 'file' }))
-  })
-
-  it('fails closed for shell operators and malformed quoting', () => {
-    expect(resolveCompletions(schema, 'chemsmart run | ', 16).diagnostic?.code).toBe('unsupported_shell_syntax')
-    expect(resolveCompletions(schema, 'chemsmart run "', 15).diagnostic?.code).toBe('invalid_prefix')
+    expect(result.items[0].insertText).toBe('"my file.xyz"')
   })
 
   it('keeps the suffix replacement boundary for mid-line completion', () => {
@@ -118,5 +148,30 @@ describe('resolveCompletions', () => {
     const result = resolveCompletions(schema, line, 'chemsmart r'.length)
     expect(result.replaceRange).toEqual({ start: 10, end: 11 })
     expect(result.items.map((item) => item.label)).toContain('run')
+  })
+
+  it('keeps ancestor option state after a leaf and reports structural completeness', () => {
+    const line = 'chemsmart run xtb -f water.xyz sp '
+    const result = resolveCompletions(schema, line, line.length)
+
+    expect(result.commandPath).toEqual(['chemsmart', 'run', 'xtb', 'sp'])
+    expect(result.semantic.slots).toContainEqual(
+      expect.objectContaining({ id: 'option-filename', consumed: true, required: true })
+    )
+    expect(result.semantic.complete).toBe(true)
+  })
+
+  it('places a missing ancestor option before the next command token', () => {
+    const line = 'chemsmart run xtb sp '
+    const result = resolveCompletions(schema, line, line.length)
+
+    expect(result.semantic.slots).toContainEqual(
+      expect.objectContaining({
+        id: 'option-filename',
+        consumed: false,
+        insertAt: line.indexOf('sp')
+      })
+    )
+    expect(result.semantic.complete).toBe(false)
   })
 })
