@@ -594,10 +594,25 @@ export type ChemSmartStudioWorkspaceRoots = z.infer<
   (typeof chemsmartStudioRequestSchemas)['chemsmart_studio.workspace.roots']['output']
 >
 
+/**
+ * Transient v2 Agent prose. Protocol generation replaces this narrow alias with
+ * `StudioAgentLiveEvent`; it never participates in replay or durable transcript storage.
+ */
+export type ChemSmartStudioAgentLiveEvent = {
+  threadId: string
+  turnId: string
+  blockId: string
+  sequence: number
+  kind: 'text_started' | 'text_delta' | 'text_completed' | 'public_summary'
+  text?: string
+  transient: true
+}
+
 export type ChemSmartStudioEventSchemas = {
   'chemsmart_studio.agent.state_changed': ChemSmartStudioProcessStatus
   'chemsmart_studio.agent.trace': StudioAgentTraceEvent
   'chemsmart_studio.agent.turn_event': StudioAgentTurnEvent
+  'chemsmart_studio.agent.live_event': ChemSmartStudioAgentLiveEvent
   'chemsmart_studio.studio_ui.event': StudioUiEvent
   'chemsmart_studio.control.changed': {
     sessionId: string

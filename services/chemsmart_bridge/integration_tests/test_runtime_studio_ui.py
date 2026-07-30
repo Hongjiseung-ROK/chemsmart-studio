@@ -973,6 +973,58 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             [method for method, _params in peer.requests],
         )
 
+    def test_studio_runtime_never_persists_provider_private_reasoning(self) -> None:
+        response = tool_call_response(
+            "report_studio_result",
+            {
+                "answer": {
+                    "answerId": "answer-private-reasoning",
+                    "heading": "Molecule inspection",
+                    "summary": "The verified inspection is available.",
+                    "sections": [
+                        {
+                            "kind": "finding",
+                            "heading": "Finding",
+                            "summary": "The visible molecule was inspected.",
+                        }
+                    ],
+                    "extensions": {},
+                },
+                "artifacts": [],
+            },
+        )
+        response["choices"][0]["message"]["reasoning_content"] = (
+            "provider-private-reasoning-sentinel"
+        )
+        peer = RecordingPeer([response])
+        session_root = Path(self.temporary_directory.name) / "private-reasoning"
+        runtime = StudioAgentRuntime(session_root)
+        runtime.bind_peer(peer)  # type: ignore[arg-type]
+
+        result = runtime(
+            "agent.run_turn",
+            {
+                "sessionId": "session-private-reasoning",
+                "modelId": "provider::model",
+                "operationId": "00000000-0000-4000-8000-000000000001",
+                "request": "Inspect without exposing private reasoning.",
+            },
+        )
+
+        self.assertNotIn("reasoning_content", json.dumps(result))
+        self.assertNotIn("provider-private-reasoning-sentinel", json.dumps(result))
+        persisted_text = []
+        for candidate in session_root.rglob("*"):
+            if not candidate.is_file():
+                continue
+            try:
+                persisted_text.append(candidate.read_text(encoding="utf-8"))
+            except UnicodeDecodeError:
+                continue
+        joined = "\n".join(persisted_text)
+        self.assertNotIn("reasoning_content", joined)
+        self.assertNotIn("provider-private-reasoning-sentinel", joined)
+
     def test_actual_agent_session_reads_controlled_studio_context(self) -> None:
         peer = RecordingPeer(
             responses=[
