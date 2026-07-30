@@ -204,6 +204,16 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     return agentRequest(() => application.get('ChemSmartAgentService').critiqueProject(input))
   },
+  'chemsmart_studio.project.candidate': async ({ sessionId, previewId }, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    application.get('StudioControlService').claimSessionControl(sessionId, senderId)
+    return application.get('ProjectYamlService').getCandidate(sessionId, previewId)
+  },
+  'chemsmart_studio.project.candidate_decide': async (input, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    application.get('StudioControlService').claimSessionControl(input.sessionId, senderId)
+    return application.get('ProjectYamlService').decideCandidate(input.sessionId, input)
+  },
   'chemsmart_studio.command.synthesize': async (input, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     return agentRequest(() => application.get('ChemSmartAgentService').synthesizeCommand(input, senderId))
@@ -274,9 +284,9 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     return { mode: application.get('StudioControlService').setAgentMode(sessionId, mode, senderId) }
   },
-  'chemsmart_studio.console.run': async ({ command }, { senderId }) => {
+  'chemsmart_studio.console.run': async ({ command, preflightDigest }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
-    return application.get('StudioConsoleService').run(command)
+    return application.get('StudioConsoleService').run(command, preflightDigest)
   },
   'chemsmart_studio.console.cancel': async ({ runId }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
@@ -286,6 +296,14 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
   'chemsmart_studio.console.complete': async ({ line, cursor }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     return application.get('StudioConsoleService').complete(line, cursor)
+  },
+  'chemsmart_studio.console.preflight': async ({ command }, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    return agentRequest(() => application.get('StudioConsoleService').preflight(command))
+  },
+  'chemsmart_studio.console.accept_completion': async ({ contextRef }, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    return workspaceOperation(() => application.get('StudioConsoleService').acceptCompletionContext(contextRef))
   },
   'chemsmart_studio.workspace.roots': async (_input, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')

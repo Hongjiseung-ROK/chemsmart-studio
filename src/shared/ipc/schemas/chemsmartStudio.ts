@@ -17,6 +17,10 @@ import {
   type OptimizationReplayTimelineQuery,
   type PreviewReceipt,
   previewReceiptRuntimeSchema,
+  type ProjectWorkspaceCandidateDecisionRequest,
+  type ProjectWorkspaceCandidateDecisionResult,
+  type ProjectWorkspaceCandidateQueryRequest,
+  type ProjectWorkspaceCandidateResult,
   type ProjectWorkspaceCritiqueRequest,
   type ProjectWorkspaceCritiqueResult,
   type ProjectWorkspaceDocumentRequest,
@@ -274,6 +278,23 @@ const projectWorkspaceCritiqueResultSchema = runtimeDefinitionSchema<ProjectWork
   projectWorkspaceRuntimeSchema,
   'critiqueResult'
 )
+const projectWorkspaceCandidateQueryRequestSchema = runtimeDefinitionSchema<ProjectWorkspaceCandidateQueryRequest>(
+  projectWorkspaceRuntimeSchema,
+  'candidateQueryRequest'
+)
+const projectWorkspaceCandidateResultSchema = runtimeDefinitionSchema<ProjectWorkspaceCandidateResult>(
+  projectWorkspaceRuntimeSchema,
+  'candidateResult'
+)
+const projectWorkspaceCandidateDecisionRequestSchema =
+  runtimeDefinitionSchema<ProjectWorkspaceCandidateDecisionRequest>(
+    projectWorkspaceRuntimeSchema,
+    'candidateDecisionRequest'
+  )
+const projectWorkspaceCandidateDecisionResultSchema = runtimeDefinitionSchema<ProjectWorkspaceCandidateDecisionResult>(
+  projectWorkspaceRuntimeSchema,
+  'candidateDecisionResult'
+)
 const withSession = <Output extends object>(schema: z.ZodType<Output>): z.ZodType<Output & { sessionId: string }> =>
   z.custom<Output & { sessionId: string }>((value) => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
@@ -506,6 +527,14 @@ export const chemsmartStudioRequestSchemas = {
     input: projectWorkspaceCritiqueRequestSchema,
     output: projectWorkspaceCritiqueResultSchema
   }),
+  'chemsmart_studio.project.candidate': defineRoute({
+    input: projectWorkspaceCandidateQueryRequestSchema,
+    output: projectWorkspaceCandidateResultSchema
+  }),
+  'chemsmart_studio.project.candidate_decide': defineRoute({
+    input: projectWorkspaceCandidateDecisionRequestSchema,
+    output: projectWorkspaceCandidateDecisionResultSchema
+  }),
   'chemsmart_studio.command.synthesize': defineRoute({
     input: commandSynthesisRequestSchema,
     output: commandSynthesisResultSchema
@@ -556,7 +585,13 @@ export const chemsmartStudioRequestSchemas = {
    * execution goes through the approval-gated tool path instead.
    */
   'chemsmart_studio.console.run': defineRoute({
-    input: z.strictObject({ command: z.string().min(1).max(8192) }),
+    input: z.strictObject({
+      command: z.string().min(1).max(8192),
+      preflightDigest: z
+        .string()
+        .regex(/^[0-9a-f]{64}$/)
+        .optional()
+    }),
     output: z.strictObject({ runId: z.uuid() })
   }),
   'chemsmart_studio.console.cancel': defineRoute({
@@ -578,16 +613,75 @@ export const chemsmartStudioRequestSchemas = {
           label: z.string().min(1),
           insertText: z.string().min(1),
           kind: z.enum(['command', 'option', 'choice', 'argument', 'file', 'project', 'server']),
+          group: z.enum(['commands', 'options', 'values', 'files', 'projects', 'servers']),
           detail: z.string(),
+          valueHint: z.string().min(1).optional(),
+          contextRef: stableIdSchema.optional(),
+          openAction: z.enum(['molecule', 'project_yaml']).optional(),
           appendSpace: z.boolean()
         })
       ),
+      semantic: z.strictObject({
+        breadcrumb: z.array(z.string().min(1).max(128)).max(16),
+        slots: z.array(
+          z.strictObject({
+            id: stableIdSchema,
+            label: z.string().min(1).max(512),
+            insertText: z.string().max(256),
+            valueHint: z.string().min(1).max(256),
+            kind: z.enum(['leaf', 'option']),
+            required: z.boolean(),
+            consumed: z.boolean(),
+            insertAt: z.number().int().nonnegative().max(8192)
+          })
+        ),
+        ghostSuffix: z.string().max(2048),
+        complete: z.boolean()
+      }),
       diagnostic: z
         .strictObject({
           code: z.enum(['unsupported_shell_syntax', 'invalid_prefix', 'value_required']),
           message: z.string().min(1)
         })
         .optional()
+    })
+  }),
+  /** Submit-time deterministic inspection. It never starts a chemistry executable. */
+  'chemsmart_studio.console.preflight': defineRoute({
+    input: z.strictObject({ command: z.string().min(1).max(8192) }),
+    output: z.strictObject({
+      commandDigest: z.string().regex(/^[0-9a-f]{64}$/),
+      verdict: z.enum(['green', 'warning', 'rejected']),
+      summary: z.strictObject({
+        kind: z.enum(['shell', 'chemsmart']),
+        program: z.string().min(1).max(128).nullable(),
+        job: z.string().min(1).max(128).nullable(),
+        inputName: z.string().min(1).max(255).nullable(),
+        charge: z.string().min(1).max(128).nullable(),
+        multiplicity: z.string().min(1).max(128).nullable()
+      }),
+      failedRuleIds: z.array(z.string().min(1).max(256)).max(128),
+      issues: z
+        .array(
+          z.strictObject({
+            ruleId: z.string().min(1).max(256),
+            severity: z.enum(['warn', 'reject']),
+            message: z.string().min(1).max(2048)
+          })
+        )
+        .max(128),
+      processStarted: z.literal(false)
+    })
+  }),
+  /** Resolve only a main-issued candidate handle into a path-free workspace selection. */
+  'chemsmart_studio.console.accept_completion': defineRoute({
+    input: z.strictObject({ contextRef: stableIdSchema }),
+    output: z.strictObject({
+      contextRef: stableIdSchema,
+      action: z.enum(['molecule', 'project_yaml']),
+      displayName: z.string().min(1).max(512),
+      program: z.enum(['gaussian', 'orca']).optional(),
+      projectName: z.string().min(1).max(128).optional()
     })
   }),
   /**
@@ -631,6 +725,12 @@ export type ChemSmartStudioConsoleRun = z.infer<
 >
 export type ChemSmartStudioConsoleCompletions = z.infer<
   (typeof chemsmartStudioRequestSchemas)['chemsmart_studio.console.complete']['output']
+>
+export type ChemSmartStudioConsolePreflight = z.infer<
+  (typeof chemsmartStudioRequestSchemas)['chemsmart_studio.console.preflight']['output']
+>
+export type ChemSmartStudioConsoleCompletionSelection = z.infer<
+  (typeof chemsmartStudioRequestSchemas)['chemsmart_studio.console.accept_completion']['output']
 >
 export type ChemSmartStudioWorkspaceRoots = z.infer<
   (typeof chemsmartStudioRequestSchemas)['chemsmart_studio.workspace.roots']['output']

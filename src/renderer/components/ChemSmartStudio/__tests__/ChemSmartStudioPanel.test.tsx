@@ -1039,6 +1039,44 @@ describe('ChemSmartStudioPanel', () => {
     expect(ipcMocks.request.mock.calls.map(([route]) => route)).not.toContain('chemsmart_studio.molecule.draft_commit')
   })
 
+  it('keeps the Properties sheet and Stage footer truthful while a recovered draft is visible', async () => {
+    const user = userEvent.setup()
+    const draftDocument = moleculeDocument()
+    const committedDocument: MoleculeDocument = {
+      ...draftDocument,
+      atoms: [],
+      bonds: [],
+      frozenAxes: {}
+    }
+    const draft = moleculeDraft(draftDocument)
+    ipcMocks.request.mockImplementation(async (route: string) => {
+      if (route === 'chemsmart_studio.status') return stoppedStatus()
+      if (route === 'chemsmart_studio.molecule.summary') {
+        return { documentId: committedDocument.documentId, revision: committedDocument.revision }
+      }
+      if (route === 'chemsmart_studio.molecule.document') return committedDocument
+      if (route === 'chemsmart_studio.molecule.draft_snapshot') return draft
+      if (route === 'chemsmart_studio.control.snapshot') return emptyControlSnapshot()
+      if (route === 'chemsmart_studio.optimization.replay_catalog') {
+        return { totalRuns: 0, runs: [], nextRunId: null, extensions: {} }
+      }
+      throw new Error(`Unexpected route: ${route}`)
+    })
+
+    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
+    const stage = await screen.findByTestId('molecule-stage')
+    expect(stage).toHaveTextContent('chemsmart_studio.coordinates.atom_count')
+    expect(stage).toHaveTextContent('chemsmart_studio.draft.status')
+    expect(stage).not.toHaveTextContent('chemsmart_studio.stage.atom_count')
+
+    await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.measure' }))
+    const inspector = await screen.findByTestId('molecule-inspector')
+    expect(within(inspector).getByTestId('coordinate-table')).toBeInTheDocument()
+    expect(within(inspector).getByText('atom-1')).toBeInTheDocument()
+    expect(within(inspector).getByText('chemsmart_studio.draft.status')).toBeInTheDocument()
+    expect(within(inspector).queryByText('chemsmart_studio.coordinates.empty')).toBeNull()
+  })
+
   it('requires Apply, Discard, or Cancel before closing a window with a draft', async () => {
     const user = userEvent.setup()
     const document = moleculeDocument()
@@ -1120,6 +1158,43 @@ describe('ChemSmartStudioPanel', () => {
       if (route === 'chemsmart_studio.optimization.replay_catalog') {
         return { totalRuns: 0, runs: [], nextRunId: null, extensions: {} }
       }
+      if (route === 'chemsmart_studio.molecule.placement_preview') {
+        const intent = (
+          input as {
+            intent: {
+              documentId: string
+              expectedRevision: number
+              geometryHash: string
+              atomicNumber: number
+              bondOrder: number
+              coordinationGeometry: string
+            }
+          }
+        ).intent
+        return {
+          documentId: intent.documentId,
+          revision: intent.expectedRevision,
+          geometryHash: intent.geometryHash,
+          atomicNumber: intent.atomicNumber,
+          bondOrder: intent.bondOrder,
+          coordinationGeometry: intent.coordinationGeometry,
+          candidates: [
+            {
+              siteIndex: 0,
+              position: [2, 3, 0],
+              bondLength: 1,
+              minimumClearance: 2,
+              occupied: false,
+              safe: true
+            }
+          ],
+          selectedSiteIndex: 0,
+          status: 'ready'
+        }
+      }
+      if (route === 'chemsmart_studio.molecule.placement_apply') {
+        return { snapshot: moleculeDraft(document), insertedAtomId: 'atom-og' }
+      }
       if (route === 'chemsmart_studio.molecule.draft_apply') {
         return moleculeDraft(document, (input as { operations: MoleculeOperation[] }).operations)
       }
@@ -1134,10 +1209,19 @@ describe('ChemSmartStudioPanel', () => {
 
     act(() => stageEngine.handlers?.onPick?.(null, false, [2, 3, 0]))
     await waitFor(() => {
-      const request = ipcMocks.request.mock.calls
-        .filter(([route]) => route === 'chemsmart_studio.molecule.draft_apply')
-        .at(-1)?.[1] as { operations: Array<{ atoms?: Array<{ atomicNumber: number; position: number[] }> }> }
-      expect(request.operations[0].atoms?.[0]).toMatchObject({ atomicNumber: 118, position: [2, 3, 0] })
+      expect(stageEngine.setPlacementPreview).toHaveBeenLastCalledWith(
+        expect.objectContaining({ atomicNumber: 118, selectedSiteIndex: 0, status: 'ready' })
+      )
+    })
+    act(() => stageEngine.handlers?.onPlacementPick?.(0))
+    await waitFor(() => {
+      expect(ipcMocks.request).toHaveBeenCalledWith(
+        'chemsmart_studio.molecule.placement_apply',
+        expect.objectContaining({
+          sessionId: 'topic-a',
+          intent: expect.objectContaining({ atomicNumber: 118, origin: [2, 3, 0], siteIndex: 0 })
+        })
+      )
     })
 
     const fragments = within(stage).getByRole('button', { name: 'chemsmart_studio.build.fragments' })
@@ -1228,6 +1312,28 @@ describe('ChemSmartStudioPanel', () => {
     })
 
     await user.click(screen.getByRole('button', { name: 'chemsmart_studio.workspace.mode.constrain' }))
+    await waitFor(() =>
+      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.molecule.set_selection', {
+        sessionId: 'topic-a',
+        documentId: 'molecule-1',
+        expectedRevision: 4,
+        atomIds: []
+      })
+    )
+    const constraintTable = screen.getByTestId('coordinate-table')
+    const [constraintFirstAtom, constraintSecondAtom] = within(constraintTable).getAllByRole('checkbox', {
+      name: 'chemsmart_studio.coordinates.select_atom'
+    })
+    await user.click(constraintFirstAtom)
+    await user.click(constraintSecondAtom)
+    await waitFor(() =>
+      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.molecule.set_selection', {
+        sessionId: 'topic-a',
+        documentId: 'molecule-1',
+        expectedRevision: 4,
+        atomIds: ['atom-1', 'atom-2']
+      })
+    )
     const constraints = screen.getByTestId('constraint-panel')
     await user.click(within(constraints).getByRole('button', { name: 'chemsmart_studio.constraints.add' }))
 

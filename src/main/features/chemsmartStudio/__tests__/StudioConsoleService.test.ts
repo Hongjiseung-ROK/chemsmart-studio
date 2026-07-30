@@ -1,29 +1,41 @@
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { createHash } from 'node:crypto'
 
+import { CHEMSMART_COMMIT } from '@chemsmart/studio-protocol'
 import { BaseService } from '@main/core/lifecycle'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   appGetPath: vi.fn(),
+  agentInspect: vi.fn(),
   broadcast: vi.fn(),
+  lstat: vi.fn(),
+  realpath: vi.fn(),
   readdir: vi.fn(),
   readFile: vi.fn(),
   spawn: vi.fn(),
-  terminate: vi.fn()
+  terminate: vi.fn(),
+  workspaceImport: vi.fn()
 }))
 
 vi.mock('@application', () => ({
   application: {
     get: (name: string) => {
       if (name === 'IpcApiService') return { broadcast: mocks.broadcast }
+      if (name === 'ChemSmartAgentService') return { inspectCommand: mocks.agentInspect }
+      if (name === 'MoleculeWorkspaceService') return { importMoleculeFromConsole: mocks.workspaceImport }
       throw new Error(`Unexpected application.get(${name})`)
     },
     getPath: mocks.appGetPath
   }
 }))
-vi.mock('node:fs/promises', () => ({ readFile: mocks.readFile, readdir: mocks.readdir }))
+vi.mock('node:fs/promises', () => ({
+  lstat: mocks.lstat,
+  readFile: mocks.readFile,
+  readdir: mocks.readdir,
+  realpath: mocks.realpath
+}))
 vi.mock('@main/utils/processRunner', () => ({ crossPlatformSpawn: mocks.spawn }))
 vi.mock('../OwnedProcessTree', () => ({
   OwnedProcessTree: class {
@@ -56,6 +68,46 @@ describe('StudioConsoleService', () => {
     mocks.terminate.mockResolvedValue(undefined)
     mocks.readFile.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }))
     mocks.readdir.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }))
+    mocks.realpath.mockImplementation(async (value: string) => value)
+    mocks.lstat.mockResolvedValue({
+      dev: 1,
+      ino: 1,
+      isFile: () => true,
+      isSymbolicLink: () => false
+    })
+    mocks.agentInspect.mockImplementation(async ({ command }: { command: string }) => ({
+      schemaVersion: '1',
+      inspectionId: 'inspection-1',
+      sessionId: 'console-session',
+      status: 'ready_for_dry_run',
+      commandDigest: createHash('sha256').update(command.trim()).digest('hex'),
+      parse: {
+        accepted: true,
+        action: 'run',
+        program: 'xtb',
+        job: 'sp',
+        project: null,
+        inputName: 'water.xyz',
+        charge: '0',
+        multiplicity: '1',
+        method: {
+          functional: null,
+          abInitio: null,
+          basis: null,
+          auxBasis: null,
+          solventModel: null,
+          solventId: null
+        }
+      },
+      intent: { verdict: 'ok', failedRuleIds: [], assertions: [{ id: 'intent.program', status: 'pass' }] },
+      semantic: { verdict: 'ok', complete: false, failedRuleIds: [], missingInfo: [], issues: [] },
+      dryRun: { state: 'required', processStarted: false },
+      executionPerformed: false,
+      approvalRequiredForExecution: true,
+      missingInfo: [],
+      extensions: {}
+    }))
+    mocks.workspaceImport.mockResolvedValue({ canceled: false, molecule: null, documentName: 'water' })
     mocks.appGetPath.mockImplementation((key: string, file?: string) => (file ? `/runtime/${file}` : `/paths/${key}`))
   })
 
@@ -65,8 +117,10 @@ describe('StudioConsoleService', () => {
 
   it('runs the command through a login shell so the researcher’s own environment applies', async () => {
     const service = new StudioConsoleService()
+    const line = 'chemsmart run gaussian opt -f water.xyz'
+    const receipt = await service.preflight(line)
 
-    service.run('chemsmart run gaussian opt -f water.xyz')
+    service.run(line, receipt.commandDigest)
 
     const [command, args, options] = mocks.spawn.mock.calls[0]
     expect(args).toEqual([
@@ -96,7 +150,9 @@ describe('StudioConsoleService', () => {
 
   it('coalesces output into one event per stream per tick', async () => {
     const service = new StudioConsoleService()
-    const { runId } = service.run('chemsmart --help')
+    const line = 'chemsmart --help'
+    const receipt = await service.preflight(line)
+    const { runId } = service.run(line, receipt.commandDigest)
 
     child.stdout.emit('data', Buffer.from('Usage: '))
     child.stdout.emit('data', Buffer.from('chemsmart'))
@@ -114,7 +170,9 @@ describe('StudioConsoleService', () => {
 
   it('keeps stdout and stderr apart within a tick', async () => {
     const service = new StudioConsoleService()
-    service.run('chemsmart run gaussian')
+    const line = 'chemsmart run gaussian'
+    const receipt = await service.preflight(line)
+    service.run(line, receipt.commandDigest)
 
     child.stdout.emit('data', Buffer.from('working\n'))
     child.stderr.emit('data', Buffer.from('warning\n'))
@@ -142,7 +200,9 @@ describe('StudioConsoleService', () => {
 
   it('refuses a second command instead of queueing one the researcher cannot see', async () => {
     const service = new StudioConsoleService()
-    service.run('chemsmart run gaussian opt')
+    const line = 'chemsmart run gaussian opt'
+    const receipt = await service.preflight(line)
+    service.run(line, receipt.commandDigest)
 
     expect(() => service.run('chemsmart run orca opt')).toThrow('A command is already running')
   })
@@ -164,7 +224,9 @@ describe('StudioConsoleService', () => {
 
   it('terminates the process tree on cancel', async () => {
     const service = new StudioConsoleService()
-    const { runId } = service.run('chemsmart run gaussian opt')
+    const line = 'chemsmart run gaussian opt'
+    const receipt = await service.preflight(line)
+    const { runId } = service.run(line, receipt.commandDigest)
 
     await service.cancel(runId)
 
@@ -203,7 +265,8 @@ describe('StudioConsoleService', () => {
     await expect(service.complete('chemsmart run ', 14)).resolves.toEqual({
       commandPath: [],
       replaceRange: { start: 14, end: 14 },
-      items: []
+      items: [],
+      semantic: { breadcrumb: [], slots: [], ghostSuffix: '', complete: false }
     })
   })
 
@@ -221,7 +284,7 @@ describe('StudioConsoleService', () => {
       JSON.stringify({
         ...body,
         _meta: {
-          chemsmart_commit: 'c1b6bf8b95539451bae4ba57c0c04762c7ba38ab',
+          chemsmart_commit: CHEMSMART_COMMIT,
           schema_hash: schemaHash
         }
       })
@@ -232,15 +295,123 @@ describe('StudioConsoleService', () => {
 
     expect(mocks.spawn).not.toHaveBeenCalled()
     expect(result.items).toEqual([
-      {
-        id: 'chemsmart:command:run',
+      expect.objectContaining({
         label: 'run',
         insertText: 'run',
         kind: 'command',
+        group: 'commands',
         detail: 'Run a job locally.',
         appendSpace: true
-      }
+      })
     ])
+    expect(mocks.agentInspect).not.toHaveBeenCalled()
+  })
+
+  it('revalidates a main-issued molecule completion before returning a path-free open action', async () => {
+    const body = {
+      description: 'ChemSmart command line.',
+      name: 'chemsmart',
+      options: [
+        {
+          choices: null,
+          help: 'Input molecule.',
+          is_flag: false,
+          multiple: false,
+          name: 'filename',
+          nargs: 1,
+          opts: ['-f'],
+          required: true,
+          type: 'path'
+        }
+      ],
+      subcommands: {}
+    }
+    mocks.readFile.mockResolvedValue(
+      JSON.stringify({
+        ...body,
+        _meta: {
+          chemsmart_commit: CHEMSMART_COMMIT,
+          schema_hash: createHash('sha256').update(JSON.stringify(body)).digest('hex')
+        }
+      })
+    )
+    mocks.readdir.mockImplementation(async (directory: string) => {
+      if (directory !== '/paths/feature.chemsmart_studio.projects') {
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+      }
+      return [
+        {
+          name: 'water.xyz',
+          isDirectory: () => false,
+          isFile: () => true,
+          isSymbolicLink: () => false
+        }
+      ]
+    })
+    const service = new StudioConsoleService()
+
+    const result = await service.complete('chemsmart -f ', 14)
+    const candidate = result.items.find((item) => item.label === 'water.xyz')
+
+    expect(candidate).toMatchObject({ kind: 'file', openAction: 'molecule' })
+    await expect(service.acceptCompletionContext(candidate!.contextRef!)).resolves.toEqual({
+      contextRef: candidate!.contextRef,
+      action: 'molecule',
+      displayName: 'water.xyz'
+    })
+    expect(mocks.workspaceImport).toHaveBeenCalledWith(
+      '/paths/feature.chemsmart_studio.projects/water.xyz',
+      'water.xyz'
+    )
+
+    const secondResult = await service.complete('chemsmart -f ', 14)
+    const changedCandidate = secondResult.items.find((item) => item.label === 'water.xyz')
+    mocks.lstat.mockResolvedValueOnce({
+      dev: 2,
+      ino: 1,
+      isFile: () => true,
+      isSymbolicLink: () => false
+    })
+    await expect(service.acceptCompletionContext(changedCandidate!.contextRef!)).rejects.toThrow(/changed/)
+  })
+
+  it('requires a digest-bound preflight before a ChemSmart command can start', async () => {
+    const service = new StudioConsoleService()
+
+    expect(() => service.run('chemsmart run xtb -f water.xyz sp')).toThrow(/preflight/)
+    expect(mocks.spawn).not.toHaveBeenCalled()
+
+    const receipt = await service.preflight('chemsmart run xtb -f water.xyz sp')
+    expect(receipt).toMatchObject({ verdict: 'green', processStarted: false })
+    service.run('chemsmart run xtb -f water.xyz sp', receipt.commandDigest)
+    expect(mocks.spawn).toHaveBeenCalledOnce()
+  })
+
+  it('projects warnings and rejections without starting a command process', async () => {
+    const service = new StudioConsoleService()
+    mocks.agentInspect.mockResolvedValueOnce({
+      ...(await mocks.agentInspect({ command: 'chemsmart run xtb sp' })),
+      status: 'rejected',
+      semantic: {
+        verdict: 'reject',
+        complete: false,
+        failedRuleIds: ['cmd.runtime.input_not_found'],
+        missingInfo: ['input file'],
+        issues: [
+          {
+            ruleId: 'cmd.runtime.input_not_found',
+            severity: 'reject',
+            message: 'The input molecule is missing.'
+          }
+        ]
+      }
+    })
+
+    await expect(service.preflight('chemsmart run xtb sp')).resolves.toMatchObject({
+      verdict: 'rejected',
+      processStarted: false
+    })
+    expect(mocks.spawn).not.toHaveBeenCalled()
   })
 
   it('treats an unreadable schema dump as no completions rather than failing the console', async () => {

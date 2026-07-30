@@ -108,6 +108,8 @@ solv:
   functional: b3lyp
   basis: def2svp
   freq: false
+future_extension:
+  lab_note: preserved
 """
         before = list(self.root.iterdir())
 
@@ -135,7 +137,7 @@ solv:
         self.assertEqual(document["yamlText"], yaml_text)
         self.assertEqual(
             [node["path"] for node in document["unknownNodes"]],
-            [["gas", "future_option"]],
+            [["gas", "future_option"], ["future_extension"]],
         )
         unknown = document["unknownNodes"][0]
         self.assertEqual(unknown["kind"], "sequence")
@@ -154,6 +156,7 @@ solv:
         ]
         self.assertIn(["gas", "functional"], explicit_paths)
         self.assertIn(["solv", "basis"], explicit_paths)
+        self.assertNotIn(["future_extension", "lab_note"], explicit_paths)
         self.assertTrue(
             any(section["source"] == "inherited" for section in document["sections"])
         )

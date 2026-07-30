@@ -1,13 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import path from 'node:path'
 
 import { application } from '@application'
 import { CHEMSMART_COMMIT } from '@chemsmart/studio-protocol'
 import { loggerService } from '@logger'
-import { BaseService, type Disposable, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { BaseService, DependsOn, type Disposable, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { crossPlatformSpawn } from '@main/utils/processRunner'
-import type { ChemSmartStudioConsoleCompletions, ChemSmartStudioConsoleRun } from '@shared/ipc/schemas/chemsmartStudio'
+import type {
+  ChemSmartStudioConsoleCompletions,
+  ChemSmartStudioConsoleCompletionSelection,
+  ChemSmartStudioConsolePreflight,
+  ChemSmartStudioConsoleRun
+} from '@shared/ipc/schemas/chemsmartStudio'
 
 import { type CliSchemaDocument, type DynamicCompletionCandidate, resolveCompletions } from './cliCompletion'
 import { OwnedProcessTree } from './OwnedProcessTree'
@@ -28,6 +33,9 @@ const TERMINATE_FORCED_MS = 5_000
 const MAX_COMMAND_LENGTH = 8_192
 const MAX_CONTEXT_ENTRIES = 256
 const COMPLETABLE_EXTENSIONS = new Set(['.xyz', '.cjson', '.sdf', '.gjf', '.com', '.inp', '.out', '.log', '.yaml'])
+const MOLECULE_EXTENSIONS = new Set(['.xyz', '.cjson', '.sdf'])
+const PREFLIGHT_TTL_MS = 60_000
+const COMPLETION_CONTEXT_TTL_MS = 5 * 60_000
 
 function isCliCommand(value: unknown): value is CliSchemaDocument {
   if (typeof value !== 'object' || value === null) return false
@@ -46,7 +54,7 @@ function stableJson(value: unknown): unknown {
   if (typeof value === 'object' && value !== null) {
     return Object.fromEntries(
       Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, entry]) => [key, stableJson(entry)])
     )
   }
@@ -79,6 +87,25 @@ interface ActiveRun {
   flush: Disposable
 }
 
+interface CompletionContext {
+  contextRef: string
+  absolutePath: string
+  rootPath: string
+  displayName: string
+  action: ChemSmartStudioConsoleCompletionSelection['action']
+  program?: 'gaussian' | 'orca'
+  projectName?: string
+  device: number
+  inode: number
+  issuedAt: number
+}
+
+interface AcceptedPreflight {
+  commandDigest: string
+  verdict: 'green' | 'warning'
+  issuedAt: number
+}
+
 /**
  * Runs what the researcher types, and streams it back.
  *
@@ -92,21 +119,25 @@ interface ActiveRun {
  * deliberately *not* inherited because it may carry provider credentials.
  */
 @Injectable('StudioConsoleService')
+@DependsOn(['ChemSmartAgentService', 'MoleculeWorkspaceService'])
 @ServicePhase(Phase.WhenReady)
 export class StudioConsoleService extends BaseService {
   private active: ActiveRun | null = null
   /** `undefined` until first read; `null` once a read established there is no usable dump. */
   private cliSchema: CliSchemaDocument | null | undefined = undefined
+  private readonly completionContexts = new Map<string, CompletionContext>()
+  private readonly acceptedPreflights = new Map<string, AcceptedPreflight>()
 
   /**
    * Starts one command. A second submission while one is running is refused rather than queued —
    * a hidden queue is how a researcher ends up watching output from a command they forgot they sent.
    */
-  run(command: string): ChemSmartStudioConsoleRun {
+  run(command: string, preflightDigest?: string): ChemSmartStudioConsoleRun {
     const line = command.trim()
     if (line.length === 0) throw new Error('A command is required')
     if (line.length > MAX_COMMAND_LENGTH) throw new Error('That command is too long to run')
     if (this.active) throw new Error('A command is already running in the console')
+    if (/^chemsmart(?:\s|$)/.test(line)) this.consumePreflight(line, preflightDigest)
 
     const runId = randomUUID()
     const shell = process.env.SHELL ?? '/bin/sh'
@@ -160,8 +191,99 @@ export class StudioConsoleService extends BaseService {
    */
   async complete(line: string, cursor: number): Promise<ChemSmartStudioConsoleCompletions> {
     const schema = await this.loadCliSchema()
-    if (!schema) return { commandPath: [], replaceRange: { start: cursor, end: cursor }, items: [] }
+    if (!schema) {
+      return {
+        commandPath: [],
+        replaceRange: { start: cursor, end: cursor },
+        items: [],
+        semantic: { breadcrumb: [], slots: [], ghostSuffix: '', complete: false }
+      }
+    }
     return resolveCompletions(schema, line, cursor, await this.discoverCompletionCandidates())
+  }
+
+  /**
+   * Runs the existing deterministic command inspection once, only after submit.
+   *
+   * This deliberately starts no chemistry executable. The sidecar may be started to host the
+   * parser/harness, but the returned receipt is rejected unless the harness proves that no command
+   * process ran. Human Console execution stays approval-free; the receipt only decides whether the
+   * first Enter may continue or a warning needs one explicit repeat.
+   */
+  async preflight(command: string): Promise<ChemSmartStudioConsolePreflight> {
+    const line = command.trim()
+    if (!/^chemsmart(?:\s|$)/.test(line)) {
+      const commandDigest = createHash('sha256').update(line).digest('hex')
+      const result: ChemSmartStudioConsolePreflight = {
+        commandDigest,
+        verdict: 'green',
+        summary: {
+          kind: 'shell',
+          program: null,
+          job: null,
+          inputName: null,
+          charge: null,
+          multiplicity: null
+        },
+        failedRuleIds: [],
+        issues: [],
+        processStarted: false
+      }
+      this.acceptedPreflights.set(commandDigest, { commandDigest, verdict: 'green', issuedAt: Date.now() })
+      return result
+    }
+
+    const result = await application.get('ChemSmartAgentService').inspectCommand({
+      sessionId: `console-${randomUUID()}`,
+      command: line,
+      // The intent gate compares the command with this deterministic restatement. No model call is
+      // made, and no new command meaning is invented in Studio.
+      intentDescription: line
+    })
+    if (result.executionPerformed || result.dryRun.processStarted) {
+      throw new Error('Command inspection attempted execution')
+    }
+
+    const rejected =
+      !result.parse.accepted ||
+      result.status === 'rejected' ||
+      result.status === 'intent_reject' ||
+      result.intent.verdict === 'reject' ||
+      result.semantic.verdict === 'reject'
+    const warned =
+      !rejected &&
+      (result.status === 'needs_clarification' ||
+        result.intent.verdict === 'unavailable' ||
+        result.semantic.verdict === 'warn' ||
+        result.semantic.issues.some((issue) => issue.severity === 'warn'))
+    const verdict = rejected ? 'rejected' : warned ? 'warning' : 'green'
+    const receipt: ChemSmartStudioConsolePreflight = {
+      commandDigest: result.commandDigest,
+      verdict,
+      summary: {
+        kind: 'chemsmart',
+        program: result.parse.program,
+        job: result.parse.job,
+        inputName: result.parse.inputName,
+        charge: result.parse.charge,
+        multiplicity: result.parse.multiplicity
+      },
+      failedRuleIds: [...new Set([...result.intent.failedRuleIds, ...result.semantic.failedRuleIds])],
+      issues: result.semantic.issues.map((issue) => ({
+        ruleId: issue.ruleId,
+        severity: issue.severity,
+        message: issue.message
+      })),
+      processStarted: false
+    }
+    if (verdict !== 'rejected') {
+      this.acceptedPreflights.set(receipt.commandDigest, {
+        commandDigest: receipt.commandDigest,
+        verdict: verdict === 'warning' ? 'warning' : 'green',
+        issuedAt: Date.now()
+      })
+    }
+    return receipt
   }
 
   private async loadCliSchema(): Promise<CliSchemaDocument | null> {
@@ -190,6 +312,7 @@ export class StudioConsoleService extends BaseService {
     const projectsRoot = application.getPath('feature.chemsmart_studio.projects')
     const workspace = application.getPath('feature.chemsmart_studio.workspace')
     const candidates: DynamicCompletionCandidate[] = []
+    this.completionContexts.clear()
 
     const addFiles = async (directory: string, relativeRoot: string, depth: number): Promise<void> => {
       if (depth < 0 || candidates.length >= MAX_CONTEXT_ENTRIES) return
@@ -210,12 +333,17 @@ export class StudioConsoleService extends BaseService {
         if (!entry.isFile() || !COMPLETABLE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue
         const relative = path.relative(relativeRoot, absolute)
         if (relative.startsWith('..') || path.isAbsolute(relative)) continue
+        const extension = path.extname(entry.name).toLowerCase()
+        const context = MOLECULE_EXTENSIONS.has(extension)
+          ? await this.issueCompletionContext(absolute, relativeRoot, relative, 'molecule')
+          : undefined
         candidates.push({
           label: relative,
           insertText: relative,
           kind: 'file',
           detail: 'Studio project artifact',
-          optionNames: ['filename', 'file', 'input', 'structure', 'geometry']
+          optionNames: ['filename', 'file', 'input', 'structure', 'geometry'],
+          ...(context ? { contextRef: context.contextRef, openAction: context.action } : {})
         })
       }
     }
@@ -233,12 +361,21 @@ export class StudioConsoleService extends BaseService {
         if (!entry.isFile() || entry.isSymbolicLink() || path.extname(entry.name) !== '.yaml') continue
         const label = path.basename(entry.name, '.yaml')
         if (!safeCandidateName(label)) continue
+        const absolute = path.join(directory, entry.name)
+        const context =
+          program === 'xtb'
+            ? undefined
+            : await this.issueCompletionContext(absolute, directory, label, 'project_yaml', {
+                program,
+                projectName: label
+              })
         candidates.push({
           label,
           insertText: label,
           kind: 'project',
           detail: `${program.toUpperCase()} project`,
-          optionNames: ['project']
+          optionNames: ['project'],
+          ...(context ? { contextRef: context.contextRef, openAction: context.action } : {})
         })
       }
     }
@@ -261,6 +398,83 @@ export class StudioConsoleService extends BaseService {
       // No configured servers is an ordinary state.
     }
     return candidates.slice(0, MAX_CONTEXT_ENTRIES)
+  }
+
+  async acceptCompletionContext(contextRef: string): Promise<ChemSmartStudioConsoleCompletionSelection> {
+    const context = this.completionContexts.get(contextRef)
+    if (!context || Date.now() - context.issuedAt > COMPLETION_CONTEXT_TTL_MS) {
+      throw new Error('That completion context is no longer available')
+    }
+    const [root, target, identity] = await Promise.all([
+      realpath(context.rootPath),
+      realpath(context.absolutePath),
+      lstat(context.absolutePath)
+    ])
+    const relative = path.relative(root, target)
+    if (
+      relative.startsWith('..') ||
+      path.isAbsolute(relative) ||
+      identity.isSymbolicLink() ||
+      !identity.isFile() ||
+      identity.dev !== context.device ||
+      identity.ino !== context.inode
+    ) {
+      this.completionContexts.delete(contextRef)
+      throw new Error('That completion file changed before it could be opened')
+    }
+    this.completionContexts.delete(contextRef)
+    if (context.action === 'molecule') {
+      await application.get('MoleculeWorkspaceService').importMoleculeFromConsole(target, context.displayName)
+    }
+    return {
+      contextRef,
+      action: context.action,
+      displayName: context.displayName,
+      ...(context.program ? { program: context.program } : {}),
+      ...(context.projectName ? { projectName: context.projectName } : {})
+    }
+  }
+
+  private async issueCompletionContext(
+    absolutePath: string,
+    rootPath: string,
+    displayName: string,
+    action: CompletionContext['action'],
+    metadata: Pick<CompletionContext, 'program' | 'projectName'> = {}
+  ): Promise<CompletionContext | undefined> {
+    try {
+      const identity = await lstat(absolutePath)
+      if (!identity.isFile() || identity.isSymbolicLink()) return undefined
+      const context: CompletionContext = {
+        contextRef: `completion-${randomUUID()}`,
+        absolutePath,
+        rootPath,
+        displayName,
+        action,
+        ...metadata,
+        device: identity.dev,
+        inode: identity.ino,
+        issuedAt: Date.now()
+      }
+      this.completionContexts.set(context.contextRef, context)
+      return context
+    } catch {
+      return undefined
+    }
+  }
+
+  private consumePreflight(command: string, suppliedDigest?: string): void {
+    const commandDigest = createHash('sha256').update(command).digest('hex')
+    const receipt = suppliedDigest ? this.acceptedPreflights.get(suppliedDigest) : undefined
+    if (
+      suppliedDigest !== commandDigest ||
+      !receipt ||
+      receipt.commandDigest !== commandDigest ||
+      Date.now() - receipt.issuedAt > PREFLIGHT_TTL_MS
+    ) {
+      throw new Error('Run the ChemSmart preflight again before executing this command')
+    }
+    this.acceptedPreflights.delete(commandDigest)
   }
 
   /** Cancels the running command. An unknown or already-finished run id is a no-op, not an error. */

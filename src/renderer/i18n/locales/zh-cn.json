@@ -2135,15 +2135,32 @@
     },
     "console": {
       "cancel": "停止",
+      "charge": "电荷 {{charge}}",
       "command": "ChemSmart 命令",
       "completions": "命令补全",
       "empty": "运行 chemsmart 命令后，输出会显示在这里。",
       "exit_code": "退出码 {{code}}",
       "exit_signal": "被 {{signal}} 终止",
-      "hint": "回车运行 · Tab 补全 · ↑ 调出上一条命令",
+      "group": {
+        "commands": "命令",
+        "files": "文件",
+        "options": "选项",
+        "projects": "项目",
+        "servers": "服务器",
+        "values": "值"
+      },
+      "guide": "语义命令指南",
+      "hint": "回车运行 · Tab 补全 · Shift+Tab 查找必填项 · ↑ 调出历史命令",
+      "multiplicity": "多重度 {{multiplicity}}",
       "placeholder": "chemsmart run gaussian opt -f molecule.xyz",
+      "preflight_details": "检查详情",
+      "preflight_ready": "已就绪",
+      "preflight_rejected": "已阻止",
+      "preflight_warning": "检查后再次按回车",
       "run": "运行",
-      "run_failed": "命令无法启动。\n"
+      "run_failed": "命令无法启动。\n",
+      "shell_command": "Shell 命令",
+      "warning_hint": "尚未启动进程 · 再次按回车运行未更改的命令"
     },
     "constraints": {
       "add": "固定该值",
@@ -2380,6 +2397,25 @@
     },
     "project": {
       "author": "创建项目",
+      "candidate": {
+        "apply": "仅应用一次",
+        "changes": "已更改分区",
+        "decision_failed": "无法应用该决定。请刷新预览后重试。",
+        "deny": "拒绝",
+        "digest": "候选摘要",
+        "load_failed": "此 YAML 预览已不可用。",
+        "program": "程序",
+        "project": "项目",
+        "status": "状态",
+        "statuses": {
+          "denied": "已拒绝",
+          "expired": "已过期",
+          "failed": "失败",
+          "pending": "等待审核",
+          "stale": "上下文已更改",
+          "written": "已写入"
+        }
+      },
       "critique": "评审",
       "description": "工作区中的方法项目。Gaussian 与 ORCA 从中读取计算方法。",
       "failed": "无法读取工作区项目。",

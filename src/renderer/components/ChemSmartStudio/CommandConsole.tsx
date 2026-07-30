@@ -4,9 +4,26 @@ import { loggerService } from '@logger'
 import { TERMINAL_SURFACE_CLASS } from '@renderer/components/chat/messages/tools/agent'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { ipcApi, useIpcOn } from '@renderer/ipc'
-import type { ChemSmartStudioConsoleCompletions } from '@shared/ipc/schemas/chemsmartStudio'
-import { CornerDownLeft, Play, Square } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type {
+  ChemSmartStudioConsoleCompletions,
+  ChemSmartStudioConsoleCompletionSelection,
+  ChemSmartStudioConsolePreflight
+} from '@shared/ipc/schemas/chemsmartStudio'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CornerDownLeft,
+  File,
+  FolderKanban,
+  ListTree,
+  Play,
+  Server,
+  Square,
+  Terminal,
+  Variable,
+  XCircle
+} from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 const logger = loggerService.withContext('CommandConsole')
@@ -34,9 +51,14 @@ interface ConsoleLine {
 interface CommandConsoleProps {
   draft?: string
   onDraftChange?: (draft: string) => void
+  /**
+   * The owning workspace turns a verified, path-free selection into a molecule or YAML tab.
+   * The Console itself never receives a filesystem path.
+   */
+  onOpenCompletion?: (selection: ChemSmartStudioConsoleCompletionSelection) => void
 }
 
-export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {}) {
+export function CommandConsole({ draft, onDraftChange, onOpenCompletion }: CommandConsoleProps = {}) {
   const { t } = useTranslation()
   const [localCommand, setLocalCommand] = useState('')
   const command = draft ?? localCommand
@@ -52,6 +74,8 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
   const [exit, setExit] = useState<{ code: number | null; signal: string | null } | null>(null)
   const [completions, setCompletions] = useState<ChemSmartStudioConsoleCompletions | null>(null)
   const [selectedCompletion, setSelectedCompletion] = useState(0)
+  const [preflight, setPreflight] = useState<ChemSmartStudioConsolePreflight | null>(null)
+  const [pendingWarning, setPendingWarning] = useState<{ command: string; digest: string } | null>(null)
   const [history, setHistory] = usePersistCache('ui.studio.console.history')
   const [historyCursor, setHistoryCursor] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -90,6 +114,11 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
   const refreshCompletions = useCallback(async (line: string, cursor: number) => {
     const generation = completionGenerationRef.current + 1
     completionGenerationRef.current = generation
+    if (line.trim().length === 0) {
+      setSelectedCompletion(0)
+      setCompletions(null)
+      return
+    }
     try {
       const result = await ipcApi.request('chemsmart_studio.console.complete', { line, cursor })
       if (completionGenerationRef.current !== generation) return
@@ -103,24 +132,55 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
     }
   }, [])
 
+  const startRun = useCallback(
+    async (line: string, preflightDigest: string) => {
+      setLines([{ stream: 'stdout', chunk: `$ ${line}\n` }])
+      setExit(null)
+      completionGenerationRef.current += 1
+      setCompletions(null)
+      setHistory([line, ...recent.filter((entry) => entry !== line)].slice(0, 50))
+      setHistoryCursor(null)
+      try {
+        const result = await ipcApi.request('chemsmart_studio.console.run', {
+          command: line,
+          preflightDigest
+        })
+        setRunId(result.runId)
+        setCommand('')
+        setPendingWarning(null)
+      } catch (error) {
+        logger.error('Failed to run a console command', error as Error)
+        setLines((current) => [...current, { stream: 'stderr', chunk: t('chemsmart_studio.console.run_failed') }])
+      }
+    },
+    [recent, setCommand, setHistory, t]
+  )
+
   const submit = useCallback(async () => {
     const line = command.trim()
     if (line.length === 0 || runId !== null) return
-    setLines([{ stream: 'stdout', chunk: `$ ${line}\n` }])
-    setExit(null)
-    completionGenerationRef.current += 1
-    setCompletions(null)
-    setHistory([line, ...recent.filter((entry) => entry !== line)].slice(0, 50))
-    setHistoryCursor(null)
+    if (pendingWarning?.command === line) {
+      await startRun(line, pendingWarning.digest)
+      return
+    }
     try {
-      const result = await ipcApi.request('chemsmart_studio.console.run', { command: line })
-      setRunId(result.runId)
-      setCommand('')
+      const receipt = await ipcApi.request('chemsmart_studio.console.preflight', { command: line })
+      setPreflight(receipt)
+      if (receipt.verdict === 'rejected') {
+        setPendingWarning(null)
+        return
+      }
+      if (receipt.verdict === 'warning') {
+        setPendingWarning({ command: line, digest: receipt.commandDigest })
+        return
+      }
+      await startRun(line, receipt.commandDigest)
     } catch (error) {
-      logger.error('Failed to run a console command', error as Error)
+      logger.error('Failed to inspect a console command', error as Error)
+      setPreflight(null)
       setLines((current) => [...current, { stream: 'stderr', chunk: t('chemsmart_studio.console.run_failed') }])
     }
-  }, [command, recent, runId, setCommand, setHistory, t])
+  }, [command, pendingWarning, runId, startRun, t])
 
   const cancel = useCallback(async () => {
     if (!runId) return
@@ -142,17 +202,62 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
       setCommand(next)
       completionGenerationRef.current += 1
       setCompletions(null)
+      setPreflight(null)
+      setPendingWarning(null)
+      if (entry.contextRef && entry.openAction) {
+        void ipcApi
+          .request('chemsmart_studio.console.accept_completion', { contextRef: entry.contextRef })
+          .then((selection) => onOpenCompletion?.(selection))
+          .catch((error) => logger.error('Failed to open a selected console context', error as Error))
+      }
       queueMicrotask(() => {
         inputRef.current?.focus()
         inputRef.current?.setSelectionRange(nextCursor, nextCursor)
+        void refreshCompletions(next, nextCursor)
       })
     },
-    [command, completions, setCommand]
+    [command, completions, onOpenCompletion, refreshCompletions, setCommand]
   )
+
+  const focusPreviousRequired = useCallback(() => {
+    const missing = completions?.semantic.slots.find(
+      (slot) => slot.required && !slot.consumed && slot.kind === 'option' && slot.insertText
+    )
+    if (!missing) {
+      const cursor = inputRef.current?.selectionStart ?? command.length
+      void refreshCompletions(command, cursor)
+      return
+    }
+    const before = command.slice(0, missing.insertAt)
+    const after = command.slice(missing.insertAt)
+    const separatorBefore = before.length > 0 && !/\s$/.test(before) ? ' ' : ''
+    const separatorAfter = after.length > 0 && !/^\s/.test(after) ? ' ' : ''
+    const insertion = `${separatorBefore}${missing.insertText}${separatorAfter}`
+    const next = `${before}${insertion}${after}`
+    const nextCursor = before.length + insertion.length - separatorAfter.length
+    setCommand(next)
+    setPreflight(null)
+    setPendingWarning(null)
+    queueMicrotask(() => {
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(nextCursor, nextCursor)
+      void refreshCompletions(next, nextCursor)
+    })
+  }, [command, completions, refreshCompletions, setCommand])
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
       const visibleItems = completions?.items.slice(0, MAX_COMPLETIONS) ?? []
+      if (event.key === 'Tab' && event.shiftKey) {
+        event.preventDefault()
+        focusPreviousRequired()
+        return
+      }
+      if (event.code === 'Space' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault()
+        void refreshCompletions(command, event.currentTarget.selectionStart ?? command.length)
+        return
+      }
       if ((event.key === 'Enter' || event.key === 'Tab') && visibleItems.length > 0) {
         event.preventDefault()
         applyCompletion(visibleItems[selectedCompletion] ?? visibleItems[0])
@@ -192,10 +297,49 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
         setCommand(next < 0 ? '' : recent[next])
       }
     },
-    [applyCompletion, completions, historyCursor, recent, selectedCompletion, setCommand, submit]
+    [
+      applyCompletion,
+      command,
+      completions,
+      focusPreviousRequired,
+      historyCursor,
+      recent,
+      refreshCompletions,
+      selectedCompletion,
+      setCommand,
+      submit
+    ]
   )
 
-  const visible = completions?.items.slice(0, MAX_COMPLETIONS) ?? []
+  const visible = command.trim().length > 0 ? (completions?.items.slice(0, MAX_COMPLETIONS) ?? []) : []
+  const completionGroupLabels = useMemo(
+    () => ({
+      commands: t('chemsmart_studio.console.group.commands'),
+      files: t('chemsmart_studio.console.group.files'),
+      options: t('chemsmart_studio.console.group.options'),
+      projects: t('chemsmart_studio.console.group.projects'),
+      servers: t('chemsmart_studio.console.group.servers'),
+      values: t('chemsmart_studio.console.group.values')
+    }),
+    [t]
+  )
+  const preflightSummary = useMemo(() => {
+    if (!preflight) return ''
+    if (preflight.summary.kind === 'shell') return t('chemsmart_studio.console.shell_command')
+    return [
+      preflight.summary.program,
+      preflight.summary.job,
+      preflight.summary.inputName,
+      preflight.summary.charge === null
+        ? null
+        : t('chemsmart_studio.console.charge', { charge: preflight.summary.charge }),
+      preflight.summary.multiplicity === null
+        ? null
+        : t('chemsmart_studio.console.multiplicity', { multiplicity: preflight.summary.multiplicity })
+    ]
+      .filter((entry): entry is string => Boolean(entry))
+      .join(' · ')
+  }, [preflight, t])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-3" data-testid="command-console">
@@ -226,6 +370,63 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
         <span aria-hidden ref={bottomRef} />
       </div>
 
+      {completions?.semantic.breadcrumb.length ? (
+        <div
+          aria-label={t('chemsmart_studio.console.guide')}
+          className="flex min-h-8 shrink-0 items-center gap-1 overflow-x-auto rounded-md border border-border/70 bg-background/50 px-2 text-xs"
+          data-testid="console-semantic-guide">
+          <span className="flex shrink-0 items-center gap-1 font-medium text-foreground">
+            {completions.semantic.breadcrumb.map((part, index) => (
+              <Fragment key={`${part}-${index}`}>
+                {index > 0 ? <span className="text-foreground-muted">›</span> : null}
+                <code>{part}</code>
+              </Fragment>
+            ))}
+          </span>
+          {completions.semantic.ghostSuffix ? (
+            <span className="truncate text-foreground-muted/70" data-testid="console-ghost-suffix">
+              {completions.semantic.ghostSuffix}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {preflight ? (
+        <div
+          className={cn(
+            'shrink-0 rounded-md border px-2.5 py-2 text-xs',
+            preflight.verdict === 'green' && 'border-success/40 bg-success/10 text-success',
+            preflight.verdict === 'warning' && 'border-warning/50 bg-warning/10 text-warning',
+            preflight.verdict === 'rejected' && 'border-destructive/50 bg-destructive/10 text-destructive'
+          )}
+          data-testid="console-preflight"
+          role={preflight.verdict === 'rejected' ? 'alert' : 'status'}>
+          <div className="flex items-center gap-2 font-medium">
+            {preflight.verdict === 'green' ? <CheckCircle2 aria-hidden className="size-3.5" /> : null}
+            {preflight.verdict === 'warning' ? <AlertTriangle aria-hidden className="size-3.5" /> : null}
+            {preflight.verdict === 'rejected' ? <XCircle aria-hidden className="size-3.5" /> : null}
+            <span>
+              {preflight.verdict === 'green'
+                ? t('chemsmart_studio.console.preflight_ready')
+                : preflight.verdict === 'warning'
+                  ? t('chemsmart_studio.console.preflight_warning')
+                  : t('chemsmart_studio.console.preflight_rejected')}
+            </span>
+            <span className="font-normal text-foreground-muted">{preflightSummary}</span>
+          </div>
+          {preflight.issues.length > 0 ? (
+            <details className="mt-1 text-foreground">
+              <summary>{t('chemsmart_studio.console.preflight_details')}</summary>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {preflight.issues.map((issue) => (
+                  <li key={issue.ruleId}>{issue.message}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
       {exit ? (
         <p className="shrink-0 text-xs" data-testid="console-exit" role="status">
           <Badge variant={exit.code === 0 ? 'outline' : 'destructive'}>
@@ -236,56 +437,99 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
         </p>
       ) : null}
 
-      {visible.length > 0 ? (
-        <ul
-          aria-label={t('chemsmart_studio.console.completions')}
-          className="max-h-40 shrink-0 overflow-y-auto rounded-md border border-border bg-card"
-          data-testid="console-completions"
-          id="chemsmart-console-completions"
-          role="listbox">
-          {visible.map((entry, index) => (
-            <li
-              aria-selected={index === selectedCompletion}
-              id={`console-completion-${entry.id}`}
-              key={entry.id}
-              role="option">
-              <button
-                className={cn(
-                  'flex min-h-8 w-full items-baseline gap-2 px-2 py-1 text-left text-xs hover:bg-accent',
-                  index === selectedCompletion && 'bg-accent'
-                )}
-                type="button"
-                onClick={() => applyCompletion(entry)}>
-                <code className="shrink-0 font-medium text-foreground">{entry.label}</code>
-                <span className="truncate text-foreground-muted">{entry.detail}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
       <div className="flex shrink-0 items-center gap-2">
-        <Input
-          aria-activedescendant={
-            visible[selectedCompletion] ? `console-completion-${visible[selectedCompletion].id}` : undefined
-          }
-          aria-autocomplete="list"
-          aria-controls={visible.length > 0 ? 'chemsmart-console-completions' : undefined}
-          aria-expanded={visible.length > 0}
-          aria-label={t('chemsmart_studio.console.command')}
-          className="flex-1 font-mono text-xs"
-          data-testid="console-input"
-          id="chemsmart-console-input"
-          placeholder={t('chemsmart_studio.console.placeholder')}
-          ref={inputRef}
-          value={command}
-          onChange={(event) => {
-            const next = event.target.value
-            setCommand(next)
-            void refreshCompletions(next, event.target.selectionStart ?? next.length)
-          }}
-          onKeyDown={onKeyDown}
-        />
+        <div className="relative min-w-0 flex-1">
+          {visible.length > 0 ? (
+            <ul
+              aria-label={t('chemsmart_studio.console.completions')}
+              className="absolute right-0 bottom-[calc(100%+0.375rem)] left-0 z-50 max-h-64 overflow-y-auto rounded-md border border-border/80 bg-popover py-1 shadow-xl"
+              data-testid="console-completions"
+              id="chemsmart-console-completions"
+              role="listbox">
+              {visible.map((entry, index) => {
+                const KindIcon =
+                  entry.kind === 'file'
+                    ? File
+                    : entry.kind === 'project'
+                      ? FolderKanban
+                      : entry.kind === 'server'
+                        ? Server
+                        : entry.kind === 'option'
+                          ? Variable
+                          : entry.kind === 'choice' || entry.kind === 'argument'
+                            ? ListTree
+                            : Terminal
+                return (
+                  <Fragment key={entry.id}>
+                    {index === 0 || visible[index - 1].group !== entry.group ? (
+                      <li
+                        className="border-border/60 border-b px-2.5 py-1 font-medium text-[10px] text-foreground-muted uppercase tracking-wide"
+                        role="presentation">
+                        {completionGroupLabels[entry.group]}
+                      </li>
+                    ) : null}
+                    <li
+                      aria-selected={index === selectedCompletion}
+                      id={`console-completion-${entry.id}`}
+                      role="option">
+                      <button
+                        className={cn(
+                          'grid min-h-8 w-full grid-cols-[1rem_minmax(7rem,auto)_minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-1 text-left text-xs outline-none',
+                          'hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+                          index === selectedCompletion && 'bg-primary/20 text-primary'
+                        )}
+                        type="button"
+                        onClick={() => applyCompletion(entry)}>
+                        <KindIcon aria-hidden className="size-3.5" />
+                        <code className="truncate font-semibold">{entry.label}</code>
+                        <span
+                          className={cn(
+                            'truncate',
+                            index === selectedCompletion ? 'text-primary/80' : 'text-foreground-muted'
+                          )}>
+                          {entry.detail}
+                        </span>
+                        {entry.valueHint ? (
+                          <span className="shrink-0 font-mono text-[10px] text-foreground-muted">
+                            {entry.valueHint}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  </Fragment>
+                )
+              })}
+            </ul>
+          ) : null}
+          <Input
+            aria-activedescendant={
+              visible[selectedCompletion] ? `console-completion-${visible[selectedCompletion].id}` : undefined
+            }
+            aria-autocomplete="list"
+            aria-controls={visible.length > 0 ? 'chemsmart-console-completions' : undefined}
+            aria-expanded={visible.length > 0}
+            aria-label={t('chemsmart_studio.console.command')}
+            className="w-full font-mono text-xs"
+            data-testid="console-input"
+            id="chemsmart-console-input"
+            placeholder={t('chemsmart_studio.console.placeholder')}
+            ref={inputRef}
+            value={command}
+            onChange={(event) => {
+              const next = event.target.value
+              completionGenerationRef.current += 1
+              setCompletions(null)
+              setSelectedCompletion(0)
+              setCommand(next)
+              setPreflight(null)
+              setPendingWarning(null)
+              if (next.trim().length > 0) {
+                void refreshCompletions(next, event.target.selectionStart ?? next.length)
+              }
+            }}
+            onKeyDown={onKeyDown}
+          />
+        </div>
         {runId ? (
           <Button
             aria-label={t('chemsmart_studio.console.cancel')}
@@ -311,7 +555,7 @@ export function CommandConsole({ draft, onDraftChange }: CommandConsoleProps = {
       </div>
       <p className="shrink-0 text-foreground-muted text-xs">
         <CornerDownLeft aria-hidden className="mr-1 inline size-3" />
-        {t('chemsmart_studio.console.hint')}
+        {pendingWarning ? t('chemsmart_studio.console.warning_hint') : t('chemsmart_studio.console.hint')}
       </p>
     </div>
   )

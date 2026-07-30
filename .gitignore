@@ -89,6 +89,7 @@ __pycache__/
 services/chemsmart_bridge/.venv/
 build/native/
 build/compliance/
+build/chemsmart-cli/
 
 # Icon generation cache
 .icons-hash.json

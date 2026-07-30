@@ -36,9 +36,9 @@ interface MoleculeInspectorProps {
 }
 
 /**
- * The researcher's own editing surface: committed coordinates, elements, bonds, and canonical selection,
- * with no agent involved. Structural changes leave as approval-bound previews; selection never advances
- * the molecule revision.
+ * The researcher's own editing surface: the coordinates currently visible in the Stage, elements, bonds,
+ * and canonical selection, with no agent involved. Draft coordinates stay visibly distinct from the
+ * committed revision; selection never advances that revision.
  */
 export function MoleculeInspector({
   agentAtomIds,
@@ -50,7 +50,7 @@ export function MoleculeInspector({
   tier
 }: MoleculeInspectorProps) {
   const { t } = useTranslation()
-  const document = molecule.document
+  const document = molecule.displayDocument ?? molecule.document
   const selection = molecule.selection
   const interactionBusy = molecule.proposing || molecule.selecting
   const canPropose = editable && !interactionBusy
@@ -125,6 +125,9 @@ export function MoleculeInspector({
         <Badge variant="outline">
           {t('chemsmart_studio.workspace.revision_value', { revision: document.revision })}
         </Badge>
+        {molecule.draft?.dirty && molecule.displayBinding.state === 'committed' ? (
+          <Badge variant="secondary">{t('chemsmart_studio.draft.status', { count: molecule.draft.cursor })}</Badge>
+        ) : null}
       </div>
 
       {mode === 'measure' ? (

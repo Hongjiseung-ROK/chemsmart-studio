@@ -296,6 +296,32 @@ export class MoleculeWorkspaceService extends BaseService {
     })
   }
 
+  /**
+   * Opens a main-verified Console completion as a new molecule project without exposing its path
+   * to the renderer. A unique target avoids replacing an existing research project implicitly.
+   */
+  async importMoleculeFromConsole(
+    importPath: string,
+    displayName: string
+  ): Promise<ChemSmartStudioWorkspaceProjectResult> {
+    return this.withProjectOperation(async () => {
+      await this.assertProjectCanClose()
+      const imported = await application
+        .get('ChemSmartAgentService')
+        .importMoleculeFile(importPath, `document-${randomUUID()}`)
+      const stem = path
+        .basename(displayName, path.extname(displayName))
+        .replace(/[^A-Za-z0-9._ -]+/g, '-')
+        .trim()
+      const targetName = `${stem || 'Imported molecule'} Imported ${randomUUID().slice(0, 8)}.cmsproj`
+      const project = await this.projects.createProject(
+        application.getPath('feature.chemsmart_studio.projects', targetName),
+        imported
+      )
+      return this.switchProject(project, true)
+    })
+  }
+
   async saveProjectAs(): Promise<ChemSmartStudioWorkspaceProjectResult> {
     return this.withProjectOperation(async () => {
       const source = await this.projects.inspectProject(this.getProjectPath())

@@ -19,7 +19,7 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
-import { ProjectYamlPanel } from '../ProjectYamlPanel'
+import { ProjectYamlCandidateReview, ProjectYamlPanel } from '../ProjectYamlPanel'
 import { type ProjectYamlDocumentPresentation, ProjectYamlWorkspace } from '../ProjectYamlWorkspace'
 
 const RAW_YAML = `gas:
@@ -180,5 +180,69 @@ describe('ProjectYamlPanel', () => {
     expect(await screen.findByTestId('project-yaml-workspace')).toBeInTheDocument()
     expect(screen.queryByTestId('project-yaml-editor')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+})
+
+describe('ProjectYamlCandidateReview', () => {
+  beforeEach(() => {
+    ipcMocks.request.mockReset()
+    loggerMocks.error.mockReset()
+  })
+
+  it('submits only the exact preview identity and fixed digests when applying once', async () => {
+    const candidateDigest = 'b'.repeat(64)
+    ipcMocks.request
+      .mockResolvedValueOnce({
+        candidate: {
+          schemaVersion: '2',
+          previewId: 'yaml-preview-1',
+          projectName: 'b3lyp-water',
+          program: 'gaussian',
+          baseDigest: null,
+          candidateDigest,
+          expectedRevision: 2,
+          overwrite: false,
+          changedSections: ['gas'],
+          verdict: 'ok',
+          issueRuleIds: [],
+          status: 'pending',
+          createdAt: '2026-07-30T00:00:00Z',
+          expiresAt: '2026-07-30T00:05:00Z',
+          extensions: {}
+        },
+        document: {
+          schemaVersion: '2',
+          projectName: 'b3lyp-water',
+          program: 'gaussian',
+          digest: candidateDigest,
+          yamlText: RAW_YAML,
+          sections: [],
+          validation: { extensions: {}, issues: [], message: 'Valid.', verdict: 'ok' },
+          unknownNodes: [],
+          extensions: {}
+        },
+        extensions: {}
+      })
+      .mockResolvedValueOnce({
+        previewId: 'yaml-preview-1',
+        candidateDigest,
+        status: 'written',
+        extensions: {}
+      })
+    const user = userEvent.setup()
+    render(<ProjectYamlCandidateReview previewId="yaml-preview-1" sessionId="thread-1" />)
+
+    await user.click(await screen.findByRole('button', { name: 'chemsmart_studio.project.candidate.apply' }))
+
+    expect(ipcMocks.request).toHaveBeenLastCalledWith('chemsmart_studio.project.candidate_decide', {
+      sessionId: 'thread-1',
+      previewId: 'yaml-preview-1',
+      baseDigest: null,
+      candidateDigest,
+      expectedRevision: 2,
+      decision: 'allow_once',
+      extensions: {}
+    })
+    expect(screen.getByText('chemsmart_studio.project.candidate.statuses.written')).toBeInTheDocument()
   })
 })
