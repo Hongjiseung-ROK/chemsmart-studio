@@ -63,6 +63,10 @@ const server = net.createServer((socket) => {
       }
       if (request.method === 'system.ping') {
         send(socket, { jsonrpc: '2.0', id: request.id, result: { ok: true, pid: process.pid } })
+      } else if (request.method === 'system.protocol_hello') {
+        const hello = JSON.parse(process.env.CHEMSMART_TEST_PROTOCOL_HELLO || '{}')
+        if (mode === 'protocol-mismatch') hello.schemaSha256 = '0'.repeat(64)
+        send(socket, { jsonrpc: '2.0', id: request.id, result: hello })
       } else if (request.method === 'test.exit') {
         setImmediate(() => process.exit(24))
       } else {

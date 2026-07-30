@@ -1,0 +1,947 @@
+{
+  "$defs": {
+    "agentToolRequest": {
+      "oneOf": [
+        { "$ref": "#/$defs/getStudioContextRequest" },
+        { "$ref": "#/$defs/analyzeCurrentMoleculeRequest" },
+        { "$ref": "#/$defs/prepareMoleculeOptimizationRequest" },
+        { "$ref": "#/$defs/validatePreparedOptimizationRequest" },
+        { "$ref": "#/$defs/startPreparedOptimizationRequest" },
+        { "$ref": "#/$defs/getOptimizationStatusRequest" },
+        { "$ref": "#/$defs/listCalculationArtifactsRequest" },
+        { "$ref": "#/$defs/readCalculationArtifactRequest" },
+        { "$ref": "#/$defs/getOptimizationReplayRequest" },
+        { "$ref": "#/$defs/compareOptimizationFramesRequest" },
+        { "$ref": "#/$defs/importCompletedCalculationRequest" }
+      ]
+    },
+    "analyzeCurrentMoleculeInput": {
+      "additionalProperties": false,
+      "description": "Read the current committed molecule atomically, or re-read it only when an exact prior revision/hash binding still matches.",
+      "oneOf": [{ "maxProperties": 0 }, { "required": ["expected_revision", "geometry_hash"] }],
+      "properties": {
+        "expected_revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometry_hash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+      },
+      "type": "object"
+    },
+    "analyzeCurrentMoleculeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/analyzeCurrentMoleculeInput" },
+        "tool": { "const": "analyze_current_molecule" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "artifactChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": { "$ref": "#/$defs/opaqueArtifact" },
+        "content": { "maxLength": 87384, "type": "string" },
+        "encoding": { "enum": ["utf8", "base64"] },
+        "eof": { "type": "boolean" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "offset": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["artifact", "offset", "encoding", "content", "eof", "extensions"],
+      "type": "object"
+    },
+    "artifactList": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": { "$ref": "#/$defs/opaqueArtifact" },
+          "maxItems": 100,
+          "type": "array"
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "nextAfterArtifactId": {
+          "oneOf": [{ "$ref": "common.schema.json#/$defs/stableId" }, { "type": "null" }]
+        },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "type": { "const": "controlled_calculation_artifact_list" }
+      },
+      "required": ["type", "runId", "artifacts", "nextAfterArtifactId", "extensions"],
+      "type": "object"
+    },
+    "canonicalSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "charge": { "maximum": 8, "minimum": -8, "type": "integer" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "forceThreshold": {
+          "additionalProperties": false,
+          "properties": {
+            "unit": { "enum": ["hartree/bohr", "eV/angstrom", "kJ/mol/angstrom"] },
+            "value": { "exclusiveMinimum": 0, "type": "number" }
+          },
+          "required": ["value", "unit"],
+          "type": "object"
+        },
+        "maxRuntimeSeconds": { "maximum": 180, "minimum": 1, "type": "integer" },
+        "maxSteps": { "maximum": 10000, "minimum": 1, "type": "integer" },
+        "multiplicity": { "maximum": 16, "minimum": 1, "type": "integer" },
+        "solvent": { "maxLength": 128, "minLength": 1, "pattern": "\\S", "type": "string" },
+        "threads": { "const": 1 }
+      },
+      "required": ["maxSteps", "maxRuntimeSeconds", "threads", "charge", "multiplicity", "extensions"],
+      "type": "object"
+    },
+    "compareOptimizationFramesInput": {
+      "additionalProperties": false,
+      "properties": {
+        "first_step_index": { "minimum": 0, "type": "integer" },
+        "run_id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "second_step_index": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["run_id", "first_step_index", "second_step_index"],
+      "type": "object"
+    },
+    "compareOptimizationFramesRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/compareOptimizationFramesInput" },
+        "tool": { "const": "compare_optimization_frames" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "contextBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "source": { "enum": ["committed", "draft"] }
+      },
+      "required": ["sessionId", "documentId", "expectedRevision", "geometryHash"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "draft" } },
+            "required": ["source"]
+          },
+          "then": { "required": ["draftId"] }
+        }
+      ],
+      "type": "object"
+    },
+    "controlledCalculationReplay": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "frames": {
+          "items": { "$ref": "#/$defs/externalFrame" },
+          "maxItems": 500,
+          "type": "array"
+        },
+        "limit": { "maximum": 500, "minimum": 1, "type": "integer" },
+        "offset": { "minimum": 0, "type": "integer" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "totalFrames": { "minimum": 0, "type": "integer" },
+        "type": { "const": "controlled_calculation_replay" }
+      },
+      "required": ["type", "runId", "offset", "limit", "totalFrames", "frames", "extensions"],
+      "type": "object"
+    },
+    "controlledCalculationStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "frameCount": { "minimum": 0, "type": "integer" },
+        "latestFrame": {
+          "oneOf": [{ "$ref": "#/$defs/externalFrameSummary" }, { "type": "null" }]
+        },
+        "reservation": { "$ref": "#/$defs/reservation" },
+        "state": { "enum": ["reserved", "running", "completed", "failed", "cancelled"] },
+        "terminal": {
+          "oneOf": [{ "$ref": "#/$defs/terminal" }, { "type": "null" }]
+        },
+        "type": { "const": "controlled_calculation_status" }
+      },
+      "required": ["type", "reservation", "state", "frameCount", "latestFrame", "terminal", "extensions"],
+      "type": "object"
+    },
+    "currentMoleculeAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "atomCount": { "minimum": 1, "type": "integer" },
+        "bondCount": { "minimum": 0, "type": "integer" },
+        "charge": { "maximum": 256, "minimum": -256, "type": "integer" },
+        "elementCounts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "atomicNumber": { "maximum": 118, "minimum": 1, "type": "integer" },
+              "count": { "minimum": 1, "type": "integer" }
+            },
+            "required": ["atomicNumber", "count"],
+            "type": "object"
+          },
+          "maxItems": 118,
+          "minItems": 1,
+          "type": "array"
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "formula": { "maxLength": 512, "minLength": 1, "pattern": "\\S", "type": "string" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "binding": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "revision", "geometryHash"],
+              "properties": {
+                "state": { "const": "committed" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "baseRevision", "draftId", "geometryHash"],
+              "properties": {
+                "state": { "const": "draft" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            }
+          ]
+        },
+        "molecule": { "$ref": "molecule.schema.json" },
+        "multiplicity": { "maximum": 256, "minimum": 1, "type": "integer" },
+        "type": { "const": "current_molecule_analysis" }
+      },
+      "required": [
+        "type",
+        "molecule",
+        "geometryHash",
+        "binding",
+        "atomCount",
+        "bondCount",
+        "elementCounts",
+        "formula",
+        "charge",
+        "multiplicity",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "executableIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": { "maxLength": 64, "minLength": 1, "pattern": "^[A-Za-z0-9_.-]+$", "type": "string" },
+        "engine": { "const": "xtb" },
+        "executableDigest": { "$ref": "#/$defs/sha256Digest" },
+        "kind": { "const": "local_executable" },
+        "libraries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": { "$ref": "#/$defs/sha256Digest" },
+              "name": { "maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$", "type": "string" }
+            },
+            "required": ["name", "digest"],
+            "type": "object"
+          },
+          "maxItems": 128,
+          "type": "array"
+        },
+        "resources": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": { "$ref": "#/$defs/sha256Digest" },
+              "name": { "maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$", "type": "string" }
+            },
+            "required": ["name", "digest"],
+            "type": "object"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "runtimeFingerprint": { "$ref": "#/$defs/sha256Digest" },
+        "verifiedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "version": { "maxLength": 128, "minLength": 1, "pattern": "\\S", "type": "string" }
+      },
+      "required": [
+        "kind",
+        "engine",
+        "version",
+        "architecture",
+        "executableDigest",
+        "runtimeFingerprint",
+        "libraries",
+        "verifiedAt"
+      ],
+      "type": "object"
+    },
+    "externalFrame": {
+      "additionalProperties": false,
+      "anyOf": [{ "required": ["forceMetrics"] }, { "required": ["gradientNorm"] }],
+      "properties": {
+        "atomIds": {
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "atomicNumbers": {
+          "items": { "maximum": 118, "minimum": 1, "type": "integer" },
+          "minItems": 1,
+          "type": "array"
+        },
+        "convergence": { "$ref": "optimization.schema.json#/$defs/frame/properties/convergence" },
+        "coordinateUnit": { "const": "angstrom" },
+        "energy": { "$ref": "common.schema.json#/$defs/energy" },
+        "engineStepIndex": { "minimum": 0, "type": "integer" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "forceMetrics": {
+          "additionalProperties": false,
+          "properties": {
+            "max": { "minimum": 0, "type": "number" },
+            "rms": { "minimum": 0, "type": "number" },
+            "unit": { "enum": ["hartree/bohr", "eV/angstrom", "kJ/mol/angstrom"] }
+          },
+          "required": ["unit"],
+          "type": "object"
+        },
+        "gradientNorm": { "$ref": "optimization.schema.json#/$defs/gradientNorm" },
+        "frameIndex": { "minimum": 0, "type": "integer" },
+        "positions": {
+          "items": { "$ref": "common.schema.json#/$defs/vector3" },
+          "minItems": 1,
+          "type": "array"
+        },
+        "provenance": {
+          "additionalProperties": false,
+          "properties": {
+            "atomOrder": { "const": "document_stable_id_order" },
+            "coordinateSource": { "const": "engine" },
+            "transformation": { "const": "none" }
+          },
+          "required": ["coordinateSource", "atomOrder", "transformation"],
+          "type": "object"
+        },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "structureHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "type": { "const": "controlled_calculation_frame" }
+      },
+      "required": [
+        "type",
+        "runId",
+        "frameIndex",
+        "engineStepIndex",
+        "atomIds",
+        "atomicNumbers",
+        "positions",
+        "coordinateUnit",
+        "provenance",
+        "energy",
+        "structureHash",
+        "timestamp",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "externalFrameSummary": {
+      "additionalProperties": false,
+      "anyOf": [{ "required": ["forceMetrics"] }, { "required": ["gradientNorm"] }],
+      "properties": {
+        "convergence": { "$ref": "optimization.schema.json#/$defs/frame/properties/convergence" },
+        "energy": { "$ref": "common.schema.json#/$defs/energy" },
+        "engineStepIndex": { "minimum": 0, "type": "integer" },
+        "forceMetrics": {
+          "additionalProperties": false,
+          "properties": {
+            "max": { "minimum": 0, "type": "number" },
+            "rms": { "minimum": 0, "type": "number" },
+            "unit": { "enum": ["hartree/bohr", "eV/angstrom", "kJ/mol/angstrom"] }
+          },
+          "required": ["unit"],
+          "type": "object"
+        },
+        "gradientNorm": { "$ref": "optimization.schema.json#/$defs/gradientNorm" },
+        "frameIndex": { "minimum": 0, "type": "integer" },
+        "structureHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": ["frameIndex", "engineStepIndex", "energy", "structureHash", "timestamp"],
+      "type": "object"
+    },
+    "finalGeometryDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "decidedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "decision": { "enum": ["accept", "reject"] },
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "finalGeometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "requestId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "type": { "const": "controlled_calculation_final_geometry_decision" }
+      },
+      "required": [
+        "type",
+        "requestId",
+        "runId",
+        "documentId",
+        "expectedRevision",
+        "finalGeometryHash",
+        "decision",
+        "decidedAt",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "frameComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "atomCount": { "minimum": 1, "type": "integer" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "firstFrameIndex": { "minimum": 0, "type": "integer" },
+        "firstGeometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "maxDisplacement": { "minimum": 0, "type": "number" },
+        "rmsDisplacement": { "minimum": 0, "type": "number" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "secondFrameIndex": { "minimum": 0, "type": "integer" },
+        "secondGeometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "type": { "const": "controlled_calculation_frame_comparison" },
+        "unit": { "const": "angstrom" }
+      },
+      "required": [
+        "type",
+        "runId",
+        "firstFrameIndex",
+        "secondFrameIndex",
+        "atomCount",
+        "rmsDisplacement",
+        "maxDisplacement",
+        "unit",
+        "firstGeometryHash",
+        "secondGeometryHash",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "getOptimizationReplayInput": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": { "maximum": 500, "minimum": 1, "type": "integer" },
+        "offset": { "minimum": 0, "type": "integer" },
+        "run_id": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["run_id", "offset", "limit"],
+      "type": "object"
+    },
+    "getOptimizationReplayRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/getOptimizationReplayInput" },
+        "tool": { "const": "get_optimization_replay" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "getOptimizationStatusInput": {
+      "additionalProperties": false,
+      "properties": { "run_id": { "$ref": "common.schema.json#/$defs/stableId" } },
+      "required": ["run_id"],
+      "type": "object"
+    },
+    "getOptimizationStatusRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/getOptimizationStatusInput" },
+        "tool": { "const": "get_optimization_status" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "getStudioContextInput": { "additionalProperties": false, "type": "object" },
+    "getStudioContextRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/getStudioContextInput" },
+        "tool": { "const": "get_studio_context" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "hostRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "request": { "$ref": "#/$defs/agentToolRequest" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "type": { "const": "controlled_calculation_host_request" }
+      },
+      "required": ["type", "sessionId", "request"],
+      "type": "object"
+    },
+    "hostResponse": {
+      "oneOf": [
+        { "$ref": "#/$defs/studioContext" },
+        { "$ref": "#/$defs/currentMoleculeAnalysis" },
+        { "$ref": "#/$defs/preparedPlan" },
+        { "$ref": "#/$defs/reservation" },
+        { "$ref": "#/$defs/controlledCalculationStatus" },
+        { "$ref": "#/$defs/artifactList" },
+        { "$ref": "#/$defs/artifactChunk" },
+        { "$ref": "#/$defs/controlledCalculationReplay" },
+        { "$ref": "#/$defs/frameComparison" },
+        { "$ref": "#/$defs/importResult" }
+      ]
+    },
+    "importCompletedCalculationInput": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "document_id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "expected_revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometry_hash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+      },
+      "required": ["artifact_id", "document_id", "expected_revision", "geometry_hash"],
+      "type": "object"
+    },
+    "importCompletedCalculationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/importCompletedCalculationInput" },
+        "tool": { "const": "import_completed_calculation" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "importResult": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "frameCount": { "minimum": 1, "type": "integer" },
+        "outputGeometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "status": { "const": "completed" },
+        "type": { "const": "controlled_calculation_import_result" }
+      },
+      "required": ["type", "artifactId", "runId", "status", "frameCount", "outputGeometryHash", "extensions"],
+      "type": "object"
+    },
+    "listCalculationArtifactsInput": {
+      "additionalProperties": false,
+      "properties": {
+        "after_artifact_id": {
+          "oneOf": [{ "$ref": "common.schema.json#/$defs/stableId" }, { "type": "null" }]
+        },
+        "limit": { "maximum": 100, "minimum": 1, "type": "integer" },
+        "run_id": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["run_id", "after_artifact_id", "limit"],
+      "type": "object"
+    },
+    "listCalculationArtifactsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/listCalculationArtifactsInput" },
+        "tool": { "const": "list_calculation_artifacts" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "opaqueArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "displayName": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._ -]*$",
+          "type": "string"
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "kind": { "enum": ["input", "output", "log", "trajectory", "metadata"] },
+        "mediaType": { "maxLength": 128, "minLength": 3, "pattern": "^[a-z0-9.+-]+/[a-z0-9.+-]+$", "type": "string" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sha256": { "$ref": "#/$defs/sha256Digest" },
+        "sizeBytes": { "maximum": 104857600, "minimum": 0, "type": "integer" },
+        "type": { "const": "opaque_calculation_artifact" }
+      },
+      "required": [
+        "type",
+        "artifactId",
+        "runId",
+        "kind",
+        "displayName",
+        "mediaType",
+        "sizeBytes",
+        "sha256",
+        "createdAt",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "prepareMoleculeOptimizationInput": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "engine": { "const": "xtb" },
+        "expected_revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometry_hash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "method": { "maxLength": 128, "minLength": 1, "pattern": "\\S", "type": "string" },
+        "settings": { "$ref": "#/$defs/canonicalSettings" }
+      },
+      "required": ["document_id", "expected_revision", "geometry_hash", "engine", "method", "settings"],
+      "type": "object"
+    },
+    "prepareMoleculeOptimizationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/prepareMoleculeOptimizationInput" },
+        "tool": { "const": "prepare_molecule_optimization" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "preparedPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": { "$ref": "#/$defs/contextBinding" },
+        "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "engine": { "const": "xtb" },
+        "executable": { "$ref": "#/$defs/executableIdentity" },
+        "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "method": { "maxLength": 128, "minLength": 1, "pattern": "\\S", "type": "string" },
+        "planDigest": { "$ref": "#/$defs/sha256Digest" },
+        "planId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "settings": { "$ref": "#/$defs/canonicalSettings" },
+        "settingsDigest": { "$ref": "#/$defs/sha256Digest" },
+        "state": { "enum": ["prepared", "validated"] },
+        "type": { "const": "prepared_controlled_calculation" }
+      },
+      "required": [
+        "type",
+        "planId",
+        "binding",
+        "engine",
+        "method",
+        "settings",
+        "settingsDigest",
+        "planDigest",
+        "executable",
+        "state",
+        "createdAt",
+        "expiresAt",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "readCalculationArtifactInput": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "max_bytes": { "maximum": 65536, "minimum": 1, "type": "integer" },
+        "offset": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["artifact_id", "offset", "max_bytes"],
+      "type": "object"
+    },
+    "readCalculationArtifactRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/readCalculationArtifactInput" },
+        "tool": { "const": "read_calculation_artifact" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "reservation": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": { "$ref": "#/$defs/contextBinding" },
+        "executable": { "$ref": "#/$defs/executableIdentity" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "planDigest": { "$ref": "#/$defs/sha256Digest" },
+        "planId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "reservedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "type": { "const": "controlled_calculation_reservation" }
+      },
+      "required": ["type", "runId", "planId", "planDigest", "binding", "executable", "reservedAt", "extensions"],
+      "type": "object"
+    },
+    "sha256Digest": { "pattern": "^sha256:[0-9a-f]{64}$", "type": "string" },
+    "startPreparedOptimizationInput": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_digest": { "$ref": "#/$defs/sha256Digest" },
+        "plan_id": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["plan_id", "plan_digest"],
+      "type": "object"
+    },
+    "startPreparedOptimizationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/startPreparedOptimizationInput" },
+        "tool": { "const": "start_prepared_optimization" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    },
+    "studioContext": {
+      "additionalProperties": false,
+      "properties": {
+        "activeRun": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "frameCount": { "minimum": 0, "type": "integer" },
+                "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "state": { "enum": ["reserved", "running", "completed", "failed", "cancelled"] }
+              },
+              "required": ["runId", "state", "frameCount"],
+              "type": "object"
+            },
+            { "type": "null" }
+          ]
+        },
+        "document": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" }
+              },
+              "required": ["documentId", "revision", "geometryHash"],
+              "type": "object"
+            },
+            { "type": "null" }
+          ]
+        },
+        "project": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["projectHandleId", "projectName"],
+          "properties": {
+            "projectHandleId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "projectName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^/\\\\]+$"
+            }
+          }
+        },
+        "display": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "revision", "geometryHash"],
+              "properties": {
+                "state": { "const": "committed" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "revision": { "$ref": "common.schema.json#/$defs/revision" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "baseRevision", "draftId", "geometryHash"],
+              "properties": {
+                "state": { "const": "draft" },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "documentId", "inputRevision", "runId", "frameIndex"],
+              "properties": {
+                "state": { "enum": ["run", "replay"] },
+                "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "inputRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "frameIndex": {
+                  "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }]
+                }
+              }
+            }
+          ]
+        },
+        "draft": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["draftId", "baseRevision", "geometryHash", "changeCount", "dirty"],
+              "properties": {
+                "draftId": { "$ref": "common.schema.json#/$defs/stableId" },
+                "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+                "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+                "changeCount": { "type": "integer", "minimum": 0, "maximum": 128 },
+                "dirty": { "type": "boolean" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["atomIds", "bondIds"],
+          "properties": {
+            "atomIds": {
+              "type": "array",
+              "maxItems": 100000,
+              "uniqueItems": true,
+              "items": { "$ref": "common.schema.json#/$defs/stableId" }
+            },
+            "bondIds": {
+              "type": "array",
+              "maxItems": 100000,
+              "uniqueItems": true,
+              "items": { "$ref": "common.schema.json#/$defs/stableId" }
+            }
+          }
+        },
+        "editorMode": { "enum": ["build", "inspect", "measure", "constrain"] },
+        "panes": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 7,
+          "items": { "enum": ["explorer", "properties", "agent", "decisions", "console", "jobs", "problems"] }
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "type": { "const": "studio_context" }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "project",
+        "document",
+        "display",
+        "draft",
+        "selection",
+        "editorMode",
+        "panes",
+        "activeRun",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "terminal": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "completedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+            "frameCount": { "minimum": 1, "type": "integer" },
+            "outputGeometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+            "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "status": { "const": "completed" },
+            "type": { "const": "controlled_calculation_terminal" }
+          },
+          "required": ["type", "runId", "status", "frameCount", "outputGeometryHash", "completedAt", "extensions"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "additionalProperties": false,
+              "properties": {
+                "code": { "maxLength": 128, "minLength": 1, "pattern": "^[A-Z][A-Z0-9_]*$", "type": "string" },
+                "message": { "maxLength": 1024, "minLength": 1, "type": "string" }
+              },
+              "required": ["code", "message"],
+              "type": "object"
+            },
+            "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+            "frameCount": { "minimum": 0, "type": "integer" },
+            "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "status": { "const": "failed" },
+            "terminatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "type": { "const": "controlled_calculation_terminal" }
+          },
+          "required": ["type", "runId", "status", "frameCount", "error", "terminatedAt", "extensions"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
+            "frameCount": { "minimum": 0, "type": "integer" },
+            "reason": { "maxLength": 512, "minLength": 1, "type": "string" },
+            "runId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "status": { "const": "cancelled" },
+            "terminatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "type": { "const": "controlled_calculation_terminal" }
+          },
+          "required": ["type", "runId", "status", "frameCount", "reason", "terminatedAt", "extensions"],
+          "type": "object"
+        }
+      ]
+    },
+    "validatePreparedOptimizationInput": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_digest": { "$ref": "#/$defs/sha256Digest" },
+        "plan_id": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["plan_id", "plan_digest"],
+      "type": "object"
+    },
+    "validatePreparedOptimizationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": { "$ref": "#/$defs/validatePreparedOptimizationInput" },
+        "tool": { "const": "validate_prepared_optimization" },
+        "type": { "const": "studio_agent_tool_request" }
+      },
+      "required": ["type", "tool", "arguments"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v2/controlled-calculation.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    { "$ref": "#/$defs/externalFrame" },
+    { "$ref": "#/$defs/terminal" },
+    { "$ref": "#/$defs/finalGeometryDecision" },
+    { "$ref": "#/$defs/opaqueArtifact" },
+    { "$ref": "#/$defs/agentToolRequest" },
+    { "$ref": "#/$defs/hostRequest" },
+    { "$ref": "#/$defs/hostResponse" }
+  ],
+  "title": "Controlled calculation contracts"
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the small cross-language v1 type surface from canonical schemas."""
+"""Generate the active cross-language v2 surface from canonical schemas."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ import pprint
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMAS = ROOT / "schemas" / "v1"
+SCHEMAS = ROOT / "schemas" / "v2"
+COMPATIBILITY_SCHEMAS = ROOT / "schemas" / "v1"
+PROTOCOL_VERSION = "2.0.0"
 
 STUDIO_AGENT_TOOL_INPUT_DEFINITIONS = {
     "get_studio_context": "getStudioContextInput",
@@ -41,22 +43,12 @@ def schema_hash() -> str:
     return digest.hexdigest()
 
 
-def studio_ui_update_tool() -> dict:
-    source = json.loads((SCHEMAS / "studio-ui-update-input.schema.json").read_text())
-    input_schema = {
-        key: value
-        for key, value in source.items()
-        if key not in {"$schema", "$id", "title"}
-    }
-    return {
-        "name": "emit_studio_ui_update",
-        "description": (
-            "Emit a validated, non-mutating ChemSmart Studio UI status, progress, notice, "
-            "or transient molecule-focus hint. This tool cannot approve work, change committed "
-            "molecule state, start a calculation, or commit final geometry."
-        ),
-        "inputSchema": input_schema,
-    }
+def chem_smart_commit() -> str:
+    lock = json.loads((ROOT / "upstreams.lock.json").read_text())
+    commit = lock["upstreams"]["chemSmart"]["commit"]
+    if not isinstance(commit, str) or len(commit) != 40:
+        raise ValueError("upstreams.lock.json contains an invalid ChemSmart commit")
+    return commit
 
 
 def _bundle_common_references(
@@ -350,7 +342,7 @@ def _referenced_definition_names(value: object) -> set[str]:
 
 def typescript(
     checksum: str,
-    tool: dict,
+    chem_smart_pin: str,
     manifest_runtime_schema: dict,
     molecule_document_runtime_schema: dict,
     molecule_import_runtime_schema: dict,
@@ -361,11 +353,8 @@ def typescript(
     optimization_runtime_schema: dict,
     optimization_replay_runtime_schema: dict,
     optimization_trajectory_runtime_schema: dict,
-    studio_ui_event_schema: dict,
-    studio_ui_event_runtime_schema: dict,
     studio_agent_trace_event_runtime_schema: dict,
     studio_agent_workbench_runtime_schema: dict,
-    studio_ui_delivery_schema: dict,
     studio_control_schema: dict,
     studio_control_runtime_schema: dict,
     studio_approval_request_schema: dict,
@@ -377,23 +366,46 @@ def typescript(
     command_inspection_runtime_schema: dict,
     command_synthesis_runtime_schema: dict,
     project_workspace_runtime_schema: dict,
-    native_viewport_runtime_schema: dict,
     research_project_session_runtime_schema: dict,
+    protocol_hello_runtime_schema: dict,
+    studio_agent_live_event_runtime_schema: dict,
+    studio_agent_action_cue_runtime_schema: dict,
+    stage_placement_intent_runtime_schema: dict,
+    studio_console_completion_runtime_schema: dict,
     common_schema: dict,
 ) -> str:
-    tool_literal = json.dumps(tool, indent=2, ensure_ascii=False)
     manifest_runtime_schema_literal = json.dumps(
         manifest_runtime_schema,
         indent=2,
         ensure_ascii=False,
     )
-    native_viewport_runtime_schema_literal = json.dumps(
-        native_viewport_runtime_schema,
+    research_project_session_runtime_schema_literal = json.dumps(
+        research_project_session_runtime_schema,
         indent=2,
         ensure_ascii=False,
     )
-    research_project_session_runtime_schema_literal = json.dumps(
-        research_project_session_runtime_schema,
+    protocol_hello_runtime_schema_literal = json.dumps(
+        protocol_hello_runtime_schema,
+        indent=2,
+        ensure_ascii=False,
+    )
+    studio_agent_live_event_runtime_schema_literal = json.dumps(
+        studio_agent_live_event_runtime_schema,
+        indent=2,
+        ensure_ascii=False,
+    )
+    studio_agent_action_cue_runtime_schema_literal = json.dumps(
+        studio_agent_action_cue_runtime_schema,
+        indent=2,
+        ensure_ascii=False,
+    )
+    stage_placement_intent_runtime_schema_literal = json.dumps(
+        stage_placement_intent_runtime_schema,
+        indent=2,
+        ensure_ascii=False,
+    )
+    studio_console_completion_runtime_schema_literal = json.dumps(
+        studio_console_completion_runtime_schema,
         indent=2,
         ensure_ascii=False,
     )
@@ -442,14 +454,6 @@ def typescript(
         indent=2,
         ensure_ascii=False,
     )
-    event_schema_literal = json.dumps(
-        studio_ui_event_schema, indent=2, ensure_ascii=False
-    )
-    runtime_schema_literal = json.dumps(
-        studio_ui_event_runtime_schema,
-        indent=2,
-        ensure_ascii=False,
-    )
     agent_trace_runtime_schema_literal = json.dumps(
         studio_agent_trace_event_runtime_schema,
         indent=2,
@@ -457,11 +461,6 @@ def typescript(
     )
     agent_workbench_runtime_schema_literal = json.dumps(
         studio_agent_workbench_runtime_schema,
-        indent=2,
-        ensure_ascii=False,
-    )
-    delivery_schema_literal = json.dumps(
-        studio_ui_delivery_schema,
         indent=2,
         ensure_ascii=False,
     )
@@ -536,13 +535,25 @@ export type StableId = string
 export type Vector3 = readonly [number, number, number]
 export type AxisMask = readonly [boolean, boolean, boolean]
 export type Extensions = Record<string, Record<string, unknown>>
+export const PROTOCOL_VERSION = '{PROTOCOL_VERSION}' as const
+export const SCHEMA_SHA256 = '{checksum}' as const
+export const CHEMSMART_COMMIT = '{chem_smart_pin}' as const
 
 export interface MoleculeAtom {{ id: StableId; atomicNumber: number; position: Vector3; formalCharge: number; isotope?: number; label?: string; extensions: Extensions }}
 export interface MoleculeBond {{ id: StableId; atomIds: readonly [StableId, StableId]; order: 1 | 2 | 3; extensions: Extensions }}
 export interface MoleculeConstraint {{ id: StableId; type: 'distance' | 'angle' | 'dihedral'; atomIds: StableId[]; target: number; unit: 'angstrom' | 'degree'; extensions: Extensions }}
 export interface MoleculeProperties {{ name?: string; charge?: number; multiplicity?: number; extensions: Extensions }}
 export interface MoleculeDocument {{ documentId: StableId; revision: number; atoms: MoleculeAtom[]; bonds: MoleculeBond[]; selections: StableId[]; frozenAxes: Record<StableId, AxisMask>; constraints: MoleculeConstraint[]; properties: MoleculeProperties; extensions: Extensions }}
-export interface ProjectManifest {{ schemaVersion: '1.0.0'; protocolVersion: '1.0.0'; documentId: StableId; currentRevision: number; activeRunId: StableId | null; createdAt?: string; updatedAt?: string; extensions: Extensions }}
+export interface ProjectManifest {{ schemaVersion: '2.0.0'; protocolVersion: '2.0.0'; documentId: StableId; currentRevision: number; activeRunId: StableId | null; createdAt?: string; updatedAt?: string; extensions: Extensions }}
+export interface HistoricalProjectManifestV1 {{ schemaVersion: '1.0.0'; protocolVersion: '1.0.0'; documentId: StableId; currentRevision: number; activeRunId: StableId | null; createdAt?: string; updatedAt?: string; extensions: Extensions }}
+export interface StudioProtocolHello {{ protocolVersion: typeof PROTOCOL_VERSION; schemaSha256: string; chemSmartCommit: string }}
+export interface StudioAgentLiveEvent {{ threadId: StableId; turnId: StableId; blockId: StableId; sequence: number; kind: 'text_started' | 'text_delta' | 'text_completed' | 'public_summary'; text?: string; transient: true }}
+export interface StudioAgentActionCue {{ cueId: StableId; turnId: StableId; documentId: StableId; revision: number; geometryHash: string; kind: 'inspect' | 'place_atom' | 'set_bond' | 'freeze' | 'constrain' | 'move'; phase: 'running' | 'succeeded' | 'failed' | 'cancelled'; atomIds: StableId[]; bondIds: StableId[]; constraintIds: StableId[]; label: string }}
+export type CoordinationGeometry = 'linear' | 'trigonal_planar' | 'tetrahedral' | 'trigonal_bipyramidal' | 'square_planar' | 'octahedral'
+export interface StagePlacementIntent {{ documentId: StableId; expectedRevision: number; geometryHash: string; anchorAtomId?: StableId; atomicNumber: number; bondOrder: 1 | 2 | 3; coordinationGeometry: CoordinationGeometry; siteIndex?: number }}
+export type StudioConsoleCompletionKind = 'command' | 'option' | 'choice' | 'argument' | 'file' | 'project' | 'server'
+export interface StudioConsoleCompletionItem {{ id: StableId; label: string; insertText: string; kind: StudioConsoleCompletionKind; detail: string; appendSpace: boolean }}
+export interface StudioConsoleCompletionResult {{ commandPath: string[]; replaceRange: {{ start: number; end: number }}; items: StudioConsoleCompletionItem[]; diagnostic?: {{ code: 'unsupported_shell_syntax' | 'invalid_prefix' | 'value_required'; message: string }} }}
 export type MoleculeImportFormat = 'cjson' | 'sdf' | 'xyz'
 export interface MoleculeImportRequest {{ capabilityId: StableId; format: MoleculeImportFormat; documentId: StableId; sizeBytes: number; extensions: Extensions }}
 export interface MoleculeImportChunkRequest {{ capabilityId: StableId; offset: number; length: number; extensions: Extensions }}
@@ -595,7 +606,7 @@ export interface StudioAgentCapabilityManifestRequest {{ sessionId: StableId; th
 export interface PreviewReceipt {{ previewId: StableId; operationId: StableId; baseRevision: number; affectedAtomIds: StableId[]; affectedBondIds: StableId[]; beforeHash: string; afterHash: string; diff: PreviewDiff; summary?: StudioPreviewSummary; createdAt: string; extensions: Extensions }}
 export interface MoleculeCommitReceipt {{ type: 'molecule_commit'; previewId: StableId; revision: number; timestamp: string; geometryHash: string; stateHash: string }}
 export interface OptimizationSettings {{ maxSteps?: number; forceThreshold?: number; charge?: number; multiplicity?: number; solvent?: string; extensions: Extensions }}
-export interface OptimizationRun {{ runId: StableId; documentId: StableId; inputRevision: number; engine: 'avogadro' | 'xtb' | 'gaussian' | 'orca'; method: string; settings: OptimizationSettings; frozenAtomIds: StableId[]; constraintIds: StableId[]; status: 'pending_approval' | 'queued' | 'running' | 'completed' | 'cancelled' | 'failed' | 'awaiting_final_geometry'; createdAt: string; extensions: Extensions }}
+export interface OptimizationRun {{ runId: StableId; documentId: StableId; inputRevision: number; engine: 'xtb' | 'gaussian' | 'orca'; method: string; settings: OptimizationSettings; frozenAtomIds: StableId[]; constraintIds: StableId[]; status: 'pending_approval' | 'queued' | 'running' | 'completed' | 'cancelled' | 'failed' | 'awaiting_final_geometry'; createdAt: string; extensions: Extensions }}
 export interface OptimizationConvergence {{ converged: boolean; threshold?: number; energyChange?: number | null; maxDisplacement?: number | null; rmsDisplacement?: number | null }}
 export interface OptimizationGradientNorm {{ value: number; unit: 'hartree/bohr' | 'eV/angstrom' | 'kJ/mol/angstrom' }}
 export interface OptimizationFrame {{ runId: StableId; stepIndex: number; atomIds: StableId[]; positions: Vector3[]; energy: {{ value: number; unit: 'hartree' | 'eV' | 'kJ/mol' | 'kcal/mol' }}; forceMetrics: {{ max?: number; rms?: number; unit: 'hartree/bohr' | 'eV/angstrom' | 'kJ/mol/angstrom' }}; convergence: OptimizationConvergence; structureHash: string; timestamp: string; extensions: Extensions }}
@@ -637,8 +648,8 @@ export type OptimizationFinalResponse = OptimizationFinalCommit | OptimizationFi
 
 export interface ControlledCalculationSettings {{ maxSteps: number; maxRuntimeSeconds: number; threads: 1; charge: number; multiplicity: number; forceThreshold?: {{ value: number; unit: 'hartree/bohr' | 'eV/angstrom' | 'kJ/mol/angstrom' }}; solvent?: string; extensions: Extensions }}
 export interface ControlledCalculationBinding {{ sessionId: StableId; documentId: StableId; expectedRevision: number; geometryHash: string; source?: 'committed' | 'draft'; draftId?: StableId }}
-export interface ControlledCalculationExecutableIdentity {{ kind: 'native_editor' | 'local_executable'; engine: 'avogadro' | 'xtb'; version: string; architecture: string; executableDigest: string; runtimeFingerprint: string; libraries: Array<{{ name: string; digest: string }}>; resources?: Array<{{ name: string; digest: string }}>; verifiedAt: string }}
-export interface PreparedControlledCalculation {{ type: 'prepared_controlled_calculation'; planId: StableId; binding: ControlledCalculationBinding; engine: 'avogadro' | 'xtb'; method: string; settings: ControlledCalculationSettings; settingsDigest: string; planDigest: string; executable: ControlledCalculationExecutableIdentity; state: 'prepared' | 'validated'; createdAt: string; expiresAt: string; extensions: Extensions }}
+export interface ControlledCalculationExecutableIdentity {{ kind: 'local_executable'; engine: 'xtb'; version: string; architecture: string; executableDigest: string; runtimeFingerprint: string; libraries: Array<{{ name: string; digest: string }}>; resources?: Array<{{ name: string; digest: string }}>; verifiedAt: string }}
+export interface PreparedControlledCalculation {{ type: 'prepared_controlled_calculation'; planId: StableId; binding: ControlledCalculationBinding; engine: 'xtb'; method: string; settings: ControlledCalculationSettings; settingsDigest: string; planDigest: string; executable: ControlledCalculationExecutableIdentity; state: 'prepared' | 'validated'; createdAt: string; expiresAt: string; extensions: Extensions }}
 export interface ControlledCalculationReservation {{ type: 'controlled_calculation_reservation'; runId: StableId; planId: StableId; planDigest: string; binding: ControlledCalculationBinding; executable: ControlledCalculationExecutableIdentity; reservedAt: string; extensions: Extensions }}
 export interface ControlledCalculationExternalFrame {{ type: 'controlled_calculation_frame'; runId: StableId; frameIndex: number; engineStepIndex: number; atomIds: StableId[]; atomicNumbers: number[]; positions: Vector3[]; coordinateUnit: 'angstrom'; provenance: {{ coordinateSource: 'engine'; atomOrder: 'document_stable_id_order'; transformation: 'none' }}; energy: {{ value: number; unit: 'hartree' | 'eV' | 'kJ/mol' | 'kcal/mol' }}; forceMetrics?: {{ max?: number; rms?: number; unit: 'hartree/bohr' | 'eV/angstrom' | 'kJ/mol/angstrom' }}; gradientNorm?: OptimizationGradientNorm; convergence?: OptimizationFrame['convergence']; structureHash: string; timestamp: string; extensions: Extensions }}
 export type ControlledCalculationTerminal =
@@ -704,19 +715,10 @@ export interface ProjectWorkspaceCritiqueResult {{ schemaVersion: '1'; projectNa
 export type ProjectWorkspaceRequest = ProjectWorkspaceListRequest | ProjectWorkspaceReadRequest | ProjectWorkspaceValidateRequest | ProjectWorkspaceCritiqueRequest
 export type ProjectWorkspaceResult = ProjectWorkspaceListResult | ProjectWorkspaceReadResult | ProjectWorkspaceValidateResult | ProjectWorkspaceCritiqueResult
 
-export type StudioUiEventKind = 'status' | 'progress' | 'molecule_focus' | 'notice' | 'agent_thought' | 'inspector_target'
-export type StudioInspectorTarget = 'coordinates' | 'measurements' | 'constraints' | 'decisions' | 'activity'
-export interface StudioUiEventPayload {{ message: string; documentId?: StableId; revision?: number; atomIds?: StableId[]; bondIds?: StableId[]; runId?: StableId; stepIndex?: number; totalSteps?: number; progress?: number; phase?: string; toolName?: string; target?: StudioInspectorTarget }}
-export interface StudioUiEvent {{ eventId: StableId; sessionId: StableId; sequence: number; timestamp: string; source: 'model_tool' | 'runtime'; kind: StudioUiEventKind; payload: StudioUiEventPayload; extensions: Extensions }}
-export interface StudioUiDeliveryError {{ code: 'SCHEMA_INVALID' | 'EVENT_INVALID' | 'EVENT_TOO_LARGE' | 'LEDGER_WRITE_FAILED' | 'DELIVERY_REJECTED' | 'EVENT_OUT_OF_ORDER' | 'REVISION_CONFLICT' | 'EDITOR_UNAVAILABLE' | 'RPC_TIMEOUT'; message: string }}
-export type StudioUiDelivery =
-  | {{ accepted: true; eventId: StableId; sequence: number }}
-  | {{ accepted: false; eventId?: StableId; sequence?: number; error: StudioUiDeliveryError }}
-
 export interface StudioControlMoleculeSummary {{ documentId: StableId; revision: number }}
 export interface PreviewCommitApproval {{ kind: 'preview_commit'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'molecule_mutation'; receipt: PreviewReceipt; commitActionId: StableId; discardActionId: StableId }}
 export interface CalculationStartApproval {{ kind: 'calculation_start'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; documentId: StableId; expectedRevision: number; engine: OptimizationRun['engine']; method: string; settings: OptimizationSettings; allowActionId: StableId; denyActionId: StableId }}
-export interface ControlledCalculationStartApproval {{ kind: 'controlled_calculation_start'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; documentId: StableId; expectedRevision: number; engine: 'avogadro' | 'xtb'; method: 'UFF' | 'GFN2-xTB'; settings: ControlledCalculationSettings; planId: StableId; planDigest: string; runtimeFingerprint: string; allowActionId: StableId; denyActionId: StableId }}
+export interface ControlledCalculationStartApproval {{ kind: 'controlled_calculation_start'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; documentId: StableId; expectedRevision: number; engine: 'xtb'; method: 'GFN2-xTB'; settings: ControlledCalculationSettings; planId: StableId; planDigest: string; runtimeFingerprint: string; allowActionId: StableId; denyActionId: StableId }}
 export type ExecutionToolApproval =
   | {{ kind: 'execution_tool'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; tool: 'run_local'; arguments: {{ job: string }}; allowActionId: StableId; denyActionId: StableId }}
   | {{ kind: 'execution_tool'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'calculation_execution'; tool: 'submit_hpc'; arguments: {{ job: string; server?: string | null; execute?: boolean }}; allowActionId: StableId; denyActionId: StableId }}
@@ -754,100 +756,6 @@ export type StudioMoleculeRequest =
 
 export type StudioAgentMoleculeRequest = Exclude<StudioMoleculeRequest, {{ method: 'molecule.set_selection' }}>
 
-export interface NativeViewportBounds {{ x: number; y: number; width: number; height: number }}
-export interface NativeViewportAttachment {{ attached: true; scaleFactor: number; width: number; height: number }}
-export type NativeViewportTransportCapability = 'overlay' | 'cpu_bgra8' | 'iosurface_bgra8'
-export type NativeViewportTransportLifecycleState = 'stopped' | 'negotiating' | 'streaming_cpu' | 'streaming_gpu' | 'degraded_cpu' | 'suspended' | 'recovering' | 'fallback'
-export type NativeViewportFallbackReason = 'backpressure' | 'capture_failed' | 'helper_restarted' | 'mutation_tool_requires_overlay' | 'renderer_detached' | 'shared_texture_unavailable' | 'transport_timeout' | 'unsupported_platform'
-export interface NativeViewportTransportNegotiation {{ viewportInstanceId: StableId; generation: number; supportedCapabilities: NativeViewportTransportCapability[]; selectedCapability: NativeViewportTransportCapability }}
-export interface NativeViewportFrameMetadata {{ viewportInstanceId: StableId; generation: number; sequence: number; documentId: StableId; revision: number; width: number; height: number; logicalWidth: number; logicalHeight: number; strideBytes: number; scaleFactor: number; pixelFormat: 'bgra8'; rowOrigin: 'top_left'; alphaMode: 'opaque'; colorSpace: 'srgb'; contentHash: string; capturedAt: string }}
-export interface NativeViewportCpuFrame {{ capability: 'cpu_bgra8'; frame: NativeViewportFrameMetadata; payloadByteLength: number; pixelsBase64: string }}
-export type NativeViewportRenderBinding =
-  | {{ displayState: 'committed'; documentId: StableId; revision: number; geometryHash: string }}
-  | {{ displayState: 'preview'; documentId: StableId; baseRevision: number; previewId: StableId; previewGeometryHash: string }}
-  | {{ displayState: 'run'; documentId: StableId; inputRevision: number; runId: StableId; frameIndex: number; structureHash: string }}
-  | {{ displayState: 'replay'; documentId: StableId; inputRevision: number; runId: StableId; frameIndex: number; structureHash: string }}
-export interface NativeViewportFrameExtent {{ width: number; height: number }}
-export interface NativeViewportGpuFrameColorSpace {{ matrix: 'rgb'; primaries: 'bt709'; range: 'full'; transfer: 'linear' }}
-export interface NativeViewportGpuFrameDescriptor {{ capability: 'iosurface_bgra8'; viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; sequence: number; surfaceSlot: number; logicalExtent: NativeViewportFrameExtent; pixelExtent: NativeViewportFrameExtent; devicePixelRatio: number; pixelFormat: 'bgra8'; rowOrigin: 'top_left'; alphaMode: 'opaque'; colorSpace: NativeViewportGpuFrameColorSpace; renderBinding: NativeViewportRenderBinding; producedAt: string }}
-export interface NativeViewportGpuFrameNotification {{ method: 'viewport.gpu_frame'; params: NativeViewportGpuFrameDescriptor }}
-export interface NativeViewportRendererReadiness {{ capability: 'iosurface_bgra8'; receiverInstalled: true; webGpuReady: true }}
-/** This receipt opens a sender-bound send attempt; only successful sendSharedTexture proves receiver liveness. */
-export interface NativeViewportRendererReadyReceipt {{ accepted: true; lifecycleState: 'renderer_ready'; capability: 'iosurface_bgra8' }}
-export interface NativeViewportGpuTransportBootstrap {{ nonce: string; transportEpoch: number; editorEpoch: number; inheritedPortSlot: number; viewportLeaseDigest: string; generation: number }}
-/** Main sends this capability-bearing request only to the authenticated native helper, never to preload or renderer IPC. */
-export interface NativeViewportBootstrapGpuTransportRequest {{ method: 'viewport.bootstrap_gpu_transport'; params: NativeViewportGpuTransportBootstrap }}
-export interface NativeViewportGpuTransportBootstrapReceipt {{ accepted: true; lifecycleState: 'gpu_transport_bootstrapped'; transportEpoch: number; editorEpoch: number; generation: number }}
-export interface NativeViewportGpuGenerationBinding {{ viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; logicalExtent: NativeViewportFrameExtent; pixelExtent: NativeViewportFrameExtent; devicePixelRatio: number }}
-/** Electron main binds one fresh authenticated GPU generation before accepting any frame from it. */
-export interface NativeViewportBindGpuGenerationRequest {{ method: 'viewport.bind_gpu_generation'; params: NativeViewportGpuGenerationBinding }}
-export interface NativeViewportGpuGenerationBindingReceipt {{ accepted: true; lifecycleState: 'generation_bound'; viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; logicalExtent: NativeViewportFrameExtent; pixelExtent: NativeViewportFrameExtent; devicePixelRatio: number }}
-export interface NativeViewportFramePresentationAcknowledgement {{ viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; sequence: number; surfaceSlot: number; presented: true }}
-/** Electron main sends this request to the authenticated native helper after renderer presentation. */
-export interface NativeViewportFramePresentedRequest {{ method: 'viewport.frame_presented'; params: NativeViewportFramePresentationAcknowledgement }}
-export interface NativeViewportFramePresentationReceipt {{ accepted: true; lifecycleState: 'presented'; viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; sequence: number; surfaceSlot: number }}
-export interface NativeViewportFrameReleaseAcknowledgement {{ viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; sequence: number; surfaceSlot: number; released: true }}
-/** Electron main sends this request only after every shared-texture reference for a Presented frame is released. */
-export interface NativeViewportFrameReleasedRequest {{ method: 'viewport.frame_released'; params: NativeViewportFrameReleaseAcknowledgement }}
-export interface NativeViewportFrameReleaseReceipt {{ accepted: true; lifecycleState: 'released'; viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; sequence: number; surfaceSlot: number }}
-export type NativeViewportFrameAbandonReason = 'application_stopping' | 'delivery_failed' | 'renderer_replaced' | 'renderer_unavailable' | 'transport_retired'
-export interface NativeViewportFrameAbandonmentAcknowledgement {{ viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; sequence: number; surfaceSlot: number; abandoned: true; allReferencesReleased: true; reason: NativeViewportFrameAbandonReason }}
-/** Electron main sends this request only after every reference for a never-Presented frame is released. */
-export interface NativeViewportFrameAbandonedRequest {{ method: 'viewport.frame_abandoned'; params: NativeViewportFrameAbandonmentAcknowledgement }}
-export interface NativeViewportFrameAbandonmentReceipt {{ accepted: true; lifecycleState: 'abandoned'; viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; sequence: number; surfaceSlot: number; reason: NativeViewportFrameAbandonReason }}
-export type NativeViewportGenerationRetirementReason = 'application_stopping' | 'renderer_replaced' | 'renderer_unavailable' | 'transport_reconfigured' | 'viewport_detached'
-export interface NativeViewportGenerationRetirementAcknowledgement {{ viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; retired: true; reason: NativeViewportGenerationRetirementReason }}
-/** Electron main explicitly quarantines one exact old generation without claiming its frames were released. */
-export interface NativeViewportRetireGenerationRequest {{ method: 'viewport.retire_generation'; params: NativeViewportGenerationRetirementAcknowledgement }}
-export interface NativeViewportGenerationRetirementReceipt {{ accepted: true; lifecycleState: 'generation_retired'; viewportInstanceId: StableId; viewportLeaseId: StableId; editorEpoch: number; generation: number; reason: NativeViewportGenerationRetirementReason }}
-export interface NativeViewportInputModifiers {{ alt: boolean; control: boolean; meta: boolean; shift: boolean }}
-export type NativeViewportInputEvent =
-  | {{ kind: 'pointer'; phase: 'cancel' | 'down' | 'move' | 'up'; x: number; y: number; button: 'back' | 'forward' | 'middle' | 'none' | 'primary' | 'secondary'; buttons: Array<'back' | 'forward' | 'middle' | 'primary' | 'secondary'>; modifiers: NativeViewportInputModifiers }}
-  | {{ kind: 'wheel'; x: number; y: number; deltaX: number; deltaY: number; deltaMode: 'line' | 'page' | 'pixel'; modifiers: NativeViewportInputModifiers }}
-  | {{ kind: 'key'; phase: 'down' | 'up'; key: string; code: string; repeat: boolean; modifiers: NativeViewportInputModifiers }}
-  | {{ kind: 'focus'; focused: boolean }}
-export type NativeViewportInputErrorCode = 'INPUT_INVALID' | 'RATE_LIMITED' | 'SEQUENCE_ROLLBACK' | 'STALE_GENERATION' | 'VIEWPORT_INACTIVE'
-export type NativeViewportInputAcknowledgement =
-  | {{ accepted: true; viewportInstanceId: StableId; generation: number; sequence: number }}
-  | {{ accepted: false; viewportInstanceId: StableId; generation: number; sequence: number; errorCode: NativeViewportInputErrorCode; currentGeneration: number; lastAcceptedSequence: number }}
-export interface NativeViewportTransportState {{ viewportInstanceId: StableId; generation: number; stateSequence: number; state: NativeViewportTransportLifecycleState; activeCapability: NativeViewportTransportCapability | null; fallbackReason: NativeViewportFallbackReason | null; outstandingFrames: number; producerSlotsInUse: number }}
-export type NativeViewportTool = 'navigate' | 'draw' | 'manipulate' | 'select' | 'measure'
-export interface NativeViewportToolAvailability {{ tool: NativeViewportTool; enabled: boolean; disabledReason: NativeViewportToolDisabledReason | null }}
-export type NativeViewportToolDisabledReason = 'mutation_locked' | 'read_only_transport'
-export interface NativeViewportToolState {{ viewportInstanceId: StableId; generation: number; activeTool: NativeViewportTool; tools: NativeViewportToolAvailability[] }}
-export interface NativeViewportToolChangedNotification {{ method: 'viewport.tool_changed'; params: NativeViewportToolState }}
-export type NativeViewportRequest =
-  | NativeViewportBootstrapGpuTransportRequest
-  | {{ method: 'viewport.attach'; params: Record<string, never> }}
-  | {{ method: 'viewport.set_bounds'; params: NativeViewportBounds }}
-  | {{ method: 'viewport.set_visible'; params: {{ visible: boolean }} }}
-  | {{ method: 'viewport.negotiate_transport'; params: {{ viewportInstanceId: StableId; generation: number; preferredCapabilities: NativeViewportTransportCapability[] }} }}
-  | {{ method: 'viewport.capture_frame'; params: {{ viewportInstanceId: StableId; generation: number; afterSequence: number; capability: 'cpu_bgra8'; maxWidth: number; maxHeight: number }} }}
-  | {{ method: 'viewport.send_input'; params: {{ viewportInstanceId: StableId; generation: number; sequence: number; coordinateSpace: 'viewport_logical_top_left'; event: NativeViewportInputEvent }} }}
-  | NativeViewportBindGpuGenerationRequest
-  | NativeViewportFramePresentedRequest
-  | NativeViewportFrameReleasedRequest
-  | NativeViewportFrameAbandonedRequest
-  | NativeViewportRetireGenerationRequest
-  | {{ method: 'viewport.get_transport_state'; params: Record<string, never> }}
-  | {{ method: 'viewport.set_tool'; params: {{ viewportInstanceId: StableId; generation: number; tool: NativeViewportTool }} }}
-  | {{ method: 'viewport.get_tool_state'; params: {{ viewportInstanceId: StableId; generation: number }} }}
-export type NativeViewportResponse =
-  | NativeViewportGpuTransportBootstrapReceipt
-  | NativeViewportAttachment
-  | NativeViewportBounds
-  | {{ visible: boolean }}
-  | NativeViewportTransportNegotiation
-  | NativeViewportCpuFrame
-  | NativeViewportInputAcknowledgement
-  | NativeViewportGpuGenerationBindingReceipt
-  | NativeViewportFramePresentationReceipt
-  | NativeViewportFrameReleaseReceipt
-  | NativeViewportFrameAbandonmentReceipt
-  | NativeViewportGenerationRetirementReceipt
-  | NativeViewportTransportState
-  | NativeViewportToolState
-
 export interface ResearchThreadSummary {{ threadId: StableId; title: string; createdAt: string; updatedAt: string; activityCount: number; agentBound: boolean; imported: boolean }}
 export interface ResearchProjectContext {{ projectId: StableId; projectName: string; activeThreadId: StableId | null; threads: ResearchThreadSummary[] }}
 export interface ResearchThreadIndex {{ schemaVersion: 1; activeThreadId: StableId | null; threads: ResearchThreadSummary[] }}
@@ -855,7 +763,6 @@ export interface ResearchCreateThreadRequest {{ title: string }}
 export interface ResearchRenameThreadRequest {{ threadId: StableId; title: string }}
 export interface ResearchSelectThreadRequest {{ threadId: StableId }}
 
-export const emitStudioUiUpdateTool = {tool_literal} as const
 export const manifestRuntimeSchema = {manifest_runtime_schema_literal} as const
 export const moleculeDocumentRuntimeSchema = {molecule_document_runtime_schema_literal} as const
 export const moleculeImportRuntimeSchema = {molecule_import_runtime_schema_literal} as const
@@ -866,11 +773,8 @@ export const moleculeCommitReceiptRuntimeSchema = {molecule_commit_receipt_runti
 export const optimizationRuntimeSchema = {optimization_runtime_schema_literal} as const
 export const optimizationReplayRuntimeSchema = {optimization_replay_runtime_schema_literal} as const
 export const optimizationTrajectoryRuntimeSchema = {optimization_trajectory_runtime_schema_literal} as const
-export const studioUiEventSchema = {event_schema_literal} as const
-export const studioUiEventRuntimeSchema = {runtime_schema_literal} as const
 export const studioAgentTraceEventRuntimeSchema = {agent_trace_runtime_schema_literal} as const
 export const studioAgentWorkbenchRuntimeSchema = {agent_workbench_runtime_schema_literal} as const
-export const studioUiDeliverySchema = {delivery_schema_literal} as const
 export const studioControlSchema = {control_schema_literal} as const
 export const studioControlRuntimeSchema = {control_runtime_schema_literal} as const
 export const studioApprovalRequestSchema = {approval_request_schema_literal} as const
@@ -882,8 +786,12 @@ export const controlledCalculationRuntimeSchema = {controlled_calculation_runtim
 export const commandInspectionRuntimeSchema = {command_inspection_runtime_schema_literal} as const
 export const commandSynthesisRuntimeSchema = {command_synthesis_runtime_schema_literal} as const
 export const projectWorkspaceRuntimeSchema = {project_workspace_runtime_schema_literal} as const
-export const nativeViewportRuntimeSchema = {native_viewport_runtime_schema_literal} as const
 export const researchProjectSessionRuntimeSchema = {research_project_session_runtime_schema_literal} as const
+export const protocolHelloRuntimeSchema = {protocol_hello_runtime_schema_literal} as const
+export const studioAgentLiveEventRuntimeSchema = {studio_agent_live_event_runtime_schema_literal} as const
+export const studioAgentActionCueRuntimeSchema = {studio_agent_action_cue_runtime_schema_literal} as const
+export const stagePlacementIntentRuntimeSchema = {stage_placement_intent_runtime_schema_literal} as const
+export const studioConsoleCompletionRuntimeSchema = {studio_console_completion_runtime_schema_literal} as const
 export const studioAgentToolInputSchemas = {{
 {studio_agent_tool_input_schemas_literal}
 }} as const
@@ -893,7 +801,7 @@ export const studioCommonSchema = {common_schema_literal} as const
 
 def python_types(
     checksum: str,
-    tool: dict,
+    chem_smart_pin: str,
     manifest_runtime_schema: dict,
     molecule_document_runtime_schema: dict,
     molecule_import_runtime_schema: dict,
@@ -904,11 +812,8 @@ def python_types(
     optimization_runtime_schema: dict,
     optimization_replay_runtime_schema: dict,
     optimization_trajectory_runtime_schema: dict,
-    studio_ui_event_schema: dict,
-    studio_ui_event_runtime_schema: dict,
     studio_agent_trace_event_runtime_schema: dict,
     studio_agent_workbench_runtime_schema: dict,
-    studio_ui_delivery_schema: dict,
     studio_control_schema: dict,
     studio_control_runtime_schema: dict,
     studio_approval_request_schema: dict,
@@ -920,9 +825,13 @@ def python_types(
     command_inspection_runtime_schema: dict,
     command_synthesis_runtime_schema: dict,
     project_workspace_runtime_schema: dict,
+    protocol_hello_runtime_schema: dict,
+    studio_agent_live_event_runtime_schema: dict,
+    studio_agent_action_cue_runtime_schema: dict,
+    stage_placement_intent_runtime_schema: dict,
+    studio_console_completion_runtime_schema: dict,
     common_schema: dict,
 ) -> str:
-    tool_literal = pprint.pformat(tool, sort_dicts=False, width=100)
     manifest_runtime_schema_literal = pprint.pformat(
         manifest_runtime_schema,
         sort_dicts=False,
@@ -973,16 +882,6 @@ def python_types(
         sort_dicts=False,
         width=100,
     )
-    event_schema_literal = pprint.pformat(
-        studio_ui_event_schema,
-        sort_dicts=False,
-        width=100,
-    )
-    runtime_schema_literal = pprint.pformat(
-        studio_ui_event_runtime_schema,
-        sort_dicts=False,
-        width=100,
-    )
     agent_trace_runtime_schema_literal = pprint.pformat(
         studio_agent_trace_event_runtime_schema,
         sort_dicts=False,
@@ -990,11 +889,6 @@ def python_types(
     )
     agent_workbench_runtime_schema_literal = pprint.pformat(
         studio_agent_workbench_runtime_schema,
-        sort_dicts=False,
-        width=100,
-    )
-    delivery_schema_literal = pprint.pformat(
-        studio_ui_delivery_schema,
         sort_dicts=False,
         width=100,
     )
@@ -1053,6 +947,31 @@ def python_types(
         sort_dicts=False,
         width=100,
     )
+    protocol_hello_runtime_schema_literal = pprint.pformat(
+        protocol_hello_runtime_schema,
+        sort_dicts=False,
+        width=100,
+    )
+    studio_agent_live_event_runtime_schema_literal = pprint.pformat(
+        studio_agent_live_event_runtime_schema,
+        sort_dicts=False,
+        width=100,
+    )
+    studio_agent_action_cue_runtime_schema_literal = pprint.pformat(
+        studio_agent_action_cue_runtime_schema,
+        sort_dicts=False,
+        width=100,
+    )
+    stage_placement_intent_runtime_schema_literal = pprint.pformat(
+        stage_placement_intent_runtime_schema,
+        sort_dicts=False,
+        width=100,
+    )
+    studio_console_completion_runtime_schema_literal = pprint.pformat(
+        studio_console_completion_runtime_schema,
+        sort_dicts=False,
+        width=100,
+    )
     studio_agent_tool_input_schemas_literal = pprint.pformat(
         studio_agent_tool_input_schemas(
             controlled_calculation_runtime_schema,
@@ -1070,6 +989,71 @@ from typing import Any, Literal, NotRequired, Required, TypedDict
 Vector3 = tuple[float, float, float]
 AxisMask = tuple[bool, bool, bool]
 Extensions = dict[str, dict[str, Any]]
+PROTOCOL_VERSION = "{PROTOCOL_VERSION}"
+SCHEMA_SHA256 = "{checksum}"
+CHEMSMART_COMMIT = "{chem_smart_pin}"
+
+class StudioProtocolHello(TypedDict):
+    protocolVersion: Literal["2.0.0"]
+    schemaSha256: str
+    chemSmartCommit: str
+
+class StudioAgentLiveEvent(TypedDict):
+    threadId: str
+    turnId: str
+    blockId: str
+    sequence: int
+    kind: Literal["text_started", "text_delta", "text_completed", "public_summary"]
+    text: NotRequired[str]
+    transient: Literal[True]
+
+class StudioAgentActionCue(TypedDict):
+    cueId: str
+    turnId: str
+    documentId: str
+    revision: int
+    geometryHash: str
+    kind: Literal["inspect", "place_atom", "set_bond", "freeze", "constrain", "move"]
+    phase: Literal["running", "succeeded", "failed", "cancelled"]
+    atomIds: list[str]
+    bondIds: list[str]
+    constraintIds: list[str]
+    label: str
+
+class StagePlacementIntent(TypedDict):
+    documentId: str
+    expectedRevision: int
+    geometryHash: str
+    anchorAtomId: NotRequired[str]
+    atomicNumber: int
+    bondOrder: Literal[1, 2, 3]
+    coordinationGeometry: Literal[
+        "linear",
+        "trigonal_planar",
+        "tetrahedral",
+        "trigonal_bipyramidal",
+        "square_planar",
+        "octahedral",
+    ]
+    siteIndex: NotRequired[int]
+
+class StudioConsoleCompletionItem(TypedDict):
+    id: str
+    label: str
+    insertText: str
+    kind: Literal["command", "option", "choice", "argument", "file", "project", "server"]
+    detail: str
+    appendSpace: bool
+
+class StudioConsoleCompletionDiagnostic(TypedDict):
+    code: Literal["unsupported_shell_syntax", "invalid_prefix", "value_required"]
+    message: str
+
+class StudioConsoleCompletionResult(TypedDict):
+    commandPath: list[str]
+    replaceRange: dict[str, int]
+    items: list[StudioConsoleCompletionItem]
+    diagnostic: NotRequired[StudioConsoleCompletionDiagnostic]
 
 class MoleculeAtom(TypedDict):
     id: str
@@ -1422,7 +1406,7 @@ class OptimizationRun(TypedDict):
     runId: str
     documentId: str
     inputRevision: int
-    engine: Literal["avogadro", "xtb", "gaussian", "orca"]
+    engine: Literal["xtb", "gaussian", "orca"]
     method: str
     settings: OptimizationSettings
     frozenAtomIds: list[str]
@@ -1482,8 +1466,8 @@ class ControlledCalculationBinding(TypedDict):
     draftId: NotRequired[str]
 
 class ControlledCalculationExecutableIdentity(TypedDict):
-    kind: Literal["native_editor", "local_executable"]
-    engine: Literal["avogadro", "xtb"]
+    kind: Literal["local_executable"]
+    engine: Literal["xtb"]
     version: str
     architecture: str
     executableDigest: str
@@ -1496,7 +1480,7 @@ class PreparedControlledCalculation(TypedDict):
     type: Literal["prepared_controlled_calculation"]
     planId: str
     binding: ControlledCalculationBinding
-    engine: Literal["avogadro", "xtb"]
+    engine: Literal["xtb"]
     method: str
     settings: ControlledCalculationSettings
     settingsDigest: str
@@ -1901,56 +1885,6 @@ ProjectWorkspaceResult = (
     | ProjectWorkspaceCritiqueResult
 )
 
-class StudioUiUpdateInput(TypedDict):
-    kind: Literal["status", "progress", "molecule_focus", "notice"]
-    message: str
-    documentId: NotRequired[str]
-    revision: NotRequired[int]
-    atomIds: NotRequired[list[str]]
-    bondIds: NotRequired[list[str]]
-    runId: NotRequired[str]
-    stepIndex: NotRequired[int]
-    totalSteps: NotRequired[int]
-    progress: NotRequired[float]
-    phase: NotRequired[str]
-    toolName: NotRequired[str]
-    target: NotRequired[Literal["coordinates", "measurements", "constraints", "decisions", "activity"]]
-    extensions: Extensions
-
-class StudioUiEventPayload(TypedDict):
-    message: str
-    documentId: NotRequired[str]
-    revision: NotRequired[int]
-    atomIds: NotRequired[list[str]]
-    bondIds: NotRequired[list[str]]
-    runId: NotRequired[str]
-    stepIndex: NotRequired[int]
-    totalSteps: NotRequired[int]
-    progress: NotRequired[float]
-    phase: NotRequired[str]
-    toolName: NotRequired[str]
-    target: NotRequired[Literal["coordinates", "measurements", "constraints", "decisions", "activity"]]
-
-class StudioUiEvent(TypedDict):
-    eventId: str
-    sessionId: str
-    sequence: int
-    timestamp: str
-    source: Literal["model_tool", "runtime"]
-    kind: Literal["status", "progress", "molecule_focus", "notice", "agent_thought", "inspector_target"]
-    payload: StudioUiEventPayload
-    extensions: Extensions
-
-class StudioUiDeliveryError(TypedDict):
-    code: Literal["SCHEMA_INVALID", "EVENT_INVALID", "EVENT_TOO_LARGE", "LEDGER_WRITE_FAILED", "DELIVERY_REJECTED", "EVENT_OUT_OF_ORDER", "REVISION_CONFLICT", "EDITOR_UNAVAILABLE", "RPC_TIMEOUT"]
-    message: str
-
-class StudioUiDelivery(TypedDict):
-    accepted: bool
-    eventId: NotRequired[str]
-    sequence: NotRequired[int]
-    error: NotRequired[StudioUiDeliveryError]
-
 class StudioControlMoleculeSummary(TypedDict):
     documentId: str
     revision: int
@@ -1975,7 +1909,7 @@ class CalculationStartApproval(TypedDict):
     risk: Literal["calculation_execution"]
     documentId: str
     expectedRevision: int
-    engine: Literal["avogadro", "xtb", "gaussian", "orca"]
+    engine: Literal["xtb", "gaussian", "orca"]
     method: str
     settings: OptimizationSettings
     allowActionId: str
@@ -1990,8 +1924,8 @@ class ControlledCalculationStartApproval(TypedDict):
     risk: Literal["calculation_execution"]
     documentId: str
     expectedRevision: int
-    engine: Literal["avogadro", "xtb"]
-    method: Literal["UFF", "GFN2-xTB"]
+    engine: Literal["xtb"]
+    method: Literal["GFN2-xTB"]
     settings: ControlledCalculationSettings
     planId: str
     planDigest: str
@@ -2128,7 +2062,7 @@ class CommitMoleculePreviewArguments(TypedDict):
     expected_revision: int
 
 class StartMoleculeOptimizationArguments(TypedDict):
-    engine: Literal["avogadro", "xtb", "gaussian", "orca"]
+    engine: Literal["xtb", "gaussian", "orca"]
     method: str
     settings: OptimizationSettings
     expected_revision: int
@@ -2242,7 +2176,7 @@ class PreviewIdRevisionParams(TypedDict):
     expectedRevision: int
 
 class StartOptimizationParams(TypedDict):
-    engine: Literal["avogadro", "xtb", "gaussian", "orca"]
+    engine: Literal["xtb", "gaussian", "orca"]
     method: str
     settings: OptimizationSettings
     expectedRevision: int
@@ -2322,7 +2256,6 @@ StudioAgentMoleculeRequest = (
     | RejectFinalGeometryRequest
 )
 
-EMIT_STUDIO_UI_UPDATE_TOOL = {tool_literal}
 MOLECULE_PATCH_RUNTIME_SCHEMA = {molecule_patch_runtime_schema_literal}
 STUDIO_DRAFT_RUNTIME_SCHEMA = {studio_draft_runtime_schema_literal}
 MANIFEST_RUNTIME_SCHEMA = {manifest_runtime_schema_literal}
@@ -2333,11 +2266,8 @@ MOLECULE_COMMIT_RECEIPT_RUNTIME_SCHEMA = {molecule_commit_receipt_runtime_schema
 OPTIMIZATION_RUNTIME_SCHEMA = {optimization_runtime_schema_literal}
 OPTIMIZATION_REPLAY_RUNTIME_SCHEMA = {optimization_replay_runtime_schema_literal}
 OPTIMIZATION_TRAJECTORY_RUNTIME_SCHEMA = {optimization_trajectory_runtime_schema_literal}
-STUDIO_UI_EVENT_SCHEMA = {event_schema_literal}
-STUDIO_UI_EVENT_RUNTIME_SCHEMA = {runtime_schema_literal}
 STUDIO_AGENT_TRACE_EVENT_RUNTIME_SCHEMA = {agent_trace_runtime_schema_literal}
 STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA = {agent_workbench_runtime_schema_literal}
-STUDIO_UI_DELIVERY_SCHEMA = {delivery_schema_literal}
 STUDIO_CONTROL_SCHEMA = {control_schema_literal}
 STUDIO_CONTROL_RUNTIME_SCHEMA = {control_runtime_schema_literal}
 STUDIO_APPROVAL_REQUEST_SCHEMA = {approval_request_schema_literal}
@@ -2349,6 +2279,11 @@ CONTROLLED_CALCULATION_RUNTIME_SCHEMA = {controlled_calculation_runtime_schema_l
 COMMAND_INSPECTION_RUNTIME_SCHEMA = {command_inspection_runtime_schema_literal}
 COMMAND_SYNTHESIS_RUNTIME_SCHEMA = {command_synthesis_runtime_schema_literal}
 PROJECT_WORKSPACE_RUNTIME_SCHEMA = {project_workspace_runtime_schema_literal}
+PROTOCOL_HELLO_RUNTIME_SCHEMA = {protocol_hello_runtime_schema_literal}
+STUDIO_AGENT_LIVE_EVENT_RUNTIME_SCHEMA = {studio_agent_live_event_runtime_schema_literal}
+STUDIO_AGENT_ACTION_CUE_RUNTIME_SCHEMA = {studio_agent_action_cue_runtime_schema_literal}
+STAGE_PLACEMENT_INTENT_RUNTIME_SCHEMA = {stage_placement_intent_runtime_schema_literal}
+STUDIO_CONSOLE_COMPLETION_RUNTIME_SCHEMA = {studio_console_completion_runtime_schema_literal}
 STUDIO_AGENT_TOOL_INPUT_SCHEMAS = {studio_agent_tool_input_schemas_literal}
 STUDIO_COMMON_SCHEMA = {common_schema_literal}
 """
@@ -2359,18 +2294,12 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     checksum = schema_hash()
-    tool = studio_ui_update_tool()
-    studio_ui_event_schema = json.loads(
-        (SCHEMAS / "studio-ui-event.schema.json").read_text()
-    )
+    chem_smart_pin = chem_smart_commit()
     studio_agent_trace_event_schema = json.loads(
         (SCHEMAS / "studio-agent-trace-event.schema.json").read_text()
     )
     studio_agent_workbench_schema = json.loads(
         (SCHEMAS / "studio-agent-workbench.schema.json").read_text()
-    )
-    studio_ui_delivery_schema = json.loads(
-        (SCHEMAS / "studio-ui-delivery.schema.json").read_text()
     )
     studio_control_schema = json.loads(
         (SCHEMAS / "studio-control.schema.json").read_text()
@@ -2415,9 +2344,6 @@ def main() -> int:
     project_workspace_schema = json.loads(
         (SCHEMAS / "project-workspace.schema.json").read_text()
     )
-    native_viewport_schema = json.loads(
-        (SCHEMAS / "native-viewport.schema.json").read_text()
-    )
     research_project_session_schema = json.loads(
         (SCHEMAS / "research-project-session.schema.json").read_text()
     )
@@ -2425,6 +2351,21 @@ def main() -> int:
         (SCHEMAS / "studio-agent-molecule-request.schema.json").read_text()
     )
     common_schema = json.loads((SCHEMAS / "common.schema.json").read_text())
+    protocol_hello_schema = json.loads(
+        (SCHEMAS / "protocol-hello.schema.json").read_text()
+    )
+    studio_agent_live_event_schema = json.loads(
+        (SCHEMAS / "studio-agent-live-event.schema.json").read_text()
+    )
+    studio_agent_action_cue_schema = json.loads(
+        (SCHEMAS / "studio-agent-action-cue.schema.json").read_text()
+    )
+    stage_placement_intent_schema = json.loads(
+        (SCHEMAS / "stage-placement-intent.schema.json").read_text()
+    )
+    studio_console_completion_schema = json.loads(
+        (SCHEMAS / "studio-console-completion.schema.json").read_text()
+    )
     schema_documents = {
         path.name: json.loads(path.read_text())
         for path in SCHEMAS.glob("*.schema.json")
@@ -2442,10 +2383,6 @@ def main() -> int:
         molecule_import_schema,
         "molecule-import.schema.json",
         schema_documents,
-    )
-    studio_ui_event_runtime_schema = bundle_studio_ui_event_schema(
-        studio_ui_event_schema,
-        common_schema,
     )
     studio_agent_trace_event_runtime_schema = bundle_studio_ui_event_schema(
         studio_agent_trace_event_schema,
@@ -2515,14 +2452,34 @@ def main() -> int:
         "project-workspace.schema.json",
         schema_documents,
     )
-    native_viewport_runtime_schema = bundle_protocol_schema(
-        native_viewport_schema,
-        "native-viewport.schema.json",
-        schema_documents,
-    )
     research_project_session_runtime_schema = bundle_protocol_schema(
         research_project_session_schema,
         "research-project-session.schema.json",
+        schema_documents,
+    )
+    protocol_hello_runtime_schema = bundle_protocol_schema(
+        protocol_hello_schema,
+        "protocol-hello.schema.json",
+        schema_documents,
+    )
+    studio_agent_live_event_runtime_schema = bundle_protocol_schema(
+        studio_agent_live_event_schema,
+        "studio-agent-live-event.schema.json",
+        schema_documents,
+    )
+    studio_agent_action_cue_runtime_schema = bundle_protocol_schema(
+        studio_agent_action_cue_schema,
+        "studio-agent-action-cue.schema.json",
+        schema_documents,
+    )
+    stage_placement_intent_runtime_schema = bundle_protocol_schema(
+        stage_placement_intent_schema,
+        "stage-placement-intent.schema.json",
+        schema_documents,
+    )
+    studio_console_completion_runtime_schema = bundle_protocol_schema(
+        studio_console_completion_schema,
+        "studio-console-completion.schema.json",
         schema_documents,
     )
     studio_agent_tool_input_schemas(
@@ -2546,7 +2503,7 @@ def main() -> int:
     outputs = {
         ROOT / "packages" / "studio-protocol" / "src" / "generated.ts": typescript(
             checksum,
-            tool,
+            chem_smart_pin,
             manifest_runtime_schema,
             molecule_document_runtime_schema,
             molecule_import_runtime_schema,
@@ -2557,11 +2514,8 @@ def main() -> int:
             optimization_runtime_schema,
             optimization_replay_runtime_schema,
             optimization_trajectory_runtime_schema,
-            studio_ui_event_schema,
-            studio_ui_event_runtime_schema,
             studio_agent_trace_event_runtime_schema,
             studio_agent_workbench_runtime_schema,
-            studio_ui_delivery_schema,
             studio_control_schema,
             studio_control_runtime_schema,
             studio_approval_request_schema,
@@ -2573,8 +2527,12 @@ def main() -> int:
             command_inspection_runtime_schema,
             command_synthesis_runtime_schema,
             project_workspace_runtime_schema,
-            native_viewport_runtime_schema,
             research_project_session_runtime_schema,
+            protocol_hello_runtime_schema,
+            studio_agent_live_event_runtime_schema,
+            studio_agent_action_cue_runtime_schema,
+            stage_placement_intent_runtime_schema,
+            studio_console_completion_runtime_schema,
             common_schema,
         ),
         ROOT
@@ -2584,7 +2542,7 @@ def main() -> int:
         / "chemsmart_studio_bridge"
         / "generated_protocol.py": python_types(
             checksum,
-            tool,
+            chem_smart_pin,
             manifest_runtime_schema,
             molecule_document_runtime_schema,
             molecule_import_runtime_schema,
@@ -2595,11 +2553,8 @@ def main() -> int:
             optimization_runtime_schema,
             optimization_replay_runtime_schema,
             optimization_trajectory_runtime_schema,
-            studio_ui_event_schema,
-            studio_ui_event_runtime_schema,
             studio_agent_trace_event_runtime_schema,
             studio_agent_workbench_runtime_schema,
-            studio_ui_delivery_schema,
             studio_control_schema,
             studio_control_runtime_schema,
             studio_approval_request_schema,
@@ -2611,6 +2566,11 @@ def main() -> int:
             command_inspection_runtime_schema,
             command_synthesis_runtime_schema,
             project_workspace_runtime_schema,
+            protocol_hello_runtime_schema,
+            studio_agent_live_event_runtime_schema,
+            studio_agent_action_cue_runtime_schema,
+            stage_placement_intent_runtime_schema,
+            studio_console_completion_runtime_schema,
             common_schema,
         ),
     }

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/molecule.schema.json",
+  "title": "MoleculeDocument",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "documentId",
+    "revision",
+    "atoms",
+    "bonds",
+    "selections",
+    "frozenAxes",
+    "constraints",
+    "properties",
+    "extensions"
+  ],
+  "properties": {
+    "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "revision": { "$ref": "common.schema.json#/$defs/revision" },
+    "atoms": { "type": "array", "items": { "$ref": "#/$defs/atom" } },
+    "bonds": { "type": "array", "items": { "$ref": "#/$defs/bond" } },
+    "selections": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/stableId" }, "uniqueItems": true },
+    "frozenAxes": {
+      "type": "object",
+      "propertyNames": { "$ref": "common.schema.json#/$defs/stableId" },
+      "additionalProperties": { "$ref": "common.schema.json#/$defs/axisMask" }
+    },
+    "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } },
+    "properties": { "$ref": "#/$defs/moleculeProperties" },
+    "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+  },
+  "$defs": {
+    "atom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "atomicNumber", "position", "formalCharge", "extensions"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "atomicNumber": { "type": "integer", "minimum": 1, "maximum": 118 },
+        "position": { "$ref": "common.schema.json#/$defs/vector3" },
+        "formalCharge": { "type": "integer", "minimum": -8, "maximum": 8 },
+        "isotope": { "type": "integer", "minimum": 1 },
+        "label": { "type": "string", "maxLength": 128 },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "bond": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "atomIds", "order", "extensions"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "atomIds": {
+          "type": "array",
+          "prefixItems": [
+            { "$ref": "common.schema.json#/$defs/stableId" },
+            { "$ref": "common.schema.json#/$defs/stableId" }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "order": { "type": "integer", "enum": [1, 2, 3] },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "constraint": {
+      "oneOf": [
+        { "$ref": "#/$defs/distanceConstraint" },
+        { "$ref": "#/$defs/angleConstraint" },
+        { "$ref": "#/$defs/dihedralConstraint" }
+      ]
+    },
+    "constraintBase": {
+      "type": "object",
+      "required": ["id", "type", "atomIds", "target", "unit", "extensions"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/stableId" },
+        "type": { "type": "string" },
+        "atomIds": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/stableId" }, "uniqueItems": true },
+        "target": { "type": "number" },
+        "unit": { "type": "string" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "distanceConstraint": {
+      "allOf": [
+        { "$ref": "#/$defs/constraintBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": true,
+            "type": { "const": "distance" },
+            "atomIds": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/stableId" },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "target": { "type": "number", "exclusiveMinimum": 0 },
+            "unit": { "const": "angstrom" },
+            "extensions": true
+          }
+        }
+      ]
+    },
+    "angleConstraint": {
+      "allOf": [
+        { "$ref": "#/$defs/constraintBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": true,
+            "type": { "const": "angle" },
+            "atomIds": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/stableId" },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "target": { "type": "number", "exclusiveMinimum": 0, "maximum": 180 },
+            "unit": { "const": "degree" },
+            "extensions": true
+          }
+        }
+      ]
+    },
+    "dihedralConstraint": {
+      "allOf": [
+        { "$ref": "#/$defs/constraintBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": true,
+            "type": { "const": "dihedral" },
+            "atomIds": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/stableId" },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "target": { "type": "number", "minimum": -360, "maximum": 360 },
+            "unit": { "const": "degree" },
+            "extensions": true
+          }
+        }
+      ]
+    },
+    "moleculeProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extensions"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 512 },
+        "charge": { "type": "integer", "minimum": -64, "maximum": 64 },
+        "multiplicity": { "type": "integer", "minimum": 1, "maximum": 128 },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    }
+  }
+}

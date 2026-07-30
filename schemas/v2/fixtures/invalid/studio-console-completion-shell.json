@@ -1,0 +1,14 @@
+{
+  "commandPath": ["chemsmart", "run"],
+  "replaceRange": { "start": 0, "end": 3 },
+  "items": [
+    {
+      "id": "completion-shell",
+      "label": "unsafe",
+      "insertText": "run; rm",
+      "kind": "command",
+      "detail": "Unsafe shell syntax.",
+      "appendSpace": false
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "commandPath": ["chemsmart", "run", "xtb", "sp"],
+  "replaceRange": { "start": 18, "end": 20 },
+  "items": [
+    {
+      "id": "completion-gfn",
+      "label": "--gfn",
+      "insertText": "--gfn ",
+      "kind": "option",
+      "detail": "Select the xTB parameterization.",
+      "appendSpace": true
+    }
+  ]
+}

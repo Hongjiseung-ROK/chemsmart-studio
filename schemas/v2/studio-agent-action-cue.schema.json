@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/studio-agent-action-cue.schema.json",
+  "title": "StudioAgentActionCue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cueId",
+    "turnId",
+    "documentId",
+    "revision",
+    "geometryHash",
+    "kind",
+    "phase",
+    "atomIds",
+    "bondIds",
+    "constraintIds",
+    "label"
+  ],
+  "properties": {
+    "cueId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "turnId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "revision": { "$ref": "common.schema.json#/$defs/revision" },
+    "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+    "kind": {
+      "enum": ["inspect", "place_atom", "set_bond", "freeze", "constrain", "move"]
+    },
+    "phase": { "enum": ["running", "succeeded", "failed", "cancelled"] },
+    "atomIds": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stableId" }
+    },
+    "bondIds": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stableId" }
+    },
+    "constraintIds": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stableId" }
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(?!.*[/\\\\])[^\\u0000-\\u001f\\u007f`<>]+$"
+    }
+  }
+}

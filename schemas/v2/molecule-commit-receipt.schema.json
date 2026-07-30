@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/molecule-commit-receipt.schema.json",
+  "title": "MoleculeCommitReceipt",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "stateHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  },
+  "required": ["type", "previewId", "revision", "timestamp", "geometryHash", "stateHash"],
+  "properties": {
+    "type": { "const": "molecule_commit" },
+    "previewId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "revision": { "$ref": "common.schema.json#/$defs/revision" },
+    "timestamp": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+    "stateHash": { "$ref": "#/$defs/stateHash" }
+  }
+}

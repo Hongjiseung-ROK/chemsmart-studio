@@ -55,8 +55,8 @@ from .project_workspace import (
 from .generated_protocol import (
     COMMAND_SYNTHESIS_RUNTIME_SCHEMA,
     CONTROLLED_CALCULATION_RUNTIME_SCHEMA,
-    PROJECT_WORKSPACE_RUNTIME_SCHEMA,
     OPTIMIZATION_TRAJECTORY_RUNTIME_SCHEMA,
+    PROJECT_WORKSPACE_RUNTIME_SCHEMA,
     STUDIO_APPROVAL_REQUEST_RUNTIME_SCHEMA,
     STUDIO_AGENT_MOLECULE_REQUEST_RUNTIME_SCHEMA,
     STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
@@ -64,6 +64,7 @@ from .generated_protocol import (
     STUDIO_CONTROL_RUNTIME_SCHEMA,
 )
 from .molecule_import import import_molecule
+from .protocol_identity import protocol_hello
 from .rpc import JsonRpcPeer, RpcFault
 from .studio_ui import StudioUiEventEmitter
 from .trajectory_store import (
@@ -1282,6 +1283,8 @@ class StudioAgentRuntime:
         return self
 
     def __call__(self, method: str, params: Any) -> Any:
+        if method == "system.protocol_hello":
+            return protocol_hello()
         if method == "system.ping":
             return {"ok": True, "component": "chemsmart-studio-bridge"}
         if method == "command.inspect":

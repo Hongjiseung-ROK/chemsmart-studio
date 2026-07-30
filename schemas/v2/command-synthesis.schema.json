@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/command-synthesis.schema.json",
+  "title": "ChemSmart command synthesis",
+  "oneOf": [{ "$ref": "#/$defs/request" }, { "$ref": "#/$defs/result" }],
+  "$defs": {
+    "boundedText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "\\S"
+    },
+    "command": {
+      "type": "string",
+      "maxLength": 8192,
+      "pattern": "^[^/\\\\\\u0000-\\u001F\\u007F]*$"
+    },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableDigest": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256Digest" }]
+    },
+    "nullableProjectName": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        }
+      ]
+    },
+    "ruleId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "ruleIds": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/ruleId" }
+    },
+    "intentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "failedRuleIds", "message", "extensions"],
+      "properties": {
+        "verdict": { "enum": ["ok", "warn", "reject", "unavailable"] },
+        "failedRuleIds": { "$ref": "#/$defs/ruleIds" },
+        "message": { "$ref": "#/$defs/boundedText" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "semanticSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "failedRuleIds", "message", "extensions"],
+      "properties": {
+        "verdict": { "enum": ["ok", "warn", "reject", "unavailable"] },
+        "failedRuleIds": { "$ref": "#/$defs/ruleIds" },
+        "message": { "$ref": "#/$defs/boundedText" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "publicEvidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceId", "kind", "verdict", "summary", "ruleIds", "extensions"],
+      "properties": {
+        "evidenceId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "kind": {
+          "enum": ["intentGate", "semanticGate", "projectResolution", "commandValidation"]
+        },
+        "verdict": { "enum": ["ok", "warn", "reject", "unavailable"] },
+        "summary": { "$ref": "#/$defs/boundedText" },
+        "ruleIds": { "$ref": "#/$defs/ruleIds" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "modelId", "request", "extensions"],
+      "properties": {
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "modelId": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 512,
+          "pattern": "^[^:\\u0000-\\u001F\\u007F]+::[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "request": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "\\S"
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "synthesisId",
+        "sessionId",
+        "status",
+        "command",
+        "commandDigest",
+        "explanation",
+        "projectName",
+        "missingInfo",
+        "intent",
+        "semantic",
+        "publicEvidence",
+        "executionPerformed",
+        "approvalRequiredForExecution",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "synthesisId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "status": {
+          "enum": ["ready", "needsClarification", "intentRejected", "semanticRejected", "infeasible", "informational"]
+        },
+        "command": { "$ref": "#/$defs/command" },
+        "commandDigest": { "$ref": "#/$defs/nullableDigest" },
+        "explanation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000,
+          "pattern": "\\S"
+        },
+        "projectName": { "$ref": "#/$defs/nullableProjectName" },
+        "missingInfo": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/boundedText" }
+        },
+        "intent": { "$ref": "#/$defs/intentSummary" },
+        "semantic": { "$ref": "#/$defs/semanticSummary" },
+        "publicEvidence": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/publicEvidenceItem" }
+        },
+        "executionPerformed": { "const": false },
+        "approvalRequiredForExecution": { "const": true },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "ready" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "command": {
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "commandDigest": { "$ref": "#/$defs/sha256Digest" },
+              "intent": {
+                "properties": { "verdict": { "const": "ok" } }
+              },
+              "semantic": {
+                "properties": { "verdict": { "const": "ok" } }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

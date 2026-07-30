@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/molecule-patch.schema.json",
+  "title": "MoleculePatch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operationId", "baseRevision", "actor", "previewOnly", "operations", "extensions"],
+  "properties": {
+    "operationId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "baseRevision": { "$ref": "common.schema.json#/$defs/revision" },
+    "actor": { "enum": ["human", "agent", "system"] },
+    "previewOnly": { "const": true },
+    "operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/operation" } },
+    "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+  },
+  "$defs": {
+    "operation": {
+      "oneOf": [
+        { "$ref": "#/$defs/addAtoms" },
+        { "$ref": "#/$defs/removeAtoms" },
+        { "$ref": "#/$defs/addBonds" },
+        { "$ref": "#/$defs/removeBonds" },
+        { "$ref": "#/$defs/setPositions" },
+        { "$ref": "#/$defs/setAtomicNumbers" },
+        { "$ref": "#/$defs/setBondOrders" },
+        { "$ref": "#/$defs/setSelection" },
+        { "$ref": "#/$defs/setFrozenAxes" },
+        { "$ref": "#/$defs/setConstraints" },
+        { "$ref": "#/$defs/removeConstraints" }
+      ]
+    },
+    "addAtoms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "atoms"],
+      "properties": {
+        "op": { "const": "add_atoms" },
+        "atoms": { "type": "array", "minItems": 1, "items": { "$ref": "molecule.schema.json#/$defs/atom" } }
+      }
+    },
+    "removeAtoms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "atomIds"],
+      "properties": {
+        "op": { "const": "remove_atoms" },
+        "atomIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "addBonds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "bonds"],
+      "properties": {
+        "op": { "const": "add_bonds" },
+        "bonds": { "type": "array", "minItems": 1, "items": { "$ref": "molecule.schema.json#/$defs/bond" } }
+      }
+    },
+    "removeBonds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "bondIds"],
+      "properties": {
+        "op": { "const": "remove_bonds" },
+        "bondIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "setPositions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "positions"],
+      "properties": {
+        "op": { "const": "set_positions" },
+        "positions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["atomId", "position"],
+            "properties": {
+              "atomId": { "$ref": "common.schema.json#/$defs/stableId" },
+              "position": { "$ref": "common.schema.json#/$defs/vector3" }
+            }
+          }
+        }
+      }
+    },
+    "setAtomicNumbers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "atoms"],
+      "properties": {
+        "op": { "const": "set_atomic_numbers" },
+        "atoms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["atomId", "atomicNumber"],
+            "properties": {
+              "atomId": { "$ref": "common.schema.json#/$defs/stableId" },
+              "atomicNumber": { "type": "integer", "minimum": 1, "maximum": 118 }
+            }
+          }
+        }
+      }
+    },
+    "setBondOrders": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "bonds"],
+      "properties": {
+        "op": { "const": "set_bond_orders" },
+        "bonds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bondId", "order"],
+            "properties": {
+              "bondId": { "$ref": "common.schema.json#/$defs/stableId" },
+              "order": { "type": "integer", "enum": [1, 2, 3] }
+            }
+          }
+        }
+      }
+    },
+    "setSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "atomIds"],
+      "properties": {
+        "op": { "const": "set_selection" },
+        "atomIds": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/stableId" }, "uniqueItems": true }
+      }
+    },
+    "setFrozenAxes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "masks"],
+      "properties": {
+        "op": { "const": "set_frozen_axes" },
+        "masks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["atomId", "axes"],
+            "properties": {
+              "atomId": { "$ref": "common.schema.json#/$defs/stableId" },
+              "axes": { "$ref": "common.schema.json#/$defs/axisMask" }
+            }
+          }
+        }
+      }
+    },
+    "setConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "constraints"],
+      "properties": {
+        "op": { "const": "set_constraints" },
+        "constraints": { "type": "array", "minItems": 1, "items": { "$ref": "molecule.schema.json#/$defs/constraint" } }
+      }
+    },
+    "removeConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "constraintIds"],
+      "properties": {
+        "op": { "const": "remove_constraints" },
+        "constraintIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/stableId" },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

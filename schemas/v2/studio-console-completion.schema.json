@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/studio-console-completion.schema.json",
+  "title": "StudioConsoleCompletionResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commandPath", "replaceRange", "items"],
+  "properties": {
+    "commandPath": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]*$"
+      }
+    },
+    "replaceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "insertText", "kind", "detail", "appendSpace"],
+        "properties": {
+          "id": { "$ref": "common.schema.json#/$defs/stableId" },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+          },
+          "insertText": {
+            "type": "string",
+            "maxLength": 1024,
+            "pattern": "^[^\\u0000\\r\\n;&|<>]*$"
+          },
+          "kind": {
+            "enum": ["command", "option", "choice", "argument", "file", "project", "server"]
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 512,
+            "pattern": "^[^\\u0000\\r\\n]*$"
+          },
+          "appendSpace": { "type": "boolean" }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "enum": ["unsupported_shell_syntax", "invalid_prefix", "value_required"]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        }
+      }
+    }
+  }
+}

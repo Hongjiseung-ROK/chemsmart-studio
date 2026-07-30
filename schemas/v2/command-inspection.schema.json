@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/command-inspection.schema.json",
+  "title": "ChemSmart command inspection",
+  "$ref": "#/$defs/result",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "command"],
+      "properties": {
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "intentDescription": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        }
+      }
+    },
+    "nullableText": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
+        }
+      ]
+    },
+    "displayName": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\\\u0000-\\u001F\\u007F]+$"
+        }
+      ]
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["functional", "abInitio", "basis", "auxBasis", "solventModel", "solventId"],
+      "properties": {
+        "functional": { "$ref": "#/$defs/nullableText" },
+        "abInitio": { "$ref": "#/$defs/nullableText" },
+        "basis": { "$ref": "#/$defs/nullableText" },
+        "auxBasis": { "$ref": "#/$defs/nullableText" },
+        "solventModel": { "$ref": "#/$defs/nullableText" },
+        "solventId": { "$ref": "#/$defs/nullableText" }
+      }
+    },
+    "parseSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "action", "program", "job", "project", "inputName", "charge", "multiplicity", "method"],
+      "properties": {
+        "accepted": { "type": "boolean" },
+        "action": {
+          "oneOf": [{ "type": "null" }, { "enum": ["run", "sub"] }]
+        },
+        "program": {
+          "oneOf": [{ "type": "null" }, { "enum": ["gaussian", "orca", "xtb"] }]
+        },
+        "job": { "$ref": "#/$defs/nullableText" },
+        "project": { "$ref": "#/$defs/nullableText" },
+        "inputName": { "$ref": "#/$defs/displayName" },
+        "charge": { "$ref": "#/$defs/nullableText" },
+        "multiplicity": { "$ref": "#/$defs/nullableText" },
+        "method": { "$ref": "#/$defs/method" }
+      }
+    },
+    "intentAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^intent\\.[a-z0-9_.-]+$"
+        },
+        "status": { "enum": ["pass", "fail"] }
+      }
+    },
+    "intentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "failedRuleIds", "assertions"],
+      "properties": {
+        "verdict": { "enum": ["ok", "reject", "unavailable"] },
+        "failedRuleIds": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^intent\\.[a-z0-9_.-]+$"
+          }
+        },
+        "assertions": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/intentAssertion" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "verdict": { "const": "unavailable" } },
+            "required": ["verdict"]
+          },
+          "then": {
+            "properties": {
+              "failedRuleIds": { "maxItems": 0 },
+              "assertions": { "maxItems": 0 }
+            }
+          },
+          "else": {
+            "properties": { "assertions": { "minItems": 1 } }
+          }
+        }
+      ]
+    },
+    "semanticIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleId", "severity", "message"],
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^cmd\\.[a-z0-9_.-]+$"
+        },
+        "severity": { "enum": ["warn", "reject"] },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      }
+    },
+    "semanticSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "complete", "failedRuleIds", "missingInfo", "issues"],
+      "properties": {
+        "verdict": { "enum": ["ok", "warn", "reject"] },
+        "complete": { "const": false },
+        "failedRuleIds": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^cmd\\.[a-z0-9_.-]+$"
+          }
+        },
+        "missingInfo": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/semanticIssue" }
+        }
+      }
+    },
+    "dryRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "processStarted"],
+      "properties": {
+        "state": { "const": "required" },
+        "processStarted": { "const": false }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "inspectionId",
+        "sessionId",
+        "status",
+        "commandDigest",
+        "parse",
+        "intent",
+        "semantic",
+        "dryRun",
+        "executionPerformed",
+        "approvalRequiredForExecution",
+        "missingInfo",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "inspectionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "status": {
+          "enum": ["ready_for_dry_run", "needs_clarification", "intent_reject", "rejected"]
+        },
+        "commandDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "parse": { "$ref": "#/$defs/parseSummary" },
+        "intent": { "$ref": "#/$defs/intentSummary" },
+        "semantic": { "$ref": "#/$defs/semanticSummary" },
+        "dryRun": { "$ref": "#/$defs/dryRun" },
+        "executionPerformed": { "const": false },
+        "approvalRequiredForExecution": { "const": true },
+        "missingInfo": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "ready_for_dry_run" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "intent": {
+                "properties": { "verdict": { "const": "ok" } }
+              },
+              "semantic": {
+                "properties": {
+                  "verdict": { "enum": ["ok", "warn"] }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "needs_clarification" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "intent": {
+                "properties": { "verdict": { "const": "unavailable" } }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

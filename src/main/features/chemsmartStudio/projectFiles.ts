@@ -3,9 +3,11 @@ import { lstat, mkdir, readFile, realpath } from 'node:fs/promises'
 import path from 'node:path'
 
 import {
+  isHistoricalProjectManifestV1,
   manifestRuntimeSchema,
   type MoleculeDocument,
   moleculeDocumentRuntimeSchema,
+  normalizeHistoricalProjectManifest,
   type ProjectManifest
 } from '@chemsmart/studio-protocol'
 import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation'
@@ -92,11 +94,14 @@ export function validateProjectState(
   manifest: ProjectManifest
   document: MoleculeDocument
 } {
-  const manifestResult = manifestValidator(manifest)
+  const normalizedManifest = isHistoricalProjectManifestV1(manifest)
+    ? normalizeHistoricalProjectManifest(manifest).manifest
+    : manifest
+  const manifestResult = manifestValidator(normalizedManifest)
   if (!manifestResult.valid) throw invalidProject('manifest.json does not match the protocol')
   const moleculeResult = moleculeValidator(document)
   if (!moleculeResult.valid) throw invalidProject('molecule.json does not match the protocol')
-  const verifiedManifest = manifest as ProjectManifest
+  const verifiedManifest = normalizedManifest as ProjectManifest
   const verifiedDocument = document as MoleculeDocument
   validateMoleculeSemantics(verifiedDocument)
   if (
