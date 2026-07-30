@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "2",
+  "projectName": "b3lyp-water",
+  "program": "gaussian",
+  "digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "yamlText": "gas:\n  functional: b3lyp\nsolv:\n  functional: b3lyp\n",
+  "sections": [
+    {
+      "id": "section-gas",
+      "label": "Gas",
+      "source": "explicit",
+      "fields": [
+        {
+          "id": "field-gas-functional",
+          "label": "Functional",
+          "path": ["gas", "functional"],
+          "kind": "string",
+          "value": "b3lyp",
+          "source": "explicit",
+          "recognized": true,
+          "extensions": {}
+        }
+      ],
+      "extensions": {}
+    }
+  ],
+  "validation": {
+    "verdict": "ok",
+    "issues": [],
+    "message": "Project YAML passed ChemSmart validation.",
+    "extensions": {}
+  },
+  "unknownNodes": [],
+  "extensions": {}
+}

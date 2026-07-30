@@ -9,6 +9,7 @@ interface MoleculeTabsProps {
   busy: boolean
   documents: ChemSmartStudioOpenDocuments | null
   onActivate: (projectId: string) => void
+  surfaceActive?: boolean
 }
 
 /**
@@ -22,7 +23,7 @@ interface MoleculeTabsProps {
  * Tabs are named by opaque handle: the renderer never learns where a project lives. Opening and
  * importing stay with the document section's own controls; this strip only switches.
  */
-export function MoleculeTabs({ busy, documents, onActivate }: MoleculeTabsProps) {
+export function MoleculeTabs({ busy, documents, onActivate, surfaceActive = true }: MoleculeTabsProps) {
   const { t } = useTranslation()
 
   return (
@@ -32,7 +33,8 @@ export function MoleculeTabs({ busy, documents, onActivate }: MoleculeTabsProps)
       data-testid="molecule-tabs"
       role="tablist">
       {documents?.documents.map((entry) => {
-        const active = entry.projectId === documents.activeProjectId
+        const currentProject = entry.projectId === documents.activeProjectId
+        const active = surfaceActive && currentProject
         return (
           <Button
             aria-selected={active}

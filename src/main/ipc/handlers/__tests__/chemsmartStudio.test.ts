@@ -19,6 +19,7 @@ const agent = {
   getStatus: vi.fn(() => ({ state: 'running', pid: 42, lastError: null })),
   listProjects: vi.fn(),
   readProject: vi.fn(),
+  documentProject: vi.fn(),
   validateProject: vi.fn(),
   critiqueProject: vi.fn(),
   synthesizeCommand: vi.fn(),
@@ -262,6 +263,7 @@ describe('chemsmartStudioHandlers', () => {
 
   it('passes only closed project and synthesis contracts to the agent service', async () => {
     const listRequest = { extensions: {} }
+    const documentRequest = { extensions: {}, program: 'gaussian' as const, projectName: 'water' }
     const synthesisRequest = {
       sessionId: 'session-1',
       modelId: 'provider::model' as const,
@@ -269,12 +271,15 @@ describe('chemsmartStudioHandlers', () => {
       extensions: {}
     }
     agent.listProjects.mockResolvedValueOnce({ schemaVersion: '1', programs: [], extensions: {} })
+    agent.documentProject.mockResolvedValueOnce({ schemaVersion: '2', projectName: 'water' })
     agent.synthesizeCommand.mockResolvedValueOnce({ schemaVersion: '1', synthesisId: 'synthesis-1' })
 
     await chemsmartStudioHandlers['chemsmart_studio.project.list'](listRequest, ctx)
+    await chemsmartStudioHandlers['chemsmart_studio.project.document'](documentRequest, ctx)
     await chemsmartStudioHandlers['chemsmart_studio.command.synthesize'](synthesisRequest, ctx)
 
     expect(agent.listProjects).toHaveBeenCalledWith(listRequest)
+    expect(agent.documentProject).toHaveBeenCalledWith(documentRequest)
     expect(agent.synthesizeCommand).toHaveBeenCalledWith(synthesisRequest, 'main-window')
     expect(chemsmartStudioHandlers).not.toHaveProperty('chemsmart_studio.project.render')
     expect(chemsmartStudioHandlers).not.toHaveProperty('chemsmart_studio.project.write')

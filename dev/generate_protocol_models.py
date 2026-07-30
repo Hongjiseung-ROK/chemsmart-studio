@@ -710,12 +710,27 @@ export interface ProjectWorkspaceListRequest {{ extensions: Extensions }}
 export interface ProjectWorkspaceListResult {{ schemaVersion: '1'; programs: ProjectWorkspaceProgramListing[]; extensions: Extensions }}
 export interface ProjectWorkspaceReadRequest {{ projectName: string; program: ProjectWorkspaceProgram; extensions: Extensions }}
 export interface ProjectWorkspaceReadResult {{ schemaVersion: '1'; projectName: string; program: ProjectWorkspaceProgram; yamlText: string; extensions: Extensions }}
+export type ProjectWorkspaceProjectedSource = 'explicit' | 'inherited'
+export type ProjectWorkspaceProjectedValue = null | boolean | number | string
+export interface ProjectWorkspaceProjectedField {{ id: StableId; label: string; path: string[]; kind: 'null' | 'boolean' | 'number' | 'string'; value: ProjectWorkspaceProjectedValue; source: ProjectWorkspaceProjectedSource; recognized: boolean; extensions: Extensions }}
+export interface ProjectWorkspaceProjectedSection {{ id: StableId; label: string; source: ProjectWorkspaceProjectedSource; fields: ProjectWorkspaceProjectedField[]; extensions: Extensions }}
+export interface ProjectWorkspaceUnknownNode {{ id: StableId; path: string[]; kind: 'mapping' | 'sequence' | 'scalar'; value: ProjectWorkspaceProjectedValue; children: ProjectWorkspaceUnknownNode[]; source: 'explicit'; extensions: Extensions }}
+export interface ProjectWorkspaceDocumentValidation {{ verdict: ProjectWorkspaceVerdict; issues: ProjectWorkspaceIssue[]; message: string; extensions: Extensions }}
+export interface ProjectWorkspaceDocumentRequest {{ projectName: string; program: ProjectWorkspaceProgram; extensions: Extensions }}
+export interface ProjectWorkspaceDocumentResult {{ schemaVersion: '2'; projectName: string; program: ProjectWorkspaceProgram; digest: string; yamlText: string; sections: ProjectWorkspaceProjectedSection[]; validation: ProjectWorkspaceDocumentValidation; unknownNodes: ProjectWorkspaceUnknownNode[]; extensions: Extensions }}
 export interface ProjectWorkspaceValidateRequest {{ projectName: string; program: ProjectWorkspaceProgram; yamlText: string; extensions: Extensions }}
 export interface ProjectWorkspaceValidateResult {{ schemaVersion: '1'; projectName: string; program: ProjectWorkspaceProgram; verdict: ProjectWorkspaceVerdict; issues: ProjectWorkspaceIssue[]; message: string; extensions: Extensions }}
 export interface ProjectWorkspaceCritiqueRequest {{ projectName: string; program: ProjectWorkspaceProgram; yamlText: string; extensions: Extensions }}
 export interface ProjectWorkspaceCritiqueResult {{ schemaVersion: '1'; projectName: string; program: ProjectWorkspaceProgram; verdict: ProjectWorkspaceVerdict; issues: ProjectWorkspaceIssue[]; summary: string; unsupportedFeatures: string[]; extensions: Extensions }}
-export type ProjectWorkspaceRequest = ProjectWorkspaceListRequest | ProjectWorkspaceReadRequest | ProjectWorkspaceValidateRequest | ProjectWorkspaceCritiqueRequest
-export type ProjectWorkspaceResult = ProjectWorkspaceListResult | ProjectWorkspaceReadResult | ProjectWorkspaceValidateResult | ProjectWorkspaceCritiqueResult
+export interface ProjectWorkspaceRegisterCandidateRequest {{ document: ProjectWorkspaceDocumentResult; unsupportedFeatures: string[]; extensions: Extensions }}
+export type ProjectWorkspaceCandidateStatus = 'pending' | 'written' | 'denied' | 'expired' | 'stale' | 'failed'
+export interface ProjectWorkspaceCandidateSummary {{ schemaVersion: '2'; previewId: StableId; projectName: string; program: ProjectWorkspaceProgram; baseDigest: string | null; candidateDigest: string; expectedRevision: number; overwrite: boolean; changedSections: string[]; verdict: ProjectWorkspaceVerdict; issueRuleIds: string[]; status: ProjectWorkspaceCandidateStatus; createdAt: string; expiresAt: string; extensions: Extensions }}
+export interface ProjectWorkspaceCandidateQueryRequest {{ sessionId: StableId; previewId: StableId; extensions: Extensions }}
+export interface ProjectWorkspaceCandidateResult {{ candidate: ProjectWorkspaceCandidateSummary; document: ProjectWorkspaceDocumentResult; extensions: Extensions }}
+export interface ProjectWorkspaceCandidateDecisionRequest {{ sessionId: StableId; previewId: StableId; baseDigest: string | null; candidateDigest: string; expectedRevision: number; decision: 'allow_once' | 'deny'; extensions: Extensions }}
+export interface ProjectWorkspaceCandidateDecisionResult {{ previewId: StableId; candidateDigest: string; status: Exclude<ProjectWorkspaceCandidateStatus, 'pending'>; extensions: Extensions }}
+export type ProjectWorkspaceRequest = ProjectWorkspaceListRequest | ProjectWorkspaceReadRequest | ProjectWorkspaceDocumentRequest | ProjectWorkspaceValidateRequest | ProjectWorkspaceCritiqueRequest | ProjectWorkspaceRegisterCandidateRequest | ProjectWorkspaceCandidateQueryRequest | ProjectWorkspaceCandidateDecisionRequest
+export type ProjectWorkspaceResult = ProjectWorkspaceListResult | ProjectWorkspaceReadResult | ProjectWorkspaceDocumentResult | ProjectWorkspaceValidateResult | ProjectWorkspaceCritiqueResult | ProjectWorkspaceCandidateSummary | ProjectWorkspaceCandidateResult | ProjectWorkspaceCandidateDecisionResult
 
 export interface StudioControlMoleculeSummary {{ documentId: StableId; revision: number }}
 export interface PreviewCommitApproval {{ kind: 'preview_commit'; requestId: StableId; approvalId: StableId; requestedAt: string; expiresAt: string; risk: 'molecule_mutation'; receipt: PreviewReceipt; commitActionId: StableId; discardActionId: StableId }}
@@ -1871,6 +1886,57 @@ class ProjectWorkspaceReadResult(TypedDict):
     yamlText: str
     extensions: Extensions
 
+ProjectWorkspaceProjectedSource = Literal["explicit", "inherited"]
+ProjectWorkspaceProjectedValue = bool | int | float | str | None
+
+class ProjectWorkspaceProjectedField(TypedDict):
+    id: str
+    label: str
+    path: list[str]
+    kind: Literal["null", "boolean", "number", "string"]
+    value: ProjectWorkspaceProjectedValue
+    source: ProjectWorkspaceProjectedSource
+    recognized: bool
+    extensions: Extensions
+
+class ProjectWorkspaceProjectedSection(TypedDict):
+    id: str
+    label: str
+    source: ProjectWorkspaceProjectedSource
+    fields: list[ProjectWorkspaceProjectedField]
+    extensions: Extensions
+
+class ProjectWorkspaceUnknownNode(TypedDict):
+    id: str
+    path: list[str]
+    kind: Literal["mapping", "sequence", "scalar"]
+    value: ProjectWorkspaceProjectedValue
+    children: list[ProjectWorkspaceUnknownNode]
+    source: Literal["explicit"]
+    extensions: Extensions
+
+class ProjectWorkspaceDocumentValidation(TypedDict):
+    verdict: ProjectWorkspaceVerdict
+    issues: list[ProjectWorkspaceIssue]
+    message: str
+    extensions: Extensions
+
+class ProjectWorkspaceDocumentRequest(TypedDict):
+    projectName: str
+    program: ProjectWorkspaceProgram
+    extensions: Extensions
+
+class ProjectWorkspaceDocumentResult(TypedDict):
+    schemaVersion: Literal["2"]
+    projectName: str
+    program: ProjectWorkspaceProgram
+    digest: str
+    yamlText: str
+    sections: list[ProjectWorkspaceProjectedSection]
+    validation: ProjectWorkspaceDocumentValidation
+    unknownNodes: list[ProjectWorkspaceUnknownNode]
+    extensions: Extensions
+
 class ProjectWorkspaceValidateRequest(TypedDict):
     projectName: str
     program: ProjectWorkspaceProgram
@@ -1902,17 +1968,76 @@ class ProjectWorkspaceCritiqueResult(TypedDict):
     unsupportedFeatures: list[str]
     extensions: Extensions
 
+class ProjectWorkspaceRegisterCandidateRequest(TypedDict):
+    document: ProjectWorkspaceDocumentResult
+    unsupportedFeatures: list[str]
+    extensions: Extensions
+
+ProjectWorkspaceCandidateStatus = Literal[
+    "pending", "written", "denied", "expired", "stale", "failed"
+]
+
+class ProjectWorkspaceCandidateSummary(TypedDict):
+    schemaVersion: Literal["2"]
+    previewId: str
+    projectName: str
+    program: ProjectWorkspaceProgram
+    baseDigest: str | None
+    candidateDigest: str
+    expectedRevision: int
+    overwrite: bool
+    changedSections: list[str]
+    verdict: ProjectWorkspaceVerdict
+    issueRuleIds: list[str]
+    status: ProjectWorkspaceCandidateStatus
+    createdAt: str
+    expiresAt: str
+    extensions: Extensions
+
+class ProjectWorkspaceCandidateQueryRequest(TypedDict):
+    sessionId: str
+    previewId: str
+    extensions: Extensions
+
+class ProjectWorkspaceCandidateResult(TypedDict):
+    candidate: ProjectWorkspaceCandidateSummary
+    document: ProjectWorkspaceDocumentResult
+    extensions: Extensions
+
+class ProjectWorkspaceCandidateDecisionRequest(TypedDict):
+    sessionId: str
+    previewId: str
+    baseDigest: str | None
+    candidateDigest: str
+    expectedRevision: int
+    decision: Literal["allow_once", "deny"]
+    extensions: Extensions
+
+class ProjectWorkspaceCandidateDecisionResult(TypedDict):
+    previewId: str
+    candidateDigest: str
+    status: Literal["written", "denied", "expired", "stale", "failed"]
+    extensions: Extensions
+
 ProjectWorkspaceRequest = (
     ProjectWorkspaceListRequest
     | ProjectWorkspaceReadRequest
+    | ProjectWorkspaceDocumentRequest
     | ProjectWorkspaceValidateRequest
     | ProjectWorkspaceCritiqueRequest
+    | ProjectWorkspaceRegisterCandidateRequest
+    | ProjectWorkspaceCandidateQueryRequest
+    | ProjectWorkspaceCandidateDecisionRequest
 )
 ProjectWorkspaceResult = (
     ProjectWorkspaceListResult
     | ProjectWorkspaceReadResult
+    | ProjectWorkspaceDocumentResult
     | ProjectWorkspaceValidateResult
     | ProjectWorkspaceCritiqueResult
+    | ProjectWorkspaceCandidateSummary
+    | ProjectWorkspaceCandidateResult
+    | ProjectWorkspaceCandidateDecisionResult
 )
 
 class StudioControlMoleculeSummary(TypedDict):

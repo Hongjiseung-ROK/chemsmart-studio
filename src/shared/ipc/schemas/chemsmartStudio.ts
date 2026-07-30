@@ -19,6 +19,8 @@ import {
   previewReceiptRuntimeSchema,
   type ProjectWorkspaceCritiqueRequest,
   type ProjectWorkspaceCritiqueResult,
+  type ProjectWorkspaceDocumentRequest,
+  type ProjectWorkspaceDocumentResult,
   type ProjectWorkspaceListRequest,
   type ProjectWorkspaceListResult,
   type ProjectWorkspaceProgram,
@@ -40,7 +42,6 @@ import {
   type StudioAgentCapabilityManifest,
   type StudioAgentCapabilityManifestRequest,
   type StudioAgentComposerIntent,
-  type StudioAgentActionCue,
   type StudioAgentLiveEvent,
   type StudioAgentTraceEvent,
   type StudioAgentTurnEvent,
@@ -248,6 +249,14 @@ const projectWorkspaceReadRequestSchema = runtimeDefinitionSchema<ProjectWorkspa
 const projectWorkspaceReadResultSchema = runtimeDefinitionSchema<ProjectWorkspaceReadResult>(
   projectWorkspaceRuntimeSchema,
   'readResult'
+)
+const projectWorkspaceDocumentRequestSchema = runtimeDefinitionSchema<ProjectWorkspaceDocumentRequest>(
+  projectWorkspaceRuntimeSchema,
+  'documentRequest'
+)
+const projectWorkspaceDocumentResultSchema = runtimeDefinitionSchema<ProjectWorkspaceDocumentResult>(
+  projectWorkspaceRuntimeSchema,
+  'documentResult'
 )
 const projectWorkspaceValidateRequestSchema = runtimeDefinitionSchema<ProjectWorkspaceValidateRequest>(
   projectWorkspaceRuntimeSchema,
@@ -485,6 +494,10 @@ export const chemsmartStudioRequestSchemas = {
     input: projectWorkspaceReadRequestSchema,
     output: projectWorkspaceReadResultSchema
   }),
+  'chemsmart_studio.project.document': defineRoute({
+    input: projectWorkspaceDocumentRequestSchema,
+    output: projectWorkspaceDocumentResultSchema
+  }),
   'chemsmart_studio.project.validate': defineRoute({
     input: projectWorkspaceValidateRequestSchema,
     output: projectWorkspaceValidateResultSchema
@@ -609,6 +622,7 @@ export type ChemSmartStudioPatchMode = z.infer<typeof patchModeSchema>
 export type ChemSmartStudioProjectProgram = ProjectWorkspaceProgram
 export type ChemSmartStudioProjectList = ProjectWorkspaceListResult
 export type ChemSmartStudioProjectReadResult = ProjectWorkspaceReadResult
+export type ChemSmartStudioProjectDocumentResult = ProjectWorkspaceDocumentResult
 export type ChemSmartStudioProjectCheckResult = ProjectWorkspaceValidateResult | ProjectWorkspaceCritiqueResult
 export type ChemSmartStudioCommandSynthesisResult = CommandSynthesisResult
 export type ChemSmartStudioOpenDocuments = z.infer<typeof openDocumentsSchema>

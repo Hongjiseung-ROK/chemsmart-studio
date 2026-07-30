@@ -192,6 +192,10 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     return agentRequest(() => application.get('ChemSmartAgentService').readProject(input))
   },
+  'chemsmart_studio.project.document': async (input, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    return agentRequest(() => application.get('ChemSmartAgentService').documentProject(input))
+  },
   'chemsmart_studio.project.validate': async (input, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     return agentRequest(() => application.get('ChemSmartAgentService').validateProject(input))

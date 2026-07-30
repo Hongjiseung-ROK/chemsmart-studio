@@ -85,8 +85,10 @@ function twoProjects() {
   )
 }
 
-function renderRail() {
-  return render(<ResearchRail actionsDisabled={false} busyAction={null} onAction={vi.fn()} />)
+function renderRail(onOpenProjectYaml = vi.fn()) {
+  return render(
+    <ResearchRail actionsDisabled={false} busyAction={null} onAction={vi.fn()} onOpenProjectYaml={onOpenProjectYaml} />
+  )
 }
 
 describe('ResearchRail project explorer', () => {
@@ -102,6 +104,15 @@ describe('ResearchRail project explorer', () => {
       getNode: () => null
     }
     ipcMocks.request.mockResolvedValue({ projectsRoot: PROJECTS_ROOT, activeProjectPath: ACTIVE_PROJECT })
+  })
+
+  it('opens the read-only project YAML workspace from the explorer header', async () => {
+    const onOpenProjectYaml = vi.fn()
+    renderRail(onOpenProjectYaml)
+
+    await userEvent.click(screen.getByRole('button', { name: 'chemsmart_studio.project.open_renderer' }))
+
+    expect(onOpenProjectYaml).toHaveBeenCalledOnce()
   })
 
   it('watches the projects folder, not the open bundle', async () => {
