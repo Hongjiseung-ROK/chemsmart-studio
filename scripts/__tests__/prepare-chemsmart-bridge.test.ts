@@ -74,19 +74,32 @@ describe('portable ChemSmart bridge packaging', () => {
     const directory = makeTemporaryDirectory()
     const sitePackages = path.join(directory, 'lib', 'python3.11', 'site-packages')
     const matplotlibBackends = path.join(sitePackages, 'matplotlib', 'backends')
+    const matplotlibTests = path.join(sitePackages, 'matplotlib', 'tests')
+    const pillow = path.join(sitePackages, 'PIL')
     const rdkitSping = path.join(sitePackages, 'rdkit', 'sping')
     fs.mkdirSync(path.join(matplotlibBackends, 'qt_editor'), { recursive: true })
+    fs.mkdirSync(matplotlibTests, { recursive: true })
+    fs.mkdirSync(pillow, { recursive: true })
     fs.mkdirSync(path.join(rdkitSping, 'Qt'), { recursive: true })
+    fs.writeFileSync(path.join(matplotlibBackends, 'backend_qt5agg.py'), '')
     fs.writeFileSync(path.join(matplotlibBackends, 'qt_compat.py'), '')
     fs.writeFileSync(path.join(matplotlibBackends, 'quantity.py'), '')
+    fs.writeFileSync(path.join(matplotlibTests, 'test_backend_qt.py'), '')
+    fs.writeFileSync(path.join(pillow, 'ImageQt.py'), '')
     fs.writeFileSync(path.join(rdkitSping, 'Qt', 'pidQt.py'), '')
 
     expect(removeOptionalQtArtifacts(directory)).toEqual([
+      'lib/python3.11/site-packages/PIL/ImageQt.py',
+      'lib/python3.11/site-packages/matplotlib/backends/backend_qt5agg.py',
       'lib/python3.11/site-packages/matplotlib/backends/qt_compat.py',
       'lib/python3.11/site-packages/matplotlib/backends/qt_editor',
+      'lib/python3.11/site-packages/matplotlib/tests/test_backend_qt.py',
       'lib/python3.11/site-packages/rdkit/sping/Qt'
     ])
     expect(fs.existsSync(path.join(matplotlibBackends, 'qt_compat.py'))).toBe(false)
+    expect(fs.existsSync(path.join(matplotlibBackends, 'backend_qt5agg.py'))).toBe(false)
+    expect(fs.existsSync(path.join(matplotlibTests, 'test_backend_qt.py'))).toBe(false)
+    expect(fs.existsSync(path.join(pillow, 'ImageQt.py'))).toBe(false)
     expect(fs.existsSync(path.join(rdkitSping, 'Qt'))).toBe(false)
     expect(fs.existsSync(path.join(matplotlibBackends, 'quantity.py'))).toBe(true)
   })

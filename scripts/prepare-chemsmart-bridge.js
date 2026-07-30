@@ -61,7 +61,13 @@ function removeOptionalQtArtifacts(directory) {
     if (!fs.existsSync(currentDirectory)) return
     for (const entry of fs.readdirSync(currentDirectory, { withFileTypes: true })) {
       const candidate = path.join(currentDirectory, entry.name)
-      if (/^qt/i.test(entry.name)) {
+      const relative = path.relative(sitePackages, candidate).split(path.sep).join('/')
+      const isOptionalQtArtifact =
+        /^qt/i.test(entry.name) ||
+        /^matplotlib\/backends\/(?:backend_)?qt/i.test(relative) ||
+        /^matplotlib\/tests\/test_backend_qt/i.test(relative) ||
+        /^PIL\/ImageQt\.py$/i.test(relative)
+      if (isOptionalQtArtifact) {
         removed.push(path.relative(directory, candidate))
         fs.rmSync(candidate, { force: true, recursive: true })
       } else if (entry.isDirectory()) {
