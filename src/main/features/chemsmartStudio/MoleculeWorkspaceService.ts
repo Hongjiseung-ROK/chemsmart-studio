@@ -17,6 +17,8 @@ import {
   type OptimizationReplayTimelineQuery,
   type PreviewReceipt,
   type StageGestureIntent,
+  type StagePlacementIntent,
+  type StagePlacementPreview,
   type StudioDraftEntry,
   type StudioDraftSnapshot,
   type StudioMoleculeRequest
@@ -330,6 +332,16 @@ export class MoleculeWorkspaceService extends BaseService {
     gesture?: StageGestureIntent
   }): Promise<StudioDraftSnapshot> {
     return this.documents.applyDraftPatch(request)
+  }
+
+  previewStagePlacement(intent: StagePlacementIntent): StagePlacementPreview {
+    return this.documents.previewStagePlacement(intent)
+  }
+
+  async applyStagePlacement(
+    intent: StagePlacementIntent
+  ): Promise<{ snapshot: StudioDraftSnapshot; insertedAtomId: string }> {
+    return this.documents.applyStagePlacement(intent)
   }
 
   async undoDraft(): Promise<StudioDraftSnapshot | null> {

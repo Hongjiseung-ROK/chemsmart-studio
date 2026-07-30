@@ -16,6 +16,8 @@ import {
   optimizationRuntimeSchema,
   type PreviewReceipt,
   type StageGestureIntent,
+  type StagePlacementIntent,
+  type StagePlacementPreview,
   type StudioAgentMoleculeRequest,
   studioAgentMoleculeRequestRuntimeSchema,
   type StudioAgentPhase,
@@ -832,6 +834,36 @@ export class StudioControlService extends BaseService {
       operations: request.operations,
       ...(request.gesture ? { gesture: request.gesture } : {})
     })
+  }
+
+  previewHumanPlacement(
+    sessionId: string,
+    senderId: WindowId,
+    intent: StagePlacementIntent
+  ): Promise<StagePlacementPreview> {
+    this.requireSessionLease(sessionId, senderId)
+    if (this.activePreview || this.optimizationOwner || this.replayBlocksStudioWork()) {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.REVISION_CONFLICT,
+        'Placement is unavailable while another molecule view owns the stage'
+      )
+    }
+    return Promise.resolve(application.get('MoleculeWorkspaceService').previewStagePlacement(intent))
+  }
+
+  async applyHumanPlacement(
+    sessionId: string,
+    senderId: WindowId,
+    intent: StagePlacementIntent
+  ): Promise<{ snapshot: StudioDraftSnapshot; insertedAtomId: string }> {
+    this.requireSessionLease(sessionId, senderId)
+    if (this.activePreview || this.optimizationOwner || this.replayBlocksStudioWork()) {
+      throw new IpcError(
+        chemsmartStudioErrorCodes.REVISION_CONFLICT,
+        'Placement is unavailable while another molecule view owns the stage'
+      )
+    }
+    return application.get('MoleculeWorkspaceService').applyStagePlacement(intent)
   }
 
   getHumanDraft(sessionId: string, senderId: WindowId): StudioDraftSnapshot | null {

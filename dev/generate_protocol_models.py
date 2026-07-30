@@ -550,7 +550,9 @@ export interface StudioProtocolHello {{ protocolVersion: typeof PROTOCOL_VERSION
 export interface StudioAgentLiveEvent {{ threadId: StableId; turnId: StableId; blockId: StableId; sequence: number; kind: 'text_started' | 'text_delta' | 'text_completed' | 'public_summary'; text?: string; transient: true }}
 export interface StudioAgentActionCue {{ cueId: StableId; turnId: StableId; documentId: StableId; revision: number; geometryHash: string; kind: 'inspect' | 'place_atom' | 'set_bond' | 'freeze' | 'constrain' | 'move'; phase: 'running' | 'succeeded' | 'failed' | 'cancelled'; atomIds: StableId[]; bondIds: StableId[]; constraintIds: StableId[]; label: string }}
 export type CoordinationGeometry = 'linear' | 'trigonal_planar' | 'tetrahedral' | 'trigonal_bipyramidal' | 'square_planar' | 'octahedral'
-export interface StagePlacementIntent {{ documentId: StableId; expectedRevision: number; geometryHash: string; anchorAtomId?: StableId; atomicNumber: number; bondOrder: 1 | 2 | 3; coordinationGeometry: CoordinationGeometry; siteIndex?: number }}
+export interface StagePlacementIntent {{ documentId: StableId; expectedRevision: number; geometryHash: string; anchorAtomId?: StableId; origin?: Vector3; atomicNumber: number; bondOrder: 1 | 2 | 3; coordinationGeometry: CoordinationGeometry; siteIndex?: number }}
+export interface StagePlacementCandidate {{ siteIndex: number; position: Vector3; bondLength: number; minimumClearance: number; occupied: boolean; safe: boolean }}
+export interface StagePlacementPreview {{ documentId: StableId; revision: number; geometryHash: string; anchorAtomId?: StableId; atomicNumber: number; bondOrder: 1 | 2 | 3; coordinationGeometry: CoordinationGeometry; candidates: StagePlacementCandidate[]; selectedSiteIndex?: number; status: 'ready' | 'coordination_full' | 'steric_collision' }}
 export type StudioConsoleCompletionKind = 'command' | 'option' | 'choice' | 'argument' | 'file' | 'project' | 'server'
 export interface StudioConsoleCompletionItem {{ id: StableId; label: string; insertText: string; kind: StudioConsoleCompletionKind; detail: string; appendSpace: boolean }}
 export interface StudioConsoleCompletionResult {{ commandPath: string[]; replaceRange: {{ start: number; end: number }}; items: StudioConsoleCompletionItem[]; diagnostic?: {{ code: 'unsupported_shell_syntax' | 'invalid_prefix' | 'value_required'; message: string }} }}
@@ -1025,6 +1027,7 @@ class StagePlacementIntent(TypedDict):
     expectedRevision: int
     geometryHash: str
     anchorAtomId: NotRequired[str]
+    origin: NotRequired[Vector3]
     atomicNumber: int
     bondOrder: Literal[1, 2, 3]
     coordinationGeometry: Literal[
@@ -1036,6 +1039,33 @@ class StagePlacementIntent(TypedDict):
         "octahedral",
     ]
     siteIndex: NotRequired[int]
+
+class StagePlacementCandidate(TypedDict):
+    siteIndex: int
+    position: Vector3
+    bondLength: float
+    minimumClearance: float
+    occupied: bool
+    safe: bool
+
+class StagePlacementPreview(TypedDict):
+    documentId: str
+    revision: int
+    geometryHash: str
+    anchorAtomId: NotRequired[str]
+    atomicNumber: int
+    bondOrder: Literal[1, 2, 3]
+    coordinationGeometry: Literal[
+        "linear",
+        "trigonal_planar",
+        "tetrahedral",
+        "trigonal_bipyramidal",
+        "square_planar",
+        "octahedral",
+    ]
+    candidates: list[StagePlacementCandidate]
+    selectedSiteIndex: NotRequired[int]
+    status: Literal["ready", "coordination_full", "steric_collision"]
 
 class StudioConsoleCompletionItem(TypedDict):
     id: str

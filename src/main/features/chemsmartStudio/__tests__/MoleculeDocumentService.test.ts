@@ -1,5 +1,10 @@
 import { application } from '@application'
-import type { MoleculeDocument, MoleculeOperation, MoleculePatch } from '@chemsmart/studio-protocol'
+import type {
+  MoleculeDocument,
+  MoleculeOperation,
+  MoleculePatch,
+  StagePlacementIntent
+} from '@chemsmart/studio-protocol'
 import { BaseService } from '@main/core/lifecycle/BaseService'
 import { chemsmartStudioErrorCodes } from '@shared/ipc/errors/chemsmartStudio'
 import { IpcError } from '@shared/ipc/errors/IpcError'
@@ -8,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@application', () => ({ application: { get: vi.fn(), getPath: vi.fn() } }))
 
 import { MoleculeDocumentService } from '../MoleculeDocumentService'
+import { fromDocument, geometryHash } from '../moleculeDocumentState'
 
 /** Water: O at the origin with two hydrogens, one bond each. */
 function waterDocument(): MoleculeDocument {
@@ -576,6 +582,53 @@ describe('MoleculeDocumentService', () => {
       } catch (error) {
         expect(codeOf(error)).toBe(chemsmartStudioErrorCodes.APPROVAL_REQUIRED)
       }
+    })
+  })
+
+  describe('main-owned coordination placement', () => {
+    const intent = (overrides: Partial<StagePlacementIntent> = {}): StagePlacementIntent => ({
+      documentId: 'document-water',
+      expectedRevision: 0,
+      geometryHash: geometryHash(fromDocument(waterDocument())),
+      anchorAtomId: 'atom-o',
+      atomicNumber: 1,
+      bondOrder: 1,
+      coordinationGeometry: 'tetrahedral',
+      ...overrides
+    })
+
+    it('journals a safe site using main-issued atom and bond ids', async () => {
+      const preview = service.previewStagePlacement(intent())
+      const result = await service.applyStagePlacement(intent({ siteIndex: preview.selectedSiteIndex }))
+
+      expect(result.insertedAtomId).toMatch(/^atom-/)
+      expect(result.snapshot.document.atoms).toContainEqual(
+        expect.objectContaining({ id: result.insertedAtomId, atomicNumber: 1 })
+      )
+      expect(result.snapshot.document.bonds).toContainEqual(
+        expect.objectContaining({ atomIds: ['atom-o', result.insertedAtomId] })
+      )
+      expect(writeDraftJournal).toHaveBeenCalledOnce()
+    })
+
+    it('fails closed when the visible draft geometry hash is stale', async () => {
+      await service.applyDraftPatch({
+        actor: 'human',
+        expectedRevision: 0,
+        mode: 'build',
+        operations: [{ op: 'set_positions', positions: [{ atomId: 'atom-h1', position: [2, 0, 0] }] }]
+      })
+
+      expect(() => service.previewStagePlacement(intent())).toThrow(
+        expect.objectContaining({ code: chemsmartStudioErrorCodes.REVISION_CONFLICT })
+      )
+    })
+
+    it('reports a saturated coordination guide without guessing a site', () => {
+      const preview = service.previewStagePlacement(intent({ coordinationGeometry: 'linear' }))
+
+      expect(preview.status).toBe('coordination_full')
+      expect(preview.selectedSiteIndex).toBeUndefined()
     })
   })
 
