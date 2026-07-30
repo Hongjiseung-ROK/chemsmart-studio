@@ -127,6 +127,7 @@ class StudioToolProfileTest(unittest.TestCase):
         self.assertIn("synthesize_command", plan_tools["SYNTHESIS"])
         self.assertIn("repair_command", plan_tools["REPAIR"])
         self.assertIn("critic_project_yaml", plan_tools["PROJECT"])
+        self.assertIn("render_project_yaml", plan_tools["PROJECT"])
         self.assertIn("validate_project_yaml", plan_tools["VALIDATION"])
         self.assertIn("recommend_method", inspect_tools["SYNTHESIS"])
         self.assertIn("inspect_calculation", inspect_tools["DIAGNOSTICS"])
@@ -164,17 +165,31 @@ class StudioToolProfileTest(unittest.TestCase):
             self.assertNotIn("start_prepared_optimization", tools)
         self.assertIn("execute_chemsmart_command", exposed)
 
-    def test_project_yaml_generation_and_writes_are_not_model_reachable(self) -> None:
-        tools = self.phase_tools()
-
-        for tool in (
-            "render_project_yaml",
-            "write_project_yaml",
-            "update_project_yaml",
-        ):
+    def test_project_yaml_writes_are_not_model_reachable(self) -> None:
+        for tool in ("write_project_yaml", "update_project_yaml"):
+            tools = self.phase_tools()
             for phase_tools in tools.values():
                 self.assertNotIn(tool, phase_tools)
             self.assertNotIn(tool, SAFE_STUDIO_TOOLS)
+
+    def test_yaml_rendering_is_plan_only_and_never_available_to_xtb_intents(self) -> None:
+        plan_tools = self.phase_tools(StudioCapability.PLAN)
+        inspect_tools = self.phase_tools(StudioCapability.INSPECT)
+        act_tools = self.phase_tools(StudioCapability.ACT)
+        dry_run = _studio_agent_tool_profile(StudioCapability.PLAN, "dry_run")
+        run = _studio_agent_tool_profile(StudioCapability.ACT, "run")
+
+        self.assertIn("render_project_yaml", plan_tools["PROJECT"])
+        for phase_tools in inspect_tools.values():
+            self.assertNotIn("render_project_yaml", phase_tools)
+        for phase_tools in act_tools.values():
+            self.assertNotIn("render_project_yaml", phase_tools)
+        for profile in (dry_run, run):
+            for phase in TaskPhase:
+                self.assertNotIn(
+                    "render_project_yaml",
+                    profile.tools_for(phase, ProviderRole.CONTROLLER),
+                )
 
     def test_the_molecule_path_keeps_its_own_tools(self) -> None:
         # Widening the profile for the harness must not cost the molecule and calculation flow its menu.

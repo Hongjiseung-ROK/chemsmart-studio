@@ -42,6 +42,9 @@ from chemsmart.agent.studio import (
 )
 from chemsmart.agent.services.result_codec import json_safe as agent_json_safe
 from chemsmart.agent.tool_protocol import RuntimeToolMetadata
+from chemsmart.agent.project_yaml import (
+    render_project_yaml as render_project_yaml_candidate,
+)
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel
 
@@ -50,6 +53,7 @@ from .project_workspace import (
     critic_project,
     document_project,
     list_projects,
+    project_document,
     read_project,
     validate_project,
 )
@@ -84,6 +88,7 @@ SAFE_STUDIO_TOOLS = {
     "synthesize_command",
     "repair_command",
     "read_project_yaml",
+    "render_project_yaml",
     "extract_project_protocol",
     "validate_project_yaml",
     "critic_project_yaml",
@@ -416,7 +421,6 @@ STUDIO_WITHHELD_TOOLS = frozenset(
         "scheduler_query",
         "log_tail",
         "read",
-        "render_project_yaml",
         "update_project_yaml",
         "write_behavior_rules",
         "write_project_yaml",
@@ -427,10 +431,9 @@ STUDIO_WITHHELD_TOOLS = frozenset(
 Direct tools per phase, ten at most — the harness caps a phase's menu so routing stays reliable, and only
 direct tools are offered to the model at all.
 
-Studio therefore spends those slots on what the model must decide, and leaves the rest of the harness to the
-researcher through typed IPC: the project workspace and the command console call `read_project_yaml`,
-`render_project_yaml`, `validate_project_yaml`, `critic_project_yaml`, `extract_project_protocol` and
-`search_basis_sets` deterministically, with no model in the loop.
+Studio therefore spends those slots on what the model must decide. Project YAML rendering is available only
+to plan turns and produces a review-only candidate; writes remain main-owned and exact-approval-bound. The
+human project workspace and command console continue to use typed IPC without a model in the loop.
 """
 _STUDIO_PHASE_TOOLS = {
     TaskPhase.ROUTE: (
@@ -444,6 +447,7 @@ _STUDIO_PHASE_TOOLS = {
         "analyze_current_molecule",
         "preview_molecule_patch",
         "read_project_yaml",
+        "render_project_yaml",
         "validate_project_yaml",
         "critic_project_yaml",
         "report_studio_result",
@@ -541,6 +545,7 @@ _STUDIO_PLAN_TOOLS = _STUDIO_INSPECT_TOOLS | {
     "synthesize_command",
     "repair_command",
     "read_project_yaml",
+    "render_project_yaml",
     "validate_project_yaml",
     "critic_project_yaml",
 }
@@ -632,7 +637,9 @@ def _studio_agent_tool_profile(
     else:
         phase_tools = {}
         for phase, tools in _STUDIO_PHASE_TOOLS.items():
-            actions = tuple(tool for tool in tools if tool not in _STUDIO_ACT_DIRECT)
+            actions = tuple(
+                tool for tool in tools if tool not in _STUDIO_ACT_DIRECT and tool != "render_project_yaml"
+            )
             phase_tools[phase] = (
                 *_STUDIO_ACT_DIRECT[:-1],
                 *actions[: 10 - len(_STUDIO_ACT_DIRECT)],
@@ -2208,6 +2215,50 @@ class StudioAgentRuntime:
                 }
             )
 
+        def render_project_yaml(
+            protocol: dict[str, Any],
+            project: str = "project",
+            program: Literal["gaussian", "orca"] = "gaussian",
+        ) -> dict[str, Any]:
+            """Render and register one review-only Gaussian or ORCA YAML candidate."""
+
+            if self._peer is None:
+                raise RpcFault(-32603, "RPC peer is not bound")
+            if program not in {"gaussian", "orca"}:
+                raise ValueError("Project YAML candidates support only Gaussian or ORCA")
+            rendered = render_project_yaml_candidate(
+                protocol,
+                project_name=project,
+                program=program,
+            )
+            document = project_document(
+                str(rendered["project_name"]),
+                str(rendered["program"]),
+                str(rendered["yaml_text"]),
+            )
+            result = self._peer.request(
+                "project.register_candidate",
+                self._operation_callback(
+                    session_id,
+                    {
+                        "sessionId": session_id,
+                        "document": document,
+                        "unsupportedFeatures": [
+                            str(value)[:256]
+                            for value in rendered.get(
+                                "unsupported_yaml_features",
+                                [],
+                            )
+                            if isinstance(value, str)
+                        ][:64],
+                        "extensions": {},
+                    },
+                ),
+            )
+            if not isinstance(result, dict):
+                raise RpcFault(-32603, "Studio rejected the YAML candidate")
+            return result
+
         def validate_project_yaml(
             yaml_text: str,
             program: Literal["gaussian", "orca"],
@@ -2402,6 +2453,7 @@ class StudioAgentRuntime:
         )
         for function in (
             read_project_yaml,
+            render_project_yaml,
             validate_project_yaml,
             critic_project_yaml,
         ):
@@ -2542,6 +2594,7 @@ class StudioAgentRuntime:
                         "synthesize_command",
                         "repair_command",
                         "read_project_yaml",
+                        "render_project_yaml",
                         "validate_project_yaml",
                         "critic_project_yaml",
                         "inspect_calculation",
