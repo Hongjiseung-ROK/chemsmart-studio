@@ -223,10 +223,9 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
   }),
   'chemsmart_studio.agent.run_turn': async ({ sessionId, modelId, request, intent }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
-    await agentRequest(() =>
+    return agentRequest(() =>
       application.get('ChemSmartAgentService').runTurn(sessionId, modelId, request, intent ?? null, senderId)
     )
-    return { completed: true }
   },
   'chemsmart_studio.agent.control_turn': async (input, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
@@ -293,9 +292,21 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
     await application.get('StudioConsoleService').cancel(runId)
     return { cancelled: true as const }
   },
-  'chemsmart_studio.console.complete': async ({ line, cursor }, { senderId }) => {
+  'chemsmart_studio.console.complete': async ({ line, cursor, disclosure }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
-    return application.get('StudioConsoleService').complete(line, cursor)
+    return application.get('StudioConsoleService').complete(line, cursor, disclosure)
+  },
+  'chemsmart_studio.console.prepare_file_drop': async ({ line, cursor, filePath }, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    try {
+      return await application.get('StudioConsoleService').prepareFileDrop(line, cursor, filePath)
+    } catch (error) {
+      if (error instanceof IpcError) throw error
+      throw new IpcError(
+        chemsmartStudioErrorCodes.SCHEMA_INVALID,
+        error instanceof Error ? error.message : 'The dropped molecule file is invalid'
+      )
+    }
   },
   'chemsmart_studio.console.preflight': async ({ command }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')

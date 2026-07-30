@@ -3,7 +3,7 @@ import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import path from 'node:path'
 
 import { application } from '@application'
-import { CHEMSMART_COMMIT } from '@chemsmart/studio-protocol'
+import { CHEMSMART_COMMIT, type StudioConsoleFileDropResult } from '@chemsmart/studio-protocol'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, type Disposable, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { crossPlatformSpawn } from '@main/utils/processRunner'
@@ -14,7 +14,13 @@ import type {
   ChemSmartStudioConsoleRun
 } from '@shared/ipc/schemas/chemsmartStudio'
 
-import { type CliSchemaDocument, type DynamicCompletionCandidate, resolveCompletions } from './cliCompletion'
+import {
+  type CliSchemaDocument,
+  type DynamicCompletionCandidate,
+  quoteShellValue,
+  resolveCompletions,
+  resolveFileDropTarget
+} from './cliCompletion'
 import { OwnedProcessTree } from './OwnedProcessTree'
 
 const logger = loggerService.withContext('StudioConsoleService')
@@ -31,7 +37,9 @@ const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 const TERMINATE_GRACEFUL_MS = 5_000
 const TERMINATE_FORCED_MS = 5_000
 const MAX_COMMAND_LENGTH = 8_192
-const MAX_CONTEXT_ENTRIES = 256
+const MAX_COMPLETION_CANDIDATES = 256
+const MAX_CONTEXT_ENTRIES = 1_024
+const MAX_FILE_DROP_BYTES = 128 * 1024 * 1024
 const COMPLETABLE_EXTENSIONS = new Set(['.xyz', '.cjson', '.sdf', '.gjf', '.com', '.inp', '.out', '.log', '.yaml'])
 const MOLECULE_EXTENSIONS = new Set(['.xyz', '.cjson', '.sdf'])
 const PREFLIGHT_TTL_MS = 60_000
@@ -97,6 +105,7 @@ interface CompletionContext {
   projectName?: string
   device: number
   inode: number
+  size: number
   issuedAt: number
 }
 
@@ -189,17 +198,74 @@ export class StudioConsoleService extends BaseService {
    * version this app was written against. A missing or unreadable dump yields no completions — the
    * console still runs commands, it just stops offering advice it cannot ground.
    */
-  async complete(line: string, cursor: number): Promise<ChemSmartStudioConsoleCompletions> {
+  async complete(
+    line: string,
+    cursor: number,
+    disclosure: 'primary' | 'all' = 'primary'
+  ): Promise<ChemSmartStudioConsoleCompletions> {
     const schema = await this.loadCliSchema()
     if (!schema) {
       return {
         commandPath: [],
+        stage: 'root',
+        disclosure,
+        hasMore: false,
         replaceRange: { start: cursor, end: cursor },
         items: [],
         semantic: { breadcrumb: [], slots: [], ghostSuffix: '', complete: false }
       }
     }
-    return resolveCompletions(schema, line, cursor, await this.discoverCompletionCandidates())
+    return resolveCompletions(schema, line, cursor, await this.discoverCompletionCandidates(), disclosure)
+  }
+
+  /** Validate a Finder drop and issue a one-shot molecule context without starting any process. */
+  async prepareFileDrop(line: string, cursor: number, filePath: string): Promise<StudioConsoleFileDropResult> {
+    const schema = await this.loadCliSchema()
+    if (!schema) throw new Error('Filename guidance is unavailable')
+    const target = resolveFileDropTarget(schema, line, cursor)
+    if (!path.isAbsolute(filePath)) throw new Error('The dropped file path must be absolute')
+    if (!MOLECULE_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+      throw new Error('Only XYZ, CJSON, and SDF molecule files can be dropped here')
+    }
+
+    const identity = await lstat(filePath)
+    if (identity.isSymbolicLink() || !identity.isFile()) throw new Error('The dropped item must be a regular file')
+    if (identity.size <= 0 || identity.size > MAX_FILE_DROP_BYTES) {
+      throw new Error('The dropped molecule file size is not supported')
+    }
+    const insertText = quoteShellValue(filePath)
+    if (insertText.length > 1_024 || /[\u0000\r\n;&|<>]/.test(insertText)) {
+      throw new Error('The dropped file path cannot be represented safely')
+    }
+    const displayName = path.basename(filePath)
+    if (displayName.length === 0 || displayName.length > 256 || /[\u0000-\u001f\u007f]/.test(displayName)) {
+      throw new Error('The dropped file name cannot be represented safely')
+    }
+    const context = await this.issueCompletionContext(filePath, path.dirname(filePath), displayName, 'molecule')
+    if (
+      !context ||
+      context.device !== identity.dev ||
+      context.inode !== identity.ino ||
+      context.size !== identity.size
+    ) {
+      if (context) this.completionContexts.delete(context.contextRef)
+      throw new Error('The dropped file changed before it could be prepared')
+    }
+
+    return {
+      replaceRange: target.replaceRange,
+      item: {
+        id: `completion-${randomUUID()}`,
+        label: displayName,
+        insertText,
+        kind: 'file',
+        group: 'files',
+        detail: target.option.help ?? '',
+        appendSpace: true,
+        contextRef: context.contextRef,
+        openAction: 'molecule'
+      }
+    }
   }
 
   /**
@@ -312,10 +378,10 @@ export class StudioConsoleService extends BaseService {
     const projectsRoot = application.getPath('feature.chemsmart_studio.projects')
     const workspace = application.getPath('feature.chemsmart_studio.workspace')
     const candidates: DynamicCompletionCandidate[] = []
-    this.completionContexts.clear()
+    this.pruneCompletionContexts()
 
     const addFiles = async (directory: string, relativeRoot: string, depth: number): Promise<void> => {
-      if (depth < 0 || candidates.length >= MAX_CONTEXT_ENTRIES) return
+      if (depth < 0 || candidates.length >= MAX_COMPLETION_CANDIDATES) return
       let entries
       try {
         entries = await readdir(directory, { withFileTypes: true })
@@ -323,7 +389,7 @@ export class StudioConsoleService extends BaseService {
         return
       }
       for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-        if (candidates.length >= MAX_CONTEXT_ENTRIES || entry.isSymbolicLink() || !safeCandidateName(entry.name))
+        if (candidates.length >= MAX_COMPLETION_CANDIDATES || entry.isSymbolicLink() || !safeCandidateName(entry.name))
           continue
         const absolute = path.join(directory, entry.name)
         if (entry.isDirectory()) {
@@ -397,12 +463,13 @@ export class StudioConsoleService extends BaseService {
     } catch {
       // No configured servers is an ordinary state.
     }
-    return candidates.slice(0, MAX_CONTEXT_ENTRIES)
+    return candidates.slice(0, MAX_COMPLETION_CANDIDATES)
   }
 
   async acceptCompletionContext(contextRef: string): Promise<ChemSmartStudioConsoleCompletionSelection> {
+    this.pruneCompletionContexts()
     const context = this.completionContexts.get(contextRef)
-    if (!context || Date.now() - context.issuedAt > COMPLETION_CONTEXT_TTL_MS) {
+    if (!context) {
       throw new Error('That completion context is no longer available')
     }
     const [root, target, identity] = await Promise.all([
@@ -417,7 +484,8 @@ export class StudioConsoleService extends BaseService {
       identity.isSymbolicLink() ||
       !identity.isFile() ||
       identity.dev !== context.device ||
-      identity.ino !== context.inode
+      identity.ino !== context.inode ||
+      identity.size !== context.size
     ) {
       this.completionContexts.delete(contextRef)
       throw new Error('That completion file changed before it could be opened')
@@ -445,6 +513,7 @@ export class StudioConsoleService extends BaseService {
     try {
       const identity = await lstat(absolutePath)
       if (!identity.isFile() || identity.isSymbolicLink()) return undefined
+      this.pruneCompletionContexts(Date.now(), 1)
       const context: CompletionContext = {
         contextRef: `completion-${randomUUID()}`,
         absolutePath,
@@ -454,6 +523,7 @@ export class StudioConsoleService extends BaseService {
         ...metadata,
         device: identity.dev,
         inode: identity.ino,
+        size: identity.size,
         issuedAt: Date.now()
       }
       this.completionContexts.set(context.contextRef, context)
@@ -461,6 +531,18 @@ export class StudioConsoleService extends BaseService {
     } catch {
       return undefined
     }
+  }
+
+  private pruneCompletionContexts(now = Date.now(), reservedEntries = 0): void {
+    for (const [contextRef, context] of this.completionContexts) {
+      if (now - context.issuedAt > COMPLETION_CONTEXT_TTL_MS) this.completionContexts.delete(contextRef)
+    }
+    const overflow = this.completionContexts.size + reservedEntries - MAX_CONTEXT_ENTRIES
+    if (overflow <= 0) return
+    const oldest = [...this.completionContexts.values()]
+      .sort((left, right) => left.issuedAt - right.issuedAt)
+      .slice(0, overflow)
+    for (const context of oldest) this.completionContexts.delete(context.contextRef)
   }
 
   private consumePreflight(command: string, suppliedDigest?: string): void {

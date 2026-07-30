@@ -30,6 +30,10 @@ export interface CliOption {
   required: boolean
   nargs: number
   type: CliValueType | null
+  completion?: {
+    suggest: boolean
+    tier: 'primary' | 'advanced'
+  }
 }
 
 export interface CliCommand {
@@ -39,6 +43,11 @@ export interface CliCommand {
   subcommands: Record<string, CliCommand>
   semantic?: {
     required_options: Array<{ name: string; label: string }>
+  }
+  completion?: {
+    suggest: boolean
+    tier: 'primary' | 'advanced'
+    inspection_profile: 'calculation' | 'human_shell'
   }
 }
 
@@ -93,6 +102,9 @@ export interface SemanticCommandGuide {
 
 export interface CompletionResult {
   commandPath: string[]
+  stage: 'root' | 'subcommand' | 'required_value' | 'option' | 'complete'
+  disclosure: 'primary' | 'all'
+  hasMore: boolean
   replaceRange: { start: number; end: number }
   items: CompletionItem[]
   semantic: SemanticCommandGuide
@@ -133,6 +145,13 @@ interface ParseState {
   pending: { option: CliOption; remaining: number } | null
   invalid: boolean
 }
+
+export interface FileDropTarget {
+  replaceRange: { start: number; end: number }
+  option: CliOption
+}
+
+const MAX_COMPLETION_ITEMS = 100
 
 function emptyRange(cursor: number): { start: number; end: number } {
   return { start: cursor, end: cursor }
@@ -346,6 +365,11 @@ function quoteCandidate(value: string, quote: Token['quote']): string {
   return `'${value.replaceAll("'", "'\\''")}'`
 }
 
+/** Quote one literal shell word without expanding or normalizing its contents. */
+export function quoteShellValue(value: string): string {
+  return quoteCandidate(value, null)
+}
+
 function valueItems(
   state: ParseState,
   option: CliOption,
@@ -383,7 +407,11 @@ function optionSlotLabel(option: CliOption): string {
   return `${flag} <${typeName(option)}>`
 }
 
-function semanticGuide(state: ParseState, cursor: number): SemanticCommandGuide {
+function semanticGuide(
+  state: ParseState,
+  cursor: number,
+  disclosure: CompletionResult['disclosure']
+): SemanticCommandGuide {
   const optionSlots: SemanticCommandSlot[] = []
 
   for (const scope of state.scopes) {
@@ -391,7 +419,7 @@ function semanticGuide(state: ParseState, cursor: number): SemanticCommandGuide 
       (scope.command.semantic?.required_options ?? []).map((requirement) => [requirement.name, requirement.label])
     )
     for (const option of scope.command.options) {
-      if (option.opts.length === 0) continue
+      if (option.opts.length === 0 || option.completion?.suggest === false) continue
       const semanticLabel = semanticRequirements.get(option.name)
       const required = option.required || semanticLabel !== undefined
       const consumed = scope.consumedOptions.has(option.name)
@@ -410,7 +438,10 @@ function semanticGuide(state: ParseState, cursor: number): SemanticCommandGuide 
     }
   }
 
-  const nextCommands = Object.keys(state.command.subcommands)
+  const nextCommands = Object.values(state.command.subcommands)
+    .filter(commandIsSuggested)
+    .filter((command) => disclosure === 'all' || commandTier(command) === 'primary')
+    .map((command) => command.name)
   const leafSlot: SemanticCommandSlot | null =
     nextCommands.length > 0
       ? {
@@ -444,6 +475,75 @@ function emptySemantic(schema: CliSchemaDocument): SemanticCommandGuide {
   return { breadcrumb: [schema.name], slots: [], ghostSuffix: '', complete: false }
 }
 
+function commandIsSuggested(command: CliCommand): boolean {
+  return command.completion?.suggest !== false
+}
+
+function commandTier(command: CliCommand): 'primary' | 'advanced' {
+  return command.completion?.tier ?? 'primary'
+}
+
+function commandIsVisible(
+  state: ParseState,
+  command: CliCommand,
+  prefix: string,
+  disclosure: CompletionResult['disclosure']
+): boolean {
+  if (!commandIsSuggested(command)) return false
+  if (commandTier(command) === 'primary' || disclosure === 'all') return true
+  // A typed program prefix is an explicit request for the complete valid run/sub program tree.
+  if (state.path.length === 2 && ['run', 'sub'].includes(state.path[1]) && prefix.length > 0) return true
+  // Once an advanced command has been selected manually, its own suggested descendants remain usable.
+  return state.command.completion?.tier === 'advanced'
+}
+
+function optionIsRequired(command: CliCommand, option: CliOption): boolean {
+  return (
+    option.required ||
+    command.semantic?.required_options.some((requirement) => requirement.name === option.name) === true
+  )
+}
+
+function boundedResult(result: Omit<CompletionResult, 'hasMore'> & { hasMore?: boolean }): CompletionResult {
+  return {
+    ...result,
+    hasMore: Boolean(result.hasMore) || result.items.length > MAX_COMPLETION_ITEMS,
+    items: result.items.slice(0, MAX_COMPLETION_ITEMS)
+  }
+}
+
+/** Resolve the active value slot for a main-validated Finder drop. */
+export function resolveFileDropTarget(schema: CliSchemaDocument, line: string, cursor: number): FileDropTarget {
+  if (cursor < 0 || cursor > line.length || unsupportedShellSyntax(line.slice(0, cursor))) {
+    throw new Error('The file can only be dropped into a valid filename value')
+  }
+  const tokens = tokenize(line.slice(0, cursor))
+  const current = cursor > 0 && !/\s/.test(line[cursor - 1]) ? tokens.at(-1) : undefined
+  if (current && !current.closed && !current.quote) {
+    throw new Error('Finish the escape before dropping a file')
+  }
+  const completed = current ? tokens.slice(0, -1) : tokens
+  const state = parseCompletedTokens(schema, completed)
+  if (state.invalid) throw new Error('The file can only be dropped into a valid filename value')
+
+  if (state.pending?.option.name === 'filename') {
+    return {
+      option: state.pending.option,
+      replaceRange: current ? { start: current.start, end: cursor } : emptyRange(cursor)
+    }
+  }
+  if (current) {
+    const inline = optionAt(state.command, current.text)
+    if (inline?.inlineValue !== undefined && inline.option.name === 'filename') {
+      return {
+        option: inline.option,
+        replaceRange: { start: current.start + (inline.valueStart ?? 0), end: cursor }
+      }
+    }
+  }
+  throw new Error('Drop the file where a filename value is expected')
+}
+
 /**
  * Resolve completions at an arbitrary cursor. The replacement range covers only the active value
  * (including only the value side of `--option=value`) so text after the cursor is preserved.
@@ -452,12 +552,15 @@ export function resolveCompletions(
   schema: CliSchemaDocument,
   line: string,
   cursor: number,
-  dynamic: readonly DynamicCompletionCandidate[] = []
+  dynamic: readonly DynamicCompletionCandidate[] = [],
+  disclosure: CompletionResult['disclosure'] = 'primary'
 ): CompletionResult {
   const clamped = Math.max(0, Math.min(cursor, line.length))
   if (unsupportedShellSyntax(line.slice(0, clamped))) {
-    return {
+    return boundedResult({
       commandPath: [schema.name],
+      stage: 'root',
+      disclosure,
       replaceRange: emptyRange(clamped),
       items: [],
       semantic: emptySemantic(schema),
@@ -465,7 +568,7 @@ export function resolveCompletions(
         code: 'unsupported_shell_syntax',
         message: 'Completion is unavailable for shell operators.'
       }
-    }
+    })
   }
 
   const tokens = tokenize(line.slice(0, clamped))
@@ -473,49 +576,61 @@ export function resolveCompletions(
   // An open quote is a valid completion boundary: applying a candidate closes it. A dangling
   // unquoted escape has no safe replacement range, so it remains an invalid prefix.
   if (current && !current.closed && !current.quote) {
-    return {
+    return boundedResult({
       commandPath: [schema.name],
+      stage: 'root',
+      disclosure,
       replaceRange: { start: current.start, end: clamped },
       items: [],
       semantic: emptySemantic(schema),
       diagnostic: { code: 'invalid_prefix', message: 'Finish the escape before completing.' }
-    }
+    })
   }
   const completed = current ? tokens.slice(0, -1) : tokens
   const state = parseCompletedTokens(schema, completed)
   const prefix = current?.text ?? ''
   let replaceRange = current ? { start: current.start, end: clamped } : emptyRange(clamped)
-  const semantic = semanticGuide(state, clamped)
+  const semantic = semanticGuide(state, clamped, disclosure)
 
   if (state.invalid) {
-    return {
+    return boundedResult({
       commandPath: state.path,
+      stage: state.path.length === 1 ? 'root' : 'subcommand',
+      disclosure,
       replaceRange,
       items: [],
       semantic,
       diagnostic: { code: 'invalid_prefix', message: 'The command prefix is not valid at this level.' }
-    }
+    })
   }
 
   if (completed.length === 0) {
     const executablePrefix = prefix === 'chem' ? 'chem' : prefix
-    return {
+    return boundedResult({
       commandPath: [schema.name],
+      stage: 'root',
+      disclosure,
       replaceRange,
-      items: schema.name.startsWith(executablePrefix)
-        ? [item([schema.name], schema.name, 'command', schema.description ?? '')]
-        : [],
+      items:
+        commandIsSuggested(schema) && schema.name.startsWith(executablePrefix)
+          ? [item([schema.name], schema.name, 'command', schema.description ?? '')]
+          : [],
       semantic
-    }
+    })
   }
 
   if (state.pending) {
-    return {
+    return boundedResult({
       commandPath: state.path,
+      stage: 'required_value',
+      disclosure,
       replaceRange,
-      items: valueItems(state, state.pending.option, prefix, current, dynamic),
+      items:
+        state.pending.option.completion?.suggest === false
+          ? []
+          : valueItems(state, state.pending.option, prefix, current, dynamic),
       semantic
-    }
+    })
   }
 
   if (current) {
@@ -523,17 +638,23 @@ export function resolveCompletions(
     if (inline?.inlineValue !== undefined && !inline.option.is_flag) {
       const valueStart = current.start + (inline.valueStart ?? 0)
       replaceRange = { start: valueStart, end: clamped }
-      return {
+      return boundedResult({
         commandPath: state.path,
+        stage: 'required_value',
+        disclosure,
         replaceRange,
-        items: valueItems(state, inline.option, inline.inlineValue, current, dynamic),
+        items:
+          inline.option.completion?.suggest === false
+            ? []
+            : valueItems(state, inline.option, inline.inlineValue, current, dynamic),
         semantic
-      }
+      })
     }
   }
 
   const currentScope = state.scopes.at(-1)
   const optionItems = state.command.options.flatMap((option) => {
+    if (option.completion?.suggest === false) return []
     if (!option.multiple && currentScope?.consumedOptions.has(option.name)) return []
     return option.opts
       .filter((flag) => flag.startsWith(prefix || '-'))
@@ -542,20 +663,43 @@ export function resolveCompletions(
         valueHint: option.is_flag ? undefined : typeName(option)
       }))
   })
-  const commandItems = Object.values(state.command.subcommands)
+  const matchingCommands = Object.values(state.command.subcommands)
+    .filter(commandIsSuggested)
     .filter((command) => command.name.startsWith(prefix))
+  const commandItems = matchingCommands
+    .filter((command) => commandIsVisible(state, command, prefix, disclosure))
     .map((command) => item(state.path, command.name, 'command', command.description ?? ''))
   const requiredOptionItems = optionItems.filter((entry) =>
-    state.command.options.some((option) => option.required && option.opts.some((flag) => flag === entry.insertText))
+    state.command.options.some(
+      (option) => optionIsRequired(state.command, option) && option.opts.some((flag) => flag === entry.insertText)
+    )
   )
   const ordinaryOptionItems = optionItems.filter((entry) => !requiredOptionItems.includes(entry))
+  const optionPrefix = prefix.startsWith('-')
+  const showOrdinaryOptions = optionPrefix || disclosure === 'all'
+  const items = optionPrefix
+    ? [...requiredOptionItems, ...ordinaryOptionItems]
+    : [...requiredOptionItems, ...commandItems, ...(showOrdinaryOptions && prefix === '' ? ordinaryOptionItems : [])]
+  const stage: CompletionResult['stage'] =
+    requiredOptionItems.length > 0 && prefix === ''
+      ? 'required_value'
+      : optionPrefix || (items.length > 0 && commandItems.length === 0 && showOrdinaryOptions)
+        ? 'option'
+        : Object.keys(state.command.subcommands).length > 0
+          ? 'subcommand'
+          : semantic.complete
+            ? 'complete'
+            : 'option'
+  const hiddenCommands = matchingCommands.some((command) => !commandIsVisible(state, command, prefix, disclosure))
+  const hiddenOptions = !showOrdinaryOptions && prefix === '' && ordinaryOptionItems.length > 0
 
-  return {
+  return boundedResult({
     commandPath: state.path,
+    stage,
+    disclosure,
+    hasMore: hiddenCommands || hiddenOptions,
     replaceRange,
-    items: prefix.startsWith('-')
-      ? [...requiredOptionItems, ...ordinaryOptionItems]
-      : [...requiredOptionItems, ...commandItems, ...(prefix === '' ? ordinaryOptionItems : [])],
+    items,
     semantic
-  }
+  })
 }

@@ -66,6 +66,32 @@
       "validating_intent": "[to be translated]:Checking the requested intent",
       "validating_semantics": "[to be translated]:Checking chemical and revision safety"
     },
+    "agent_workflow": {
+      "calculation": {
+        "description": "[to be translated]:Preflight a calculation and request exact one-shot approval before execution.",
+        "label": "[to be translated]:Calculation"
+      },
+      "command": {
+        "description": "[to be translated]:Synthesize, parse, and dry-run a ChemSmart command without execution.",
+        "label": "[to be translated]:Command"
+      },
+      "general": {
+        "description": "[to be translated]:Discuss science and inspect trusted Studio state without changing it.",
+        "label": "[to be translated]:General"
+      },
+      "molecule": {
+        "description": "[to be translated]:Inspect and prepare molecule draft, freeze, or constraint changes.",
+        "label": "[to be translated]:Molecule"
+      },
+      "project_setup": {
+        "description": "[to be translated]:Render and validate Gaussian or ORCA project YAML for exact write review.",
+        "label": "[to be translated]:Project setup"
+      },
+      "results": {
+        "description": "[to be translated]:Read calculation runs, artifacts, trajectories, and replay state.",
+        "label": "[to be translated]:Results"
+      }
+    },
     "control_activity": {
       "action_denied_summary": "[to be translated]:{{tool}} was denied.",
       "action_denied_title": "[to be translated]:Action denied",

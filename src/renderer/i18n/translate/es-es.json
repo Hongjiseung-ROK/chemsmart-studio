@@ -2138,6 +2138,11 @@
       "charge": "[to be translated]:charge {{charge}}",
       "command": "[to be translated]:ChemSmart command",
       "completions": "[to be translated]:Command completions",
+      "drop_directory": "[to be translated]:Folders cannot be dropped here. Choose one .xyz, .cjson, or .sdf coordinate file.",
+      "drop_failed": "[to be translated]:That coordinate file could not be verified. The command was not changed.",
+      "drop_multiple": "[to be translated]:Drop exactly one coordinate file at a time. The command was not changed.",
+      "drop_prompt": "[to be translated]:Drop one .xyz, .cjson, or .sdf coordinate file",
+      "drop_unsupported": "[to be translated]:Only .xyz, .cjson, and .sdf coordinate files can be dropped here.",
       "empty": "[to be translated]:Run a chemsmart command to see its output here.",
       "exit_code": "[to be translated]:Exited with code {{code}}",
       "exit_signal": "[to be translated]:Stopped by {{signal}}",
@@ -2151,15 +2156,25 @@
       },
       "guide": "[to be translated]:Semantic command guide",
       "hint": "[to be translated]:Enter runs · Tab completes · Shift+Tab finds a required slot · ↑ recalls history",
+      "more": "[to be translated]:More choices",
       "multiplicity": "[to be translated]:multiplicity {{multiplicity}}",
       "placeholder": "[to be translated]:chemsmart run gaussian opt -f molecule.xyz",
       "preflight_details": "[to be translated]:Inspection details",
       "preflight_ready": "[to be translated]:Ready",
       "preflight_rejected": "[to be translated]:Blocked",
       "preflight_warning": "[to be translated]:Review and press Enter again",
+      "remaining_options": "[to be translated]:{{count}} options left",
+      "root_command": "[to be translated]:chemsmart",
       "run": "[to be translated]:Run",
       "run_failed": "[to be translated]:The command could not be started.\n",
       "shell_command": "[to be translated]:Shell command",
+      "stage": {
+        "complete": "[to be translated]:Ready",
+        "option": "[to be translated]:Options",
+        "required_value": "[to be translated]:Required value",
+        "root": "[to be translated]:Command",
+        "subcommand": "[to be translated]:Subcommand"
+      },
       "warning_hint": "[to be translated]:No process has started · press Enter again to run the unchanged command"
     },
     "constraints": {
@@ -2397,6 +2412,25 @@
     },
     "project": {
       "author": "[to be translated]:Author a project",
+      "candidate": {
+        "apply": "[to be translated]:Apply once",
+        "changes": "[to be translated]:Changed sections",
+        "decision_failed": "[to be translated]:The decision could not be applied. Refresh the preview before trying again.",
+        "deny": "[to be translated]:Reject",
+        "digest": "[to be translated]:Candidate digest",
+        "load_failed": "[to be translated]:The YAML preview is no longer available.",
+        "program": "[to be translated]:Program",
+        "project": "[to be translated]:Project",
+        "status": "[to be translated]:Status",
+        "statuses": {
+          "denied": "[to be translated]:Rejected",
+          "expired": "[to be translated]:Expired",
+          "failed": "[to be translated]:Failed",
+          "pending": "[to be translated]:Awaiting review",
+          "stale": "[to be translated]:Context changed",
+          "written": "[to be translated]:Written"
+        }
+      },
       "critique": "[to be translated]:Critique",
       "description": "[to be translated]:Method projects the workspace holds. Gaussian and ORCA read their method from one.",
       "failed": "[to be translated]:The workspace projects could not be read.",
@@ -2404,7 +2438,28 @@
       "none_but_required": "[to be translated]:No project yet — this program cannot run without one.",
       "none_needed": "[to be translated]:No project needed.",
       "not_required": "[to be translated]:No project needed",
+      "open_renderer": "[to be translated]:Review method project YAML",
       "overwrite": "[to be translated]:Replace if it exists",
+      "renderer": {
+        "digest": "[to be translated]:Digest {{digest}}",
+        "node_kind": {
+          "mapping": "[to be translated]:Mapping",
+          "scalar": "[to be translated]:Scalar",
+          "sequence": "[to be translated]:Sequence"
+        },
+        "raw_yaml": "[to be translated]:Raw YAML",
+        "read_only": "[to be translated]:Read-only projection · raw YAML remains authoritative",
+        "section_empty": "[to be translated]:No explicit settings in this section.",
+        "source": {
+          "explicit": "[to be translated]:Explicit",
+          "inherited": "[to be translated]:Inherited"
+        },
+        "structured_unavailable": "[to be translated]:Structured details are unavailable for this legacy document. Review the raw YAML below.",
+        "unrecognized": "[to be translated]:Advanced / Unrecognized",
+        "unrecognized_description": "[to be translated]:Preserved values that are not part of the current semantic catalog.",
+        "validation": "[to be translated]:Validation",
+        "validation_clear": "[to be translated]:No validation findings."
+      },
       "required": "[to be translated]:Project required",
       "settings": "[to be translated]:{{project}} settings",
       "title": "[to be translated]:Project YAML",

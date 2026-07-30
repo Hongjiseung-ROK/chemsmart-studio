@@ -66,6 +66,32 @@
       "validating_intent": "正在检查请求意图",
       "validating_semantics": "正在检查化学与修订安全性"
     },
+    "agent_workflow": {
+      "calculation": {
+        "description": "对计算进行预检，并在执行前请求精确的一次性批准。",
+        "label": "计算"
+      },
+      "command": {
+        "description": "合成、解析并试运行 ChemSmart 命令，不执行计算。",
+        "label": "命令"
+      },
+      "general": {
+        "description": "讨论科学问题并检查可信 Studio 状态，不进行更改。",
+        "label": "通用"
+      },
+      "molecule": {
+        "description": "检查并准备分子草稿、冻结或约束更改。",
+        "label": "分子"
+      },
+      "project_setup": {
+        "description": "渲染并验证 Gaussian 或 ORCA 项目 YAML，等待精确写入审核。",
+        "label": "项目设置"
+      },
+      "results": {
+        "description": "读取计算运行、产物、轨迹和回放状态。",
+        "label": "结果"
+      }
+    },
     "control_activity": {
       "action_denied_summary": "已拒绝 {{tool}}。",
       "action_denied_title": "操作已拒绝",
