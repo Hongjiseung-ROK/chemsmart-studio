@@ -1,11 +1,18 @@
-import type { MoleculeDocument } from '@chemsmart/studio-protocol'
+import type { MoleculeDocument, StagePlacementPreview, StudioAgentActionCue } from '@chemsmart/studio-protocol'
 import {
   AmbientLight,
+  BufferGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
+  Group,
   InstancedMesh,
+  Line,
+  LineBasicMaterial,
+  LineDashedMaterial,
   Matrix4,
+  Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   PerspectiveCamera,
@@ -21,7 +28,9 @@ import {
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 
+import { buildMoleculeOverlayScene } from '../adapter/moleculeOverlay'
 import { buildMoleculeScene, type MoleculeScene, pickAtom, quantizePosition, type Vec3 } from '../adapter/moleculeScene'
+import { ballRadius, elementColor } from '../elements'
 
 /**
  * The three.js binding. Owns a renderer, a camera and exactly two instanced meshes — one for
@@ -47,6 +56,8 @@ export interface MoleculeCanvasHandlers {
    * shift or meta was held, so the caller can extend a selection rather than replace it.
    */
   onPick?: (atomId: string | null, additive: boolean, emptyPosition: Vec3 | null) => void
+  /** A safe, main-validated coordination site picked from the ghost overlay. */
+  onPlacementPick?: (siteIndex: number) => void
   /** A finished gizmo drag, carrying the quantized destination in angstrom. */
   onAtomMoved?: (atomId: string, position: Vec3) => void
 }
@@ -64,7 +75,14 @@ export class MoleculeCanvas {
 
   private atomMesh: InstancedMesh | null = null
   private bondMesh: InstancedMesh | null = null
+  private readonly overlayGroup = new Group()
+  private readonly placementGroup = new Group()
+  private placementHitMeshes: Mesh[] = []
+  private actionMarkers: Mesh[] = []
   private current: MoleculeScene | null = null
+  private currentDocument: MoleculeDocument | null = null
+  private actionCues: readonly StudioAgentActionCue[] = []
+  private reduceMotion = false
   private frameHandle: number | null = null
   private disposed = false
 
@@ -109,6 +127,8 @@ export class MoleculeCanvas {
     this.transform = new TransformControls(this.camera, canvas)
     this.transform.enabled = false
     this.scene.add(this.gizmoAnchor)
+    this.scene.add(this.overlayGroup)
+    this.scene.add(this.placementGroup)
     this.scene.add(this.transform.getHelper())
     // Orbiting while dragging an axis would fight the gesture, so the camera holds still.
     this.transform.addEventListener('dragging-changed', (event) => {
@@ -138,12 +158,59 @@ export class MoleculeCanvas {
     const next = buildMoleculeScene(document)
     const shouldReframe = this.current === null
     this.current = next
+    this.currentDocument = document
     this.syncAtoms(next)
     this.syncBonds(next)
+    this.syncOverlays()
     if (shouldReframe) this.frameAll()
     // A committed revision moves atoms. The gizmo follows the atom it points at, and lets go if that
     // atom is no longer there — the committed document always wins over an in-flight gesture.
     this.setGizmoTarget(this.gizmoAtomId)
+  }
+
+  /** Draws trusted coordination candidates separately from committed topology. */
+  setPlacementPreview(preview: StagePlacementPreview | null): void {
+    this.clearGroup(this.placementGroup)
+    this.placementHitMeshes = []
+    if (!preview) return
+    const selected = preview.selectedSiteIndex
+    for (const candidate of preview.candidates) {
+      const material = new MeshBasicMaterial({
+        color: candidate.occupied ? 0x71717a : candidate.safe ? elementColor(preview.atomicNumber) : 0xef4444,
+        opacity: candidate.siteIndex === selected ? 0.72 : 0.28,
+        transparent: true,
+        wireframe: candidate.siteIndex !== selected
+      })
+      const mesh = new Mesh(
+        new SphereGeometry(Math.max(0.18, ballRadius(preview.atomicNumber) * 0.58), 16, 8),
+        material
+      )
+      mesh.position.set(...candidate.position)
+      mesh.userData.siteIndex = candidate.siteIndex
+      mesh.userData.safe = candidate.safe
+      this.placementGroup.add(mesh)
+      this.placementHitMeshes.push(mesh)
+    }
+    if (preview.anchorAtomId !== undefined && selected !== undefined && this.currentDocument) {
+      const anchor = this.currentDocument.atoms.find((atom) => atom.id === preview.anchorAtomId)
+      const candidate = preview.candidates.find((item) => item.siteIndex === selected)
+      if (anchor && candidate) {
+        const geometry = new BufferGeometry().setFromPoints([
+          new Vector3(...anchor.position),
+          new Vector3(...candidate.position)
+        ])
+        const line = new Line(geometry, new LineDashedMaterial({ color: 0x58a6ff, dashSize: 0.16, gapSize: 0.1 }))
+        line.computeLineDistances()
+        this.placementGroup.add(line)
+      }
+    }
+  }
+
+  /** Updates path-free Agent and persistent scientific overlays without touching selection. */
+  setActionCues(actionCues: readonly StudioAgentActionCue[], reduceMotion: boolean): void {
+    this.actionCues = actionCues
+    this.reduceMotion = reduceMotion
+    this.syncOverlays()
   }
 
   /**
@@ -212,6 +279,8 @@ export class MoleculeCanvas {
     this.cylinderGeometry.dispose()
     this.atomMaterial.dispose()
     this.bondMaterial.dispose()
+    this.clearGroup(this.overlayGroup)
+    this.clearGroup(this.placementGroup)
     this.renderer.dispose()
   }
 
@@ -231,7 +300,7 @@ export class MoleculeCanvas {
   }
 
   private emitPick(event: PointerEvent): void {
-    if (!this.handlers.onPick) return
+    if (!this.handlers.onPick && !this.handlers.onPlacementPick) return
     const additive = event.shiftKey || event.metaKey
     const rect = this.renderer.domElement.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
@@ -240,6 +309,15 @@ export class MoleculeCanvas {
       -((event.clientY - rect.top) / rect.height) * 2 + 1
     )
     this.raycaster.setFromCamera(this.pointer, this.camera)
+    const placement = this.raycaster
+      .intersectObjects(this.placementHitMeshes, false)
+      .map((hit) => hit.object as Mesh)
+      .find((mesh) => mesh.userData.safe === true)
+    if (placement && this.handlers.onPlacementPick) {
+      this.handlers.onPlacementPick(placement.userData.siteIndex as number)
+      return
+    }
+    if (!this.handlers.onPick) return
     const mesh = this.atomMesh
     const scene = this.current
     if (!mesh || !scene) {
@@ -276,6 +354,42 @@ export class MoleculeCanvas {
     if (!mesh) return
     this.scene.remove(mesh)
     mesh.dispose()
+  }
+
+  private clearGroup(group: Group): void {
+    for (const child of [...group.children]) {
+      group.remove(child)
+      const disposable = child as Mesh | Line
+      disposable.geometry?.dispose()
+      const materials = Array.isArray(disposable.material) ? disposable.material : [disposable.material]
+      materials.forEach((material) => material?.dispose())
+    }
+  }
+
+  private syncOverlays(): void {
+    this.clearGroup(this.overlayGroup)
+    this.actionMarkers = []
+    if (!this.currentDocument) return
+    const overlay = buildMoleculeOverlayScene(this.currentDocument, this.actionCues)
+    for (const segment of overlay.segments) {
+      const geometry = new BufferGeometry().setFromPoints([new Vector3(...segment.start), new Vector3(...segment.end)])
+      const material = segment.dashed
+        ? new LineDashedMaterial({ color: segment.color, dashSize: 0.12, gapSize: 0.08 })
+        : new LineBasicMaterial({ color: segment.color })
+      const line = new Line(geometry, material)
+      if (segment.dashed) line.computeLineDistances()
+      this.overlayGroup.add(line)
+    }
+    for (const marker of overlay.markers) {
+      const mesh = new Mesh(
+        new SphereGeometry(0.42, 16, 8),
+        new MeshBasicMaterial({ color: marker.color, opacity: 0.48, transparent: true, wireframe: true })
+      )
+      mesh.position.set(...marker.position)
+      mesh.userData.running = marker.running
+      this.overlayGroup.add(mesh)
+      this.actionMarkers.push(mesh)
+    }
   }
 
   /**
@@ -354,6 +468,10 @@ export class MoleculeCanvas {
     if (this.disposed) return
     this.frameHandle = requestAnimationFrame(this.renderLoop)
     this.controls.update()
+    if (!this.reduceMotion) {
+      const pulse = 1 + 0.08 * Math.sin(performance.now() / 180)
+      this.actionMarkers.forEach((marker) => marker.scale.setScalar(marker.userData.running ? pulse : 1))
+    }
     this.renderer.render(this.scene, this.camera)
   }
 }

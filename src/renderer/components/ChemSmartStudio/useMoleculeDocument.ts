@@ -2,6 +2,8 @@ import type {
   MoleculeDocument,
   MoleculeOperation,
   StageGestureIntent,
+  StagePlacementIntent,
+  StagePlacementPreview,
   StudioDraftSnapshot
 } from '@chemsmart/studio-protocol'
 import { loggerService } from '@logger'
@@ -13,6 +15,8 @@ import type {
   ChemSmartStudioPatchMode
 } from '@shared/ipc/schemas/chemsmartStudio'
 import { useCallback, useEffect, useRef, useState } from 'react'
+
+import { moleculeGeometryHash } from './moleculePlacement'
 
 const logger = loggerService.withContext('useMoleculeDocument')
 
@@ -203,6 +207,69 @@ export function useMoleculeDocument(sessionId: string, enabled: boolean) {
     [sessionId, state.document?.revision, state.proposing]
   )
 
+  const previewPlacement = useCallback(
+    async (
+      request: Omit<StagePlacementIntent, 'documentId' | 'expectedRevision' | 'geometryHash'>
+    ): Promise<StagePlacementPreview | null> => {
+      const document = state.displayBinding.state === 'committed' ? state.displayDocument : null
+      if (!document || state.proposing) return null
+      setState((current) => ({ ...current, failed: false, proposing: true }))
+      try {
+        const intent: StagePlacementIntent = {
+          ...request,
+          documentId: document.documentId,
+          expectedRevision: document.revision,
+          geometryHash: await moleculeGeometryHash(document)
+        }
+        return await ipcApi.request('chemsmart_studio.molecule.placement_preview', { sessionId, intent })
+      } catch (error) {
+        setState((current) => ({ ...current, failed: true }))
+        logger.error('Failed to preview atom placement', error as Error)
+        return null
+      } finally {
+        setState((current) => ({ ...current, proposing: false }))
+      }
+    },
+    [sessionId, state.displayBinding.state, state.displayDocument, state.proposing]
+  )
+
+  const applyPlacement = useCallback(
+    async (preview: StagePlacementPreview, siteIndex: number): Promise<string | null> => {
+      const document = state.displayBinding.state === 'committed' ? state.displayDocument : null
+      const candidate = preview.candidates.find((item) => item.siteIndex === siteIndex && item.safe)
+      if (!document || !candidate || state.proposing) return null
+      setState((current) => ({ ...current, failed: false, proposing: true }))
+      try {
+        const intent: StagePlacementIntent = {
+          documentId: preview.documentId,
+          expectedRevision: preview.revision,
+          geometryHash: preview.geometryHash,
+          ...(preview.anchorAtomId ? { anchorAtomId: preview.anchorAtomId } : { origin: candidate.position }),
+          atomicNumber: preview.atomicNumber,
+          bondOrder: preview.bondOrder,
+          coordinationGeometry: preview.coordinationGeometry,
+          siteIndex
+        }
+        const result = await ipcApi.request('chemsmart_studio.molecule.placement_apply', { sessionId, intent })
+        setState((current) => ({
+          ...current,
+          draft: result.snapshot,
+          displayDocument:
+            current.displayBinding.state === 'committed' ? result.snapshot.document : current.displayDocument,
+          selection: result.snapshot.document.selections
+        }))
+        return result.insertedAtomId
+      } catch (error) {
+        setState((current) => ({ ...current, failed: true }))
+        logger.error('Failed to place atom', error as Error)
+        return null
+      } finally {
+        setState((current) => ({ ...current, proposing: false }))
+      }
+    },
+    [sessionId, state.displayBinding.state, state.displayDocument, state.proposing]
+  )
+
   /**
    * Walks the researcher's own history. Main publishes the restored geometry as a *new* revision
    * rather than rewinding to an old number, so the document returned here is safe to propose against
@@ -301,5 +368,16 @@ export function useMoleculeDocument(sessionId: string, enabled: boolean) {
     }
   }, [sessionId, state.traveling])
 
-  return { ...state, commitDraft, discardDraft, proposePatch, redo, refresh, setSelection, undo }
+  return {
+    ...state,
+    applyPlacement,
+    commitDraft,
+    discardDraft,
+    previewPlacement,
+    proposePatch,
+    redo,
+    refresh,
+    setSelection,
+    undo
+  }
 }

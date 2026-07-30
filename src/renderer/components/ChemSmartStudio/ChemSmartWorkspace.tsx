@@ -1,5 +1,6 @@
 import type {
   ResearchProjectContext,
+  StudioAgentActionCue,
   StudioAgentCapability,
   StudioAgentComposerIntent,
   StudioAgentLiveEvent,
@@ -32,6 +33,7 @@ import {
   RotateCcw,
   TriangleAlert
 } from 'lucide-react'
+import { useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
@@ -252,6 +254,9 @@ export function ChemSmartWorkspace({
   const [agentCapabilities, setAgentCapabilities] = useState<StudioAgentCapability[]>([])
   const [agentLiveEvents, setAgentLiveEvents] = useState<StudioAgentLiveEvent[]>([])
   const [agentTurnEvents, setAgentTurnEvents] = useState<StudioAgentTurnEvent[]>([])
+  const [agentActionCues, setAgentActionCues] = useState<StudioAgentActionCue[]>([])
+  const actionCueTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const reduceMotion = useReducedMotion()
   const [statusLoading, setStatusLoading] = useState(true)
   const [statusFailed, setStatusFailed] = useState(false)
   const [workspaceAction, setWorkspaceAction] = useState<WorkspaceAction>(null)
@@ -486,6 +491,24 @@ export function ChemSmartWorkspace({
     setAgentLiveEvents((current) => mergeAgentLiveEvent(current, event))
   })
 
+  useIpcOn('chemsmart_studio.agent.action_cue', (event) => {
+    const existingTimer = actionCueTimersRef.current.get(event.cueId)
+    if (existingTimer) clearTimeout(existingTimer)
+    actionCueTimersRef.current.delete(event.cueId)
+    if (event.phase === 'failed' || event.phase === 'cancelled') {
+      setAgentActionCues((current) => current.filter((cue) => cue.cueId !== event.cueId))
+      return
+    }
+    setAgentActionCues((current) => [...current.filter((cue) => cue.cueId !== event.cueId), event])
+    if (event.phase === 'succeeded') {
+      const timer = setTimeout(() => {
+        setAgentActionCues((current) => current.filter((cue) => cue.cueId !== event.cueId))
+        actionCueTimersRef.current.delete(event.cueId)
+      }, 900)
+      actionCueTimersRef.current.set(event.cueId, timer)
+    }
+  })
+
   const projectedAgentBusy = useMemo(() => {
     const terminalTurns = new Set(
       agentTurnEvents.filter((event) => event.kind === 'turn_terminal').map((event) => event.turnId)
@@ -493,6 +516,14 @@ export function ChemSmartWorkspace({
     return agentTurnEvents.some((event) => event.kind === 'user_message' && !terminalTurns.has(event.turnId))
   }, [agentTurnEvents])
   const agentBusy = agentTurnBusy || projectedAgentBusy
+  const visibleActionCues = useMemo(
+    () =>
+      agentActionCues.filter(
+        (cue) =>
+          cue.documentId === molecule.displayDocument?.documentId && cue.revision === molecule.displayDocument?.revision
+      ),
+    [agentActionCues, molecule.displayDocument?.documentId, molecule.displayDocument?.revision]
+  )
 
   useIpcOn('chemsmart_studio.molecule.changed', (summary) => {
     setMoleculeSummary(summary)
@@ -523,6 +554,9 @@ export function ChemSmartWorkspace({
     setAgentCapabilities([])
     setAgentLiveEvents([])
     setAgentTurnEvents([])
+    setAgentActionCues([])
+    actionCueTimersRef.current.forEach(clearTimeout)
+    actionCueTimersRef.current.clear()
     setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
     setAgentReviewRequestId(0)
     setMoleculeSummary(null)
@@ -558,6 +592,8 @@ export function ChemSmartWorkspace({
       })
 
     return () => {
+      actionCueTimersRef.current.forEach(clearTimeout)
+      actionCueTimersRef.current.clear()
       statusRequestRef.current += 1
       summaryRequestRef.current += 1
       controlRequestRef.current += 1
@@ -1453,12 +1489,14 @@ export function ChemSmartWorkspace({
                 onActivate={(projectId) => activateDocument(projectId)}
               />
               <MoleculeStage
+                actionCues={visibleActionCues}
                 compact={tier === 'viewport-only'}
                 contract={modeContract}
                 editable={moleculeEditable}
                 mode={workbenchMode}
                 molecule={molecule}
                 onModeChange={requestWorkbenchModeChange}
+                reduceMotion={reduceMotion ?? false}
                 selectable={moleculeSelectable}
               />
             </div>

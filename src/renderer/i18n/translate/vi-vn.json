@@ -1890,11 +1890,17 @@
   },
   "chemsmart_studio": {
     "agent_trace": {
+      "assistant_response": "[to be translated]:ChemSmart Agent response",
       "current": "[to be translated]:Current",
       "elapsed": "[to be translated]:{{duration}} ms",
       "input": "[to be translated]:Validated input",
+      "jump_latest": "[to be translated]:Jump to latest",
       "output": "[to be translated]:Result",
       "rules": "[to be translated]:Gate rules",
+      "tools_running_one": "[to be translated]:{{count}} tool in use",
+      "tools_running_other": "[to be translated]:{{count}} tools in use",
+      "tools_used_one": "[to be translated]:{{count}} tool used · {{duration}}",
+      "tools_used_other": "[to be translated]:{{count}} tools used · {{duration}}",
       "turn": "[to be translated]:Agent turn {{index}}",
       "verdict": "[to be translated]:Verdict"
     },
@@ -2061,6 +2067,7 @@
         "octahedral": "[to be translated]:Octahedral",
         "square_planar": "[to be translated]:Square planar",
         "tetrahedral": "[to be translated]:Tetrahedral",
+        "trigonal_bipyramidal": "[to be translated]:Trigonal bipyramidal",
         "trigonal_planar": "[to be translated]:Trigonal planar"
       },
       "delete_selected": "[to be translated]:Delete selected",
@@ -2075,6 +2082,11 @@
       "fragments": "[to be translated]:Fragments & rings",
       "insertion_mode": "[to be translated]:Click stage to place",
       "lanthanides": "[to be translated]:Lanthanides",
+      "placement": {
+        "coordination_full": "[to be translated]:All sites in this coordination guide are occupied.",
+        "ready": "[to be translated]:Choose a safe site · Tab cycles candidates · Esc cancels",
+        "steric_collision": "[to be translated]:No collision-free site is available."
+      },
       "search_element": "[to be translated]:Search element",
       "tools": "[to be translated]:Structure tools"
     },

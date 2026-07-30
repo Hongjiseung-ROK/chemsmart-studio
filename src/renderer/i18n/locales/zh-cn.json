@@ -2067,6 +2067,7 @@
         "octahedral": "八面体",
         "square_planar": "平面正方形",
         "tetrahedral": "四面体",
+        "trigonal_bipyramidal": "三角双锥",
         "trigonal_planar": "平面三角形"
       },
       "delete_selected": "删除所选",
@@ -2081,6 +2082,11 @@
       "fragments": "片段与环",
       "insertion_mode": "点击视图放置",
       "lanthanides": "镧系元素",
+      "placement": {
+        "coordination_full": "该配位导向中的所有位置均已占用。",
+        "ready": "选择安全位置 · Tab 切换候选 · Esc 取消",
+        "steric_collision": "没有可用的无碰撞位置。"
+      },
       "search_element": "搜索元素",
       "tools": "结构工具"
     },

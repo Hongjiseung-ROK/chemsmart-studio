@@ -2067,6 +2067,7 @@
         "octahedral": "Octahedral",
         "square_planar": "Square planar",
         "tetrahedral": "Tetrahedral",
+        "trigonal_bipyramidal": "Trigonal bipyramidal",
         "trigonal_planar": "Trigonal planar"
       },
       "delete_selected": "Delete selected",
@@ -2081,6 +2082,11 @@
       "fragments": "Fragments & rings",
       "insertion_mode": "Click stage to place",
       "lanthanides": "Lanthanides",
+      "placement": {
+        "coordination_full": "All sites in this coordination guide are occupied.",
+        "ready": "Choose a safe site · Tab cycles candidates · Esc cancels",
+        "steric_collision": "No collision-free site is available."
+      },
       "search_element": "Search element",
       "tools": "Structure tools"
     },
