@@ -2,6 +2,7 @@ import type {
   ResearchProjectContext,
   StudioAgentCapability,
   StudioAgentComposerIntent,
+  StudioAgentLiveEvent,
   StudioAgentTurnEvent
 } from '@chemsmart/studio-protocol'
 import { Alert, Badge, Button, Scrollbar } from '@cherrystudio/ui'
@@ -57,6 +58,7 @@ import { type WorkbenchTab, WorkbenchTabs } from './WorkbenchTabs'
 import { WorkspaceDock } from './WorkspaceDock'
 
 const logger = loggerService.withContext('ChemSmartWorkspace')
+const MAX_AGENT_LIVE_EVENTS = 4_000
 const MAX_AGENT_TURN_EVENTS = 2_000
 const REPLAY_CATALOG_LIMIT = 50
 const REPLAY_TIMELINE_LIMIT = 500
@@ -92,6 +94,18 @@ function mergeAgentTurnEvent(
   if (current.some((item) => item.eventId === event.eventId || item.sequence === event.sequence)) return [...current]
 
   return [...current, event].sort((left, right) => left.sequence - right.sequence).slice(-MAX_AGENT_TURN_EVENTS)
+}
+
+function mergeAgentLiveEvent(
+  current: readonly StudioAgentLiveEvent[],
+  event: StudioAgentLiveEvent
+): StudioAgentLiveEvent[] {
+  const latestSequence = current.reduce(
+    (sequence, item) => (item.turnId === event.turnId ? Math.max(sequence, item.sequence) : sequence),
+    -1
+  )
+  if (event.sequence <= latestSequence) return [...current]
+  return [...current, event].slice(-MAX_AGENT_LIVE_EVENTS)
 }
 
 function classifyControlActionFailure(error: unknown): ControlActionFailure {
@@ -236,6 +250,7 @@ export function ChemSmartWorkspace({
   const [moleculeSummary, setMoleculeSummary] = useState<ChemSmartStudioMoleculeSummary | null>(null)
   const [documentName, setDocumentName] = useState<string | null>(null)
   const [agentCapabilities, setAgentCapabilities] = useState<StudioAgentCapability[]>([])
+  const [agentLiveEvents, setAgentLiveEvents] = useState<StudioAgentLiveEvent[]>([])
   const [agentTurnEvents, setAgentTurnEvents] = useState<StudioAgentTurnEvent[]>([])
   const [statusLoading, setStatusLoading] = useState(true)
   const [statusFailed, setStatusFailed] = useState(false)
@@ -466,6 +481,11 @@ export function ChemSmartWorkspace({
     setAgentTurnEvents((current) => mergeAgentTurnEvent(current, event))
   })
 
+  useIpcOn('chemsmart_studio.agent.live_event', (event) => {
+    if (event.threadId !== sessionId) return
+    setAgentLiveEvents((current) => mergeAgentLiveEvent(current, event))
+  })
+
   const projectedAgentBusy = useMemo(() => {
     const terminalTurns = new Set(
       agentTurnEvents.filter((event) => event.kind === 'turn_terminal').map((event) => event.turnId)
@@ -501,6 +521,7 @@ export function ChemSmartWorkspace({
 
   useEffect(() => {
     setAgentCapabilities([])
+    setAgentLiveEvents([])
     setAgentTurnEvents([])
     setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
     setAgentReviewRequestId(0)
@@ -1467,6 +1488,7 @@ export function ChemSmartWorkspace({
               activeResearchThread?.title ?? activeDocumentName ?? t('chemsmart_studio.agent_workbench.current_session')
             }
             turnEvents={agentTurnEvents}
+            liveEvents={agentLiveEvents}
             onClose={() => {
               if (tier === 'viewport-only') setSheetPane(null)
               else setInspectorOpen(false)

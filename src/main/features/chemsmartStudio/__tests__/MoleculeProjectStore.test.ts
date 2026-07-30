@@ -65,8 +65,8 @@ describe('MoleculeProjectStore', () => {
     expect(project.projectPath).toBe(await realpath(path.join(directory, 'Water.cmsproj')))
     expect(project.document).toEqual(document())
     expect(project.manifest).toMatchObject({
-      schemaVersion: '1.0.0',
-      protocolVersion: '1.0.0',
+      schemaVersion: '2.0.0',
+      protocolVersion: '2.0.0',
       documentId: 'document-water',
       currentRevision: 0,
       activeRunId: null

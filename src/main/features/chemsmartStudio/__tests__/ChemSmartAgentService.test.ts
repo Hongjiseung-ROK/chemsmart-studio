@@ -729,21 +729,6 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(localProcessRequestMock).not.toHaveBeenCalled()
   })
 
-  it('rejects cross-sender activity replay before starting or contacting the sidecar', async () => {
-    claimSessionControlMock.mockImplementationOnce(() => {
-      throw Object.assign(new Error('Studio session is controlled by another window'), {
-        code: 'FORBIDDEN_SENDER'
-      })
-    })
-
-    await expect(service.replayStudioUi('session-1', 0, 'window-2')).rejects.toMatchObject({
-      code: 'FORBIDDEN_SENDER'
-    })
-
-    expect(localProcessStartMock).not.toHaveBeenCalled()
-    expect(localProcessRequestMock).not.toHaveBeenCalled()
-  })
-
   it('serializes one active turn per session and releases the guard after success', async () => {
     let releaseFirstTurn!: () => void
     let agentTurnCount = 0
@@ -1259,24 +1244,20 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(projectionTerminalizeMock.mock.calls.map((call) => call[2])).toEqual(['cancelled', 'completed', 'completed'])
   })
 
-  it.each([
-    'approval.request',
-    'molecule.request',
-    'calculation.request',
-    'agent.event',
-    'agent.trace',
-    'studio_ui.event'
-  ])('rejects an unbound %s callback before delegation', async (method) => {
-    await expect(
-      internals.handleSidecarRequest(method, {
-        sessionId: 'session-1',
-        operationId: 'stale-operation'
+  it.each(['approval.request', 'molecule.request', 'calculation.request', 'agent.event', 'agent.trace'])(
+    'rejects an unbound %s callback before delegation',
+    async (method) => {
+      await expect(
+        internals.handleSidecarRequest(method, {
+          sessionId: 'session-1',
+          operationId: 'stale-operation'
+        })
+      ).rejects.toMatchObject({
+        code: -32003,
+        message: 'Host model request is not bound to an active Studio operation'
       })
-    ).rejects.toMatchObject({
-      code: -32003,
-      message: 'Host model request is not bound to an active Studio operation'
-    })
-  })
+    }
+  )
 
   it('does not authorize agent-only callbacks with a command-synthesis token', async () => {
     localProcessRequestMock.mockImplementation(async (method: string, params: unknown) => {

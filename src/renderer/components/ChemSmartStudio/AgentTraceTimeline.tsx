@@ -1,6 +1,11 @@
 import '@cherrystudio/ui/components/composites/markdown/styles'
 
-import type { StudioAgentToolProjection, StudioAgentTurnEvent, StudioAgentTurnStatus } from '@chemsmart/studio-protocol'
+import type {
+  StudioAgentLiveEvent,
+  StudioAgentToolProjection,
+  StudioAgentTurnEvent,
+  StudioAgentTurnStatus
+} from '@chemsmart/studio-protocol'
 import { Badge, Button, Markdown, StreamingMarkdown } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import {
@@ -26,15 +31,7 @@ import { useTranslation } from 'react-i18next'
  * interface structural lets the generated protocol type replace it at the
  * integration boundary without coupling the renderer to a provider payload.
  */
-export interface StudioAgentLiveProjection {
-  blockId: string
-  kind: 'public_summary' | 'text_completed' | 'text_delta' | 'text_started'
-  sequence: number
-  text?: string
-  threadId: string
-  transient: true
-  turnId: string
-}
+export type StudioAgentLiveProjection = StudioAgentLiveEvent
 
 interface AgentTraceTimelineProps {
   events: readonly StudioAgentTurnEvent[]
@@ -307,10 +304,10 @@ function ToolRow({ lifecycle }: { lifecycle: ToolLifecycle }) {
       <Wrench aria-hidden className="size-3.5 shrink-0 text-foreground-muted" />
       <span className="min-w-0 flex-1 text-left">
         <span className="block truncate font-medium text-foreground text-xs">{tool.purpose}</span>
-        <span className="block truncate font-mono text-foreground-muted text-[11px]">{tool.toolName}</span>
+        <span className="block truncate font-mono text-[11px] text-foreground-muted">{tool.toolName}</span>
       </span>
       {tool.durationMs !== undefined ? (
-        <span className="shrink-0 font-mono text-foreground-muted text-[11px]">{formatDuration(tool.durationMs)}</span>
+        <span className="shrink-0 font-mono text-[11px] text-foreground-muted">{formatDuration(tool.durationMs)}</span>
       ) : null}
       <ToolState status={event.status} />
     </>

@@ -82,12 +82,10 @@ class MatrixPeer:
         self.requests.append((method, params))
         if method == "agent.trace":
             return {"accepted": True}
-        if method == "studio_ui.event":
-            return {
-                "accepted": True,
-                "eventId": params["eventId"],
-                "sequence": params["sequence"],
-            }
+        if method == "approval.consume":
+            assert params["tool"] == "execute_chemsmart_command"
+            assert set(params["arguments"]) == {"command", "test", "timeout_s"}
+            return {"accepted": True}
         if method == "molecule.request":
             return {
                 "previewId": "preview-1",
@@ -385,10 +383,7 @@ def _run_conversation_case(
     provider = ScriptedProvider([_final_response("Safe advisory response.")])
     session = AgentSession(
         provider=provider,
-        registry=runtime._studio_registry(
-            case["caseId"],
-            runtime._studio_ui_emitter(case["caseId"]),
-        ),
+        registry=runtime._studio_registry(case["caseId"]),
         session_root=case_root / "sessions",
         runtime_v2="active",
         tool_profile=STUDIO_AGENT_TOOL_PROFILE,
@@ -428,10 +423,7 @@ def _run_studio_case(
     )
     session = AgentSession(
         provider=provider,
-        registry=runtime._studio_registry(
-            case["caseId"],
-            runtime._studio_ui_emitter(case["caseId"]),
-        ),
+        registry=runtime._studio_registry(case["caseId"]),
         session_root=case_root / "sessions",
         runtime_v2="active",
         tool_profile=STUDIO_AGENT_TOOL_PROFILE,
@@ -462,10 +454,7 @@ def _run_cli_case(
 ) -> dict[str, Any]:
     peer = MatrixPeer()
     runtime = StudioAgentRuntime(case_root / "adapter").bind_peer(peer)
-    studio_registry = runtime._studio_registry(
-        case["caseId"],
-        runtime._studio_ui_emitter(case["caseId"]),
-    )
+    studio_registry = runtime._studio_registry(case["caseId"])
     # Production Studio exposes this exact execution tool behind a one-shot trusted card. The matrix
     # keeps execution fake while exercising the same registry the model receives.
     registry = studio_registry

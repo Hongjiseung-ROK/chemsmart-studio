@@ -1,3 +1,5 @@
+import '@testing-library/jest-dom/vitest'
+
 import type {
   MoleculeDocument,
   MoleculeOperation,
@@ -343,8 +345,8 @@ function optimizationControlSnapshot(
         runId: 'run-1',
         documentId: 'molecule-1',
         inputRevision: 4,
-        engine: 'avogadro',
-        method: 'UFF',
+        engine: 'xtb',
+        method: 'GFN2-xTB',
         settings: { maxSteps: 100, extensions: { rawArguments: { value: 'must-not-render' } } },
         frozenAtomIds: [],
         constraintIds: [],
@@ -387,8 +389,8 @@ function replayCatalog() {
           runId: 'run-recorded',
           documentId: 'molecule-1',
           inputRevision: 4,
-          engine: 'avogadro' as const,
-          method: 'UFF',
+          engine: 'xtb' as const,
+          method: 'GFN2-xTB',
           settings: { extensions: {} },
           frozenAtomIds: ['must-not-render-atom'],
           constraintIds: [],
@@ -572,7 +574,6 @@ describe('ChemSmartStudioPanel', () => {
       if (route === 'chemsmart_studio.status') return stoppedStatus()
       if (route === 'chemsmart_studio.molecule.summary') return { documentId: 'molecule-1', revision: 4 }
       if (route === 'chemsmart_studio.molecule.document') return moleculeDocument()
-      if (route === 'chemsmart_studio.agent.replay_studio_ui') return { replayed: 0, nextSequence: 0 }
       if (route === 'chemsmart_studio.control.snapshot') return emptyControlSnapshot()
       if (route === 'chemsmart_studio.optimization.replay_catalog') {
         return { totalRuns: 0, runs: [], nextRunId: null, extensions: {} }
@@ -1390,7 +1391,6 @@ describe('ChemSmartStudioPanel', () => {
         return { ...moleculeDocument(), documentId: 'molecule-2', revision: 7 }
       }
       if (route === 'chemsmart_studio.control.snapshot') return emptyControlSnapshot()
-      if (route === 'chemsmart_studio.agent.replay_studio_ui') return { replayed: 0, nextSequence: 0 }
       if (route === 'chemsmart_studio.optimization.replay_catalog') {
         return { totalRuns: 0, runs: [], nextRunId: null, extensions: {} }
       }

@@ -1,4 +1,9 @@
-import type { MoleculeDocument, MoleculeOperation, PreviewReceipt, StudioUiEvent } from '@chemsmart/studio-protocol'
+import type {
+  MoleculeDocument,
+  MoleculeOperation,
+  PreviewReceipt,
+  StudioAgentLiveEvent
+} from '@chemsmart/studio-protocol'
 import type { ChemSmartStudioViewportState } from '@shared/ipc/schemas/chemsmartStudio'
 import { useEffect } from 'react'
 
@@ -158,11 +163,8 @@ export const ipcApi = {
         return performAction((input as { actionId: string }).actionId)
       case 'chemsmart_studio.command.inspect':
         return commandInspection()
-      case 'chemsmart_studio.agent.replay_studio_ui':
-        for (const event of state.events) emit('chemsmart_studio.studio_ui.event', event)
-        return { replayed: state.events.length, nextSequence: state.events.length }
       case 'chemsmart_studio.agent.run_turn':
-        for (const event of state.events) emit('chemsmart_studio.studio_ui.event', event)
+        for (const event of state.events) emit('chemsmart_studio.agent.live_event', event)
         return { completed: true }
       case 'chemsmart_studio.optimization.replay_catalog':
         return replayCatalog()
@@ -340,8 +342,8 @@ export const harness = {
   get scenario() {
     return state
   },
-  pushEvents(events: StudioUiEvent[]) {
-    for (const event of events) emit('chemsmart_studio.studio_ui.event', event)
+  pushEvents(events: StudioAgentLiveEvent[]) {
+    for (const event of events) emit('chemsmart_studio.agent.live_event', event)
   },
   setScenario(name: ScenarioName) {
     state = scenario(name)

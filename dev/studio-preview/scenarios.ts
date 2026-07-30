@@ -4,8 +4,8 @@ import type {
   MoleculeOperation,
   OptimizationReplayCatalog,
   OptimizationReplayTimeline,
-  StudioControlSnapshot,
-  StudioUiEvent
+  StudioAgentLiveEvent,
+  StudioControlSnapshot
 } from '@chemsmart/studio-protocol'
 import type { ChemSmartStudioViewportState } from '@shared/ipc/schemas/chemsmartStudio'
 
@@ -372,42 +372,27 @@ export function commandInspection(): CommandInspectionResult {
 }
 
 let sequence = 0
-function event(kind: StudioUiEvent['kind'], payload: StudioUiEvent['payload']): StudioUiEvent {
+function event(kind: StudioAgentLiveEvent['kind'], text: string): StudioAgentLiveEvent {
   sequence += 1
   return {
-    eventId: `ui-event-${sequence}`,
-    sessionId,
+    threadId: sessionId,
+    turnId: 'turn-preview',
+    blockId: 'block-preview',
     sequence,
-    timestamp: at(3 + sequence),
-    source: 'runtime',
     kind,
-    payload,
-    extensions: {}
+    text,
+    transient: true
   }
 }
 
-/** A short agent turn: what it said it was doing, where it pointed, and what it asked for. */
-export function agentTurnEvents(): StudioUiEvent[] {
+/** A short transient Agent stream for the renderer preview. */
+export function agentTurnEvents(): StudioAgentLiveEvent[] {
   sequence = 0
   return [
-    event('status', { message: 'Reading the committed structure at revision 12.' }),
-    event('agent_thought', {
-      message: 'The C–O bond looks long for an alcohol; measuring before proposing anything.',
-      phase: 'understanding_request'
-    }),
-    event('molecule_focus', {
-      message: 'Measuring C2–O1.',
-      documentId,
-      revision: 12,
-      atomIds: ['C2', 'O1']
-    }),
-    event('agent_thought', {
-      message: 'A GFN2-xTB optimisation is the cheapest way to settle the geometry; it needs approval.',
-      phase: 'preparing_calculation',
-      toolName: 'prepare_molecule_optimization'
-    }),
-    event('inspector_target', { message: 'Asking for the calculation decision.', target: 'decisions' }),
-    event('notice', { message: 'A calculation approval is waiting for you.' })
+    event('text_started', ''),
+    event('text_delta', 'Reading the committed structure at revision 12.'),
+    event('public_summary', 'Measuring the C2–O1 bond before proposing a calculation.'),
+    event('text_completed', 'The structure is ready for a bounded calculation plan.')
   ]
 }
 
@@ -423,7 +408,7 @@ export interface Scenario {
   agentState: 'stopped' | 'running'
   document: MoleculeDocument | null
   snapshot: StudioControlSnapshot
-  events: StudioUiEvent[]
+  events: StudioAgentLiveEvent[]
   viewport: ChemSmartStudioViewportState
 }
 

@@ -66,7 +66,6 @@ from .generated_protocol import (
 from .molecule_import import import_molecule
 from .protocol_identity import protocol_hello
 from .rpc import JsonRpcPeer, RpcFault
-from .studio_ui import StudioUiEventEmitter
 from .trajectory_store import (
     LedgerError,
     RunNotFound,
@@ -410,7 +409,6 @@ are classified separately as always-ask and receive exact one-shot approval card
 STUDIO_WITHHELD_TOOLS = frozenset(
     {
         "save_geometry",
-        "emit_studio_ui_update",
         "ssh_probe",
         "scheduler_query",
         "log_tail",
@@ -1272,7 +1270,6 @@ class StudioAgentRuntime:
         self._sessions: dict[str, AgentSession] = {}
         self._providers: dict[str, CherryModelProvider] = {}
         self._command_sessions: dict[str, CommandSynthesisSession] = {}
-        self._studio_ui_emitters: dict[str, StudioUiEventEmitter] = {}
         self._trace_tool_call_ids: dict[tuple[str, str], list[str]] = {}
         self._studio_approval_grants: set[tuple[str, str | None, str, str]] = set()
         self._active_operation_ids: dict[str, str] = {}
@@ -1299,17 +1296,12 @@ class StudioAgentRuntime:
                     self._providers.pop(session_id, None)
                     self._command_sessions.pop(session_id, None)
                     self._active_operation_ids.pop(session_id, None)
-                    emitter_closed = (
-                        self._studio_ui_emitters.pop(session_id, None) is not None
-                    )
                     self._studio_approval_grants = {
                         grant
                         for grant in self._studio_approval_grants
                         if grant[0] != session_id
                     }
-            return {"closed": session_closed or emitter_closed}
-        if method == "studio_ui.replay":
-            return self._replay_studio_ui(params)
+            return {"closed": session_closed}
         # The researcher's own path into the harness: deterministic, no model in the loop, and every
         # answer is path-free because Studio names projects rather than locating them.
         if method in _PROJECT_METHODS:
@@ -1399,6 +1391,8 @@ class StudioAgentRuntime:
         if self._peer is None:
             raise RpcFault(-32603, "RPC peer is not bound")
         operation_id = self._operation_id_from_params(params)
+        if operation_id is None:
+            raise RpcFault(-32602, "Invalid params: operationId is required")
         session_id = self._required_string(params, "sessionId")
         model_id = self._required_string(params, "modelId")
         request = self._required_string(params, "request")
@@ -1883,17 +1877,6 @@ class StudioAgentRuntime:
             )
         return dict(result)
 
-    def _studio_ui_emitter(self, session_id: str) -> StudioUiEventEmitter:
-        emitter = self._studio_ui_emitters.get(session_id)
-        if emitter is None:
-            emitter = StudioUiEventEmitter(
-                session_id,
-                self._session_root / session_id / "studio-ui-events.ndjson",
-                publish=self._publish_studio_ui_event,
-            )
-            self._studio_ui_emitters[session_id] = emitter
-        return emitter
-
     def _read_agent_session_binding(self, studio_session_id: str) -> str | None:
         self._validate_studio_session_id(studio_session_id)
         root_descriptor: int | None = None
@@ -2067,20 +2050,6 @@ class StudioAgentRuntime:
                 if descriptor is not None:
                     os.close(descriptor)
 
-    def _publish_studio_ui_event(self, event: dict[str, Any]) -> dict[str, Any]:
-        if self._peer is None:
-            raise RpcFault(-32603, "RPC peer is not bound")
-        session_id = event.get("sessionId")
-        params = (
-            self._operation_callback(session_id, event)
-            if isinstance(session_id, str)
-            else event
-        )
-        result = self._peer.request("studio_ui.event", params, timeout=30)
-        if not isinstance(result, dict):
-            raise RpcFault(-32603, "studio_ui.event returned a non-object response")
-        return result
-
     def _publish_agent_trace(
         self,
         session_id: str,
@@ -2207,38 +2176,11 @@ class StudioAgentRuntime:
             traced_specs.append(replace(source, func=traced_tool))
         return ToolRegistry(traced_specs)
 
-    def _publish_studio_ui_replay_event(
-        self,
-        replay_id: str,
-        event: dict[str, Any],
-    ) -> None:
-        if self._peer is None:
-            raise RpcFault(-32603, "RPC peer is not bound")
-        self._peer.notify(
-            "studio_ui.replay_event",
-            {"replayId": replay_id, "event": event},
-        )
-
-    def _replay_studio_ui(self, params: Any) -> dict[str, int]:
-        if self._peer is None:
-            raise RpcFault(-32603, "RPC peer is not bound")
-        session_id = self._required_string(params, "sessionId")
-        replay_id = self._required_string(params, "replayId")
-        after_sequence = self._optional_sequence(params, "afterSequence", -1)
-        emitter = self._studio_ui_emitter(session_id)
-        replayed = emitter.replay(
-            lambda event: self._publish_studio_ui_replay_event(replay_id, event),
-            after_sequence=after_sequence,
-        )
-        return {"replayed": replayed, "nextSequence": emitter.next_sequence}
-
     def _studio_registry(
         self,
         session_id: str,
-        command_session: CommandSynthesisSession | StudioUiEventEmitter | None = None,
+        command_session: CommandSynthesisSession | None = None,
     ) -> ToolRegistry:
-        if isinstance(command_session, StudioUiEventEmitter):
-            command_session = None
         if command_session is None:
             command_session = (
                 self._provider_and_command_session(

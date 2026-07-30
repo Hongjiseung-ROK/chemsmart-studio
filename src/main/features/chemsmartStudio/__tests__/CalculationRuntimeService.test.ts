@@ -364,6 +364,40 @@ describe('CalculationRuntimeService controlled fake execution', () => {
     ])
   })
 
+  it('reports an empty committed molecule as a valid read-only analysis', async () => {
+    const emptyDocument: MoleculeDocument = {
+      ...structuredClone(document),
+      documentId: 'empty-document',
+      revision: 0,
+      atoms: [],
+      bonds: []
+    }
+    editor.getMoleculeDocument.mockResolvedValue(emptyDocument)
+
+    await expect(
+      service.handleHostRequest({
+        type: 'controlled_calculation_host_request',
+        sessionId: 'session-empty',
+        request: {
+          type: 'studio_agent_tool_request',
+          tool: 'analyze_current_molecule',
+          arguments: {}
+        }
+      })
+    ).resolves.toMatchObject({
+      type: 'current_molecule_analysis',
+      atomCount: 0,
+      bondCount: 0,
+      elementCounts: [],
+      formula: '',
+      binding: {
+        state: 'committed',
+        documentId: emptyDocument.documentId,
+        revision: emptyDocument.revision
+      }
+    })
+  })
+
   it('enables a development-only deterministic adapter without launching a local process', async () => {
     process.env.CHEMSMART_STUDIO_TEST_HARNESS = 'controlled-calculation'
     await (service as unknown as { onInit(): Promise<void> }).onInit()
@@ -801,9 +835,9 @@ describe('CalculationRuntimeService controlled fake execution', () => {
     await expect(
       service.prepareCalculation({ ...input, settings: { ...input.settings, multiplicity: 3 } })
     ).rejects.toMatchObject({ code: 'SCHEMA_INVALID' })
-    await expect(service.prepareCalculation({ ...input, engine: 'avogadro', method: 'MMFF94' })).rejects.toMatchObject({
-      code: 'SCHEMA_INVALID'
-    })
+    await expect(
+      service.prepareCalculation({ ...input, engine: 'avogadro' as never, method: 'MMFF94' })
+    ).rejects.toMatchObject({ code: 'SCHEMA_INVALID' })
   })
 
   it('validates schema-owned host context, analysis, plan, and session binding', async () => {
