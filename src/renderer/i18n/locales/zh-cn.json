@@ -2387,7 +2387,28 @@
       "none_but_required": "尚无项目 — 该程序没有项目无法运行。",
       "none_needed": "无需项目。",
       "not_required": "无需项目",
+      "open_renderer": "查看方法项目 YAML",
       "overwrite": "若已存在则替换",
+      "renderer": {
+        "digest": "摘要 {{digest}}",
+        "node_kind": {
+          "mapping": "映射",
+          "scalar": "标量",
+          "sequence": "序列"
+        },
+        "raw_yaml": "原始 YAML",
+        "read_only": "只读投影 · 原始 YAML 仍是权威数据",
+        "section_empty": "此分区没有显式设置。",
+        "source": {
+          "explicit": "显式",
+          "inherited": "继承"
+        },
+        "structured_unavailable": "此旧版文档暂无结构化详情，请查看下方原始 YAML。",
+        "unrecognized": "高级 / 未识别",
+        "unrecognized_description": "当前语义目录未涵盖但仍完整保留的值。",
+        "validation": "校验",
+        "validation_clear": "没有校验问题。"
+      },
       "required": "需要项目",
       "settings": "{{project}} 设置",
       "title": "项目 YAML",

@@ -21,6 +21,8 @@ import {
   moleculeImportRuntimeSchema,
   type ProjectWorkspaceCritiqueRequest,
   type ProjectWorkspaceCritiqueResult,
+  type ProjectWorkspaceDocumentRequest,
+  type ProjectWorkspaceDocumentResult,
   type ProjectWorkspaceListRequest,
   type ProjectWorkspaceListResult,
   type ProjectWorkspaceReadRequest,
@@ -30,8 +32,8 @@ import {
   type ProjectWorkspaceValidateResult,
   PROTOCOL_VERSION,
   SCHEMA_SHA256,
-  type StudioAgentAnswer,
   type StudioAgentActionCue,
+  type StudioAgentAnswer,
   type StudioAgentArtifact,
   type StudioAgentComposerIntent,
   type StudioAgentReportResultInput,
@@ -106,6 +108,10 @@ const projectReadResultValidator = definitionValidator<ProjectWorkspaceReadResul
   projectWorkspaceRuntimeSchema,
   'readResult'
 )
+const projectDocumentResultValidator = definitionValidator<ProjectWorkspaceDocumentResult>(
+  projectWorkspaceRuntimeSchema,
+  'documentResult'
+)
 const projectValidateResultValidator = definitionValidator<ProjectWorkspaceValidateResult>(
   projectWorkspaceRuntimeSchema,
   'validateResult'
@@ -158,6 +164,7 @@ const COMMAND_SYNTHESIS_TIMEOUT_MS = SIDECAR_MODEL_DEADLINE_MS + 30_000
 export type ProjectWorkspaceMethod =
   | 'command.synthesize'
   | 'project.critic'
+  | 'project.document'
   | 'project.list'
   | 'project.read'
   | 'project.validate'
@@ -595,6 +602,16 @@ export class ChemSmartAgentService extends BaseService {
       projectReadResultValidator
     )
     this.assertProjectIdentity('project.read', request, result)
+    return result
+  }
+
+  async documentProject(request: ProjectWorkspaceDocumentRequest): Promise<ProjectWorkspaceDocumentResult> {
+    const result = await this.requestClosedResult<ProjectWorkspaceDocumentResult>(
+      'project.document',
+      request,
+      projectDocumentResultValidator
+    )
+    this.assertProjectIdentity('project.document', request, result)
     return result
   }
 

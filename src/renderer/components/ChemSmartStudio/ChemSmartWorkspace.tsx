@@ -45,6 +45,7 @@ import { MoleculeDraftReviewDialog } from './MoleculeDraftReviewDialog'
 import { MoleculeInspector } from './MoleculeInspector'
 import { MoleculeStage } from './MoleculeStage'
 import { MoleculeTabs } from './MoleculeTabs'
+import { ProjectYamlPanel } from './ProjectYamlPanel'
 import { ResearchRail } from './ResearchRail'
 import { StudioActivityBar } from './StudioActivityBar'
 import { StudioCommandPalette } from './StudioCommandPalette'
@@ -183,6 +184,7 @@ export function ChemSmartWorkspace({
   const setBottomOpen = bottomPane.setOpen
   const [bottomTab, setBottomTab] = useState<WorkbenchTab>('console')
   const [consoleDraft, setConsoleDraft] = useState('')
+  const [projectYamlOpen, setProjectYamlOpen] = useState(false)
   const molecule = useMoleculeDocument(sessionId, active)
   const [draftReview, setDraftReview] = useState<DraftReviewRequest | null>(null)
   const [draftReviewBusy, setDraftReviewBusy] = useState(false)
@@ -1451,6 +1453,7 @@ export function ChemSmartWorkspace({
                 actionsDisabled={projectSwitchBlocked}
                 busyAction={workspaceAction === 'activate_document' ? null : workspaceAction}
                 onAction={(action) => runWorkspaceAction(action)}
+                onOpenProjectYaml={() => setProjectYamlOpen(true)}
               />
             ) : null}
           </div>
@@ -1460,6 +1463,10 @@ export function ChemSmartWorkspace({
             actionsDisabled={projectSwitchBlocked}
             busyAction={workspaceAction === 'activate_document' ? null : workspaceAction}
             onAction={(action) => runWorkspaceAction(action)}
+            onOpenProjectYaml={() => {
+              setProjectYamlOpen(true)
+              setSheetPane(null)
+            }}
           />
         }
         center={
@@ -1486,19 +1493,31 @@ export function ChemSmartWorkspace({
               <MoleculeTabs
                 busy={workspaceAction !== null}
                 documents={openDocuments}
-                onActivate={(projectId) => activateDocument(projectId)}
+                surfaceActive={!projectYamlOpen}
+                onActivate={(projectId) => {
+                  if (projectId === openDocuments?.activeProjectId) {
+                    setProjectYamlOpen(false)
+                    return
+                  }
+                  setProjectYamlOpen(false)
+                  activateDocument(projectId)
+                }}
               />
-              <MoleculeStage
-                actionCues={visibleActionCues}
-                compact={tier === 'viewport-only'}
-                contract={modeContract}
-                editable={moleculeEditable}
-                mode={workbenchMode}
-                molecule={molecule}
-                onModeChange={requestWorkbenchModeChange}
-                reduceMotion={reduceMotion ?? false}
-                selectable={moleculeSelectable}
-              />
+              {projectYamlOpen ? (
+                <ProjectYamlPanel autoLoad={active} />
+              ) : (
+                <MoleculeStage
+                  actionCues={visibleActionCues}
+                  compact={tier === 'viewport-only'}
+                  contract={modeContract}
+                  editable={moleculeEditable}
+                  mode={workbenchMode}
+                  molecule={molecule}
+                  onModeChange={requestWorkbenchModeChange}
+                  reduceMotion={reduceMotion ?? false}
+                  selectable={moleculeSelectable}
+                />
+              )}
             </div>
           </main>
         }

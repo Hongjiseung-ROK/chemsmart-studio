@@ -10,7 +10,9 @@ import chemsmart_studio_bridge.project_workspace as project_workspace
 from chemsmart_studio_bridge.project_workspace import (
     MAX_YAML_BYTES,
     critic_project,
+    document_project,
     list_projects,
+    project_document,
     read_project,
     validate_project,
 )
@@ -47,6 +49,10 @@ class ProjectWorkspaceTest(unittest.TestCase):
 
     def test_lists_projects_by_program_and_marks_projectless_xtb(self) -> None:
         self.write_fixture("gaussian", "b3lyp-water")
+        (self.root / ".chemsmart" / "gaussian" / "defaults.yaml").write_text(
+            "functional: null\n",
+            encoding="utf-8",
+        )
         (self.root / ".chemsmart" / "gaussian" / "not-canonical.yml").write_text(
             GAUSSIAN_PROJECT,
             encoding="utf-8",
@@ -90,6 +96,88 @@ class ProjectWorkspaceTest(unittest.TestCase):
             },
         )
         self.assertNotIn(str(self.root), repr(result))
+
+    def test_projects_every_explicit_unknown_and_inherited_value_without_writing(self) -> None:
+        yaml_text = """gas:
+  functional: b3lyp
+  basis: def2svp
+  future_option:
+    - alpha
+    - 2
+solv:
+  functional: b3lyp
+  basis: def2svp
+  freq: false
+"""
+        before = list(self.root.iterdir())
+
+        with patch(
+            "chemsmart_studio_bridge.project_workspace.validate_project_yaml",
+            return_value={
+                "verdict": "warn",
+                "issues": [],
+                "runtime_summary": {
+                    "sp": {
+                        "functional": "b3lyp",
+                        "basis": "def2svp",
+                        "freq": False,
+                    }
+                },
+            },
+        ):
+            document = project_document("future-project", "gaussian", yaml_text)
+
+        self.assertEqual(document["schemaVersion"], "2")
+        self.assertEqual(
+            document["digest"],
+            __import__("hashlib").sha256(yaml_text.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(document["yamlText"], yaml_text)
+        self.assertEqual(
+            [node["path"] for node in document["unknownNodes"]],
+            [["gas", "future_option"]],
+        )
+        unknown = document["unknownNodes"][0]
+        self.assertEqual(unknown["kind"], "sequence")
+        self.assertEqual(
+            [(child["path"], child["kind"], child["value"]) for child in unknown["children"]],
+            [
+                (["gas", "future_option", "[0]"], "scalar", "alpha"),
+                (["gas", "future_option", "[1]"], "scalar", 2),
+            ],
+        )
+        explicit_paths = [
+            field["path"]
+            for section in document["sections"]
+            if section["source"] == "explicit"
+            for field in section["fields"]
+        ]
+        self.assertIn(["gas", "functional"], explicit_paths)
+        self.assertIn(["solv", "basis"], explicit_paths)
+        self.assertTrue(
+            any(section["source"] == "inherited" for section in document["sections"])
+        )
+        self.assertEqual(list(self.root.iterdir()), before)
+
+    def test_document_route_reads_the_verified_file_without_a_path_field(self) -> None:
+        self.write_fixture("gaussian", "b3lyp-water")
+
+        result = document_project(
+            {
+                "projectName": "b3lyp-water",
+                "program": "gaussian",
+                "extensions": {},
+            }
+        )
+
+        self.assertEqual(result["projectName"], "b3lyp-water")
+        self.assertEqual(result["program"], "gaussian")
+        self.assertEqual(result["yamlText"], GAUSSIAN_PROJECT)
+        self.assertNotIn(str(self.root), repr(result))
+
+    def test_defaults_is_reserved_for_loader_settings(self) -> None:
+        with self.assertRaises(ValueError):
+            project_document("defaults", "gaussian", GAUSSIAN_PROJECT)
 
     def test_missing_project_raises_without_returning_resolution_details(self) -> None:
         with self.assertRaisesRegex(ValueError, "project could not be read"):

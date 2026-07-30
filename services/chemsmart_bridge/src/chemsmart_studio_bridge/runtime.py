@@ -48,6 +48,7 @@ from pydantic import BaseModel
 from .command_inspection import CommandInspectionAdapter
 from .project_workspace import (
     critic_project,
+    document_project,
     list_projects,
     read_project,
     validate_project,
@@ -352,12 +353,14 @@ _TRAJECTORY_VALIDATORS = {
 _PROJECT_METHODS = {
     "project.list": lambda _params: list_projects(),
     "project.read": read_project,
+    "project.document": document_project,
     "project.validate": validate_project,
     "project.critic": critic_project,
 }
 _PROJECT_SCHEMA_DEFINITIONS = {
     "project.list": ("listRequest", "listResult"),
     "project.read": ("readRequest", "readResult"),
+    "project.document": ("documentRequest", "documentResult"),
     "project.validate": ("validateRequest", "validateResult"),
     "project.critic": ("critiqueRequest", "critiqueResult"),
 }

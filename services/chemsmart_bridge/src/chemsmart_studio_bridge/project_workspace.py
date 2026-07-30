@@ -7,11 +7,14 @@ researcher's directory layout cannot leak through the agent surface.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import re
 import stat
 from typing import Any
+
+import yaml
 
 from chemsmart.agent.project_yaml import (
     critic_project_yaml,
@@ -25,6 +28,71 @@ MAX_YAML_CHARS = 20_000
 MAX_YAML_BYTES = MAX_YAML_CHARS * 4
 PROJECT_PROGRAMS = ("gaussian", "orca")
 LISTED_PROGRAMS = (*PROJECT_PROGRAMS, "xtb")
+_SECTION_LABELS = {
+    "gas": "Gas phase",
+    "solv": "Solution phase",
+    "td": "Excited states",
+    "qmmm": "QM/MM",
+    "defaults": "Effective defaults",
+    "opt": "Effective optimization",
+    "ts": "Effective transition state",
+    "sp": "Effective single point",
+}
+_ROOT_SECTIONS = frozenset({"gas", "solv", "td", "qmmm"})
+_RECOGNIZED_FIELDS = frozenset(
+    {
+        "ab_initio",
+        "additional_opt_options_in_route",
+        "additional_route_parameters",
+        "additional_solvent_options",
+        "append_additional_info",
+        "aux_basis",
+        "basis",
+        "charge",
+        "chk",
+        "custom_solvent",
+        "defgrid",
+        "dieze_tag",
+        "dipole",
+        "dispersion",
+        "extrapolation_basis",
+        "forces",
+        "freq",
+        "functional",
+        "gbw",
+        "gen_genecp",
+        "gen_genecp_file",
+        "heavy_elements",
+        "heavy_elements_basis",
+        "high_level_basis",
+        "high_level_functional",
+        "input_string",
+        "invert_constraints",
+        "jobtype",
+        "light_elements_basis",
+        "low_level_force_field",
+        "mdci_cutoff",
+        "mdci_density",
+        "medium_level_basis",
+        "medium_level_functional",
+        "modred",
+        "multiplicity",
+        "numfreq",
+        "quadrupole",
+        "route_to_be_written",
+        "scf_algorithm",
+        "scf_convergence",
+        "scf_maxiter",
+        "scf_tol",
+        "semiempirical",
+        "solvent_id",
+        "solvent_model",
+        "solventfilename",
+        "title",
+    }
+)
+_MAX_PROJECTED_FIELDS = 4096
+_MAX_PROJECTED_DEPTH = 32
 _ProjectRoot = tuple[int, int, int]
 _DIRECTORY_OPEN_FLAGS = (
     os.O_RDONLY
@@ -87,9 +155,252 @@ def _project_name(value: Any) -> str:
         not name
         or len(name) > 128
         or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name)
+        or name.lower() == "defaults"
     ):
         raise ValueError("invalid project name")
     return name
+
+
+def _node_id(prefix: str, path: list[str]) -> str:
+    digest = hashlib.sha256("\0".join(path).encode("utf-8")).hexdigest()[:24]
+    return f"{prefix}-{digest}"
+
+
+def _field_label(path: list[str]) -> str:
+    value = path[-1]
+    if value.startswith("["):
+        value = path[-2] if len(path) > 1 else "Value"
+    return value.replace("_", " ").strip().title()[:2048] or "Value"
+
+
+def _scalar_projection(value: Any) -> tuple[str, Any]:
+    if value is None:
+        return "null", None
+    if isinstance(value, bool):
+        return "boolean", value
+    if isinstance(value, (int, float)):
+        return "number", value
+    return "string", str(value)[:12000]
+
+
+def _flatten_projected_fields(
+    value: Any,
+    path: list[str],
+    *,
+    source: str,
+    recognized_root: bool,
+    output: list[dict[str, Any]],
+) -> None:
+    if len(path) > _MAX_PROJECTED_DEPTH:
+        raise ValueError("project YAML nesting is too deep")
+    if len(output) >= _MAX_PROJECTED_FIELDS:
+        raise ValueError("project YAML contains too many values")
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _flatten_projected_fields(
+                child,
+                [*path, str(key)[:256] or "<empty-key>"],
+                source=source,
+                recognized_root=recognized_root,
+                output=output,
+            )
+        return
+    if isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            _flatten_projected_fields(
+                child,
+                [*path, f"[{index}]"],
+                source=source,
+                recognized_root=recognized_root,
+                output=output,
+            )
+        return
+
+    kind, projected_value = _scalar_projection(value)
+    key = next((part for part in reversed(path) if not part.startswith("[")), "")
+    recognized = recognized_root and (
+        key in _RECOGNIZED_FIELDS or (len(path) == 1 and key in _ROOT_SECTIONS)
+    )
+    field = {
+        "id": _node_id("field", path),
+        "label": _field_label(path),
+        "path": path,
+        "kind": kind,
+        "value": projected_value,
+        "source": source,
+        "recognized": recognized,
+        "extensions": {},
+    }
+    output.append(field)
+
+
+def _unknown_node(value: Any, path: list[str]) -> dict[str, Any]:
+    """Preserve an unrecognized YAML branch in source order without making it authoritative."""
+
+    if len(path) > _MAX_PROJECTED_DEPTH:
+        raise ValueError("project YAML nesting is too deep")
+    if isinstance(value, dict):
+        children = [
+            _unknown_node(child, [*path, str(key)[:256] or "<empty-key>"])
+            for key, child in value.items()
+        ]
+        kind, projected_value = "mapping", None
+    elif isinstance(value, (list, tuple)):
+        children = [_unknown_node(child, [*path, f"[{index}]"]) for index, child in enumerate(value)]
+        kind, projected_value = "sequence", None
+    else:
+        children = []
+        kind, projected_value = "scalar", _scalar_projection(value)[1]
+    return {
+        "id": _node_id("unknown", path),
+        "path": path,
+        "kind": kind,
+        "value": projected_value,
+        "children": children,
+        "source": "explicit",
+        "extensions": {},
+    }
+
+
+def _collect_unknown_nodes(parsed: dict[Any, Any]) -> list[dict[str, Any]]:
+    nodes: list[dict[str, Any]] = []
+    for raw_key, value in parsed.items():
+        key = str(raw_key)[:256] or "<empty-key>"
+        if key not in _ROOT_SECTIONS and key not in _RECOGNIZED_FIELDS:
+            nodes.append(_unknown_node(value, [key]))
+            continue
+        if key not in _ROOT_SECTIONS or not isinstance(value, dict):
+            continue
+        for raw_child_key, child in value.items():
+            child_key = str(raw_child_key)[:256] or "<empty-key>"
+            if child_key not in _RECOGNIZED_FIELDS:
+                nodes.append(_unknown_node(child, [key, child_key]))
+    return nodes
+
+
+def _document_validation(
+    validation: dict[str, Any],
+    project_name: str,
+) -> dict[str, Any]:
+    verdict = str(validation.get("verdict") or "reject")
+    if verdict not in {"ok", "warn", "reject"}:
+        verdict = "reject"
+    issues = _public_issues(validation.get("issues"))
+    return {
+        "verdict": verdict,
+        "issues": issues,
+        "message": _public_message(
+            validation.get("error"),
+            (
+                f"{project_name} passed ChemSmart validation."
+                if verdict == "ok"
+                else f"{project_name} validation returned {verdict} with {len(issues)} issue(s)."
+            ),
+        ),
+        "extensions": {},
+    }
+
+
+def project_document(
+    project_name: str,
+    program: str,
+    yaml_text: str,
+) -> dict[str, Any]:
+    """Project every scalar without changing the authoritative raw YAML."""
+
+    project_name = _project_name(project_name)
+    program = _program(program)
+    if not isinstance(yaml_text, str) or not yaml_text.strip():
+        raise ValueError("yaml must be a non-empty string")
+    if len(yaml_text) > MAX_YAML_CHARS:
+        raise ValueError("yaml is too large to project")
+    validation = validate_project_yaml(yaml_text, program, project_name)
+    sections: list[dict[str, Any]] = []
+    unknown_nodes: list[dict[str, Any]] = []
+    try:
+        parsed = yaml.safe_load(yaml_text)
+    except yaml.YAMLError:
+        parsed = None
+
+    if isinstance(parsed, dict):
+        unknown_nodes = _collect_unknown_nodes(parsed)
+        top_level_fields: list[dict[str, Any]] = []
+        for raw_key, value in parsed.items():
+            key = str(raw_key)[:256] or "<empty-key>"
+            if key in _ROOT_SECTIONS:
+                fields: list[dict[str, Any]] = []
+                _flatten_projected_fields(
+                    value,
+                    [key],
+                    source="explicit",
+                    recognized_root=True,
+                    output=fields,
+                )
+                sections.append(
+                    {
+                        "id": _node_id("section", [key]),
+                        "label": _SECTION_LABELS[key],
+                        "source": "explicit",
+                        "fields": fields,
+                        "extensions": {},
+                    }
+                )
+                continue
+            _flatten_projected_fields(
+                value,
+                [key],
+                source="explicit",
+                recognized_root=key in _RECOGNIZED_FIELDS,
+                output=top_level_fields,
+            )
+        if top_level_fields:
+            sections.insert(
+                0,
+                {
+                    "id": _node_id("section", ["defaults"]),
+                    "label": _SECTION_LABELS["defaults"],
+                    "source": "explicit",
+                    "fields": top_level_fields,
+                    "extensions": {},
+                },
+            )
+
+    runtime_summary = validation.get("runtime_summary")
+    if isinstance(runtime_summary, dict):
+        for raw_key, value in runtime_summary.items():
+            key = str(raw_key)[:256] or "effective"
+            fields = []
+            _flatten_projected_fields(
+                value,
+                [key],
+                source="inherited",
+                recognized_root=True,
+                output=fields,
+            )
+            sections.append(
+                {
+                    "id": _node_id("section", ["inherited", key]),
+                    "label": _SECTION_LABELS.get(
+                        key,
+                        f"Effective {_field_label([key]).lower()}",
+                    ),
+                    "source": "inherited",
+                    "fields": fields,
+                    "extensions": {},
+                }
+            )
+
+    return {
+        "schemaVersion": "2",
+        "projectName": project_name,
+        "program": program,
+        "digest": hashlib.sha256(yaml_text.encode("utf-8")).hexdigest(),
+        "yamlText": yaml_text,
+        "sections": sections,
+        "validation": _document_validation(validation, project_name),
+        "unknownNodes": unknown_nodes,
+        "extensions": {},
+    }
 
 
 def _close_project_root(descriptors: _ProjectRoot) -> None:
@@ -279,6 +590,8 @@ def _listable_project_name(root_descriptor: int, name: str) -> str | None:
     path = Path(name)
     if path.suffix.lower() != ".yaml":
         return None
+    if path.stem.lower() == "defaults":
+        return None
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", path.stem):
         return None
     try:
@@ -346,6 +659,17 @@ def read_project(params: Any) -> dict[str, Any]:
         "yamlText": yaml_text,
         "extensions": {},
     }
+
+
+def document_project(params: Any) -> dict[str, Any]:
+    params = params if isinstance(params, dict) else {}
+    project_name = _project_name(params.get("projectName"))
+    program = _program(params.get("program"))
+    return project_document(
+        project_name,
+        program,
+        _read_project_file(program, project_name),
+    )
 
 
 def _yaml_text(params: dict[str, Any]) -> str:

@@ -5,7 +5,7 @@ import { useDirectoryTree } from '@renderer/hooks/useDirectoryTree'
 import { ipcApi } from '@renderer/ipc'
 import type { ChemSmartStudioWorkspaceRoots } from '@shared/ipc/schemas/chemsmartStudio'
 import type { TreeDir, TreeDirRoot } from '@shared/utils/file'
-import { FileInput, Folder, FolderOpen, LoaderCircle, Save, TriangleAlert } from 'lucide-react'
+import { FileCode2, FileInput, Folder, FolderOpen, LoaderCircle, Save, TriangleAlert } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -81,6 +81,7 @@ interface ResearchRailProps {
   actionsDisabled: boolean
   busyAction: 'import_molecule' | 'open_project' | 'save_as' | null
   onAction: (action: 'import_molecule' | 'open_project' | 'save_as') => void
+  onOpenProjectYaml: () => void
 }
 
 /**
@@ -89,7 +90,7 @@ interface ResearchRailProps {
  * one. Paths are shown here deliberately — this is a human surface, and agent-facing contracts stay
  * path-free. Project actions live in this human-only header rather than consuming space above the stage.
  */
-export function ResearchRail({ actionsDisabled, busyAction, onAction }: ResearchRailProps) {
+export function ResearchRail({ actionsDisabled, busyAction, onAction, onOpenProjectYaml }: ResearchRailProps) {
   const { t } = useTranslation()
 
   const [roots, setRoots] = useState<ChemSmartStudioWorkspaceRoots | null>(null)
@@ -190,6 +191,16 @@ export function ResearchRail({ actionsDisabled, busyAction, onAction }: Research
               variant="ghost"
               onClick={() => onAction('save_as')}>
               <Save aria-hidden className="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('chemsmart_studio.project.open_renderer')}>
+            <Button
+              aria-label={t('chemsmart_studio.project.open_renderer')}
+              className="size-8 text-foreground-muted hover:text-foreground"
+              size="icon-sm"
+              variant="ghost"
+              onClick={onOpenProjectYaml}>
+              <FileCode2 aria-hidden className="size-4" />
             </Button>
           </Tooltip>
         </div>

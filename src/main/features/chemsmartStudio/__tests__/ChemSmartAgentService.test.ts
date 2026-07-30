@@ -198,6 +198,17 @@ const projectListResult = {
   ],
   extensions: {}
 }
+const projectDocumentResult = {
+  schemaVersion: '2' as const,
+  projectName: 'water',
+  program: 'gaussian' as const,
+  digest: 'a'.repeat(64),
+  yamlText: 'gas:\n  functional: b3lyp\n',
+  sections: [],
+  validation: { verdict: 'ok' as const, issues: [], message: 'Valid.', extensions: {} },
+  unknownNodes: [],
+  extensions: {}
+}
 const advisoryTurnResult = {
   terminal_outcome: 'completed',
   advisory_only: true,
@@ -824,6 +835,22 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
 
     expect(localProcessRequestMock).toHaveBeenCalledWith('project.list', { extensions: {} }, 120_000)
     // The researcher asked, so no model decided anything and no approval was needed.
+    expect(beginAgentTurnMock).not.toHaveBeenCalled()
+    expect(requestApprovalMock).not.toHaveBeenCalled()
+  })
+
+  it('returns a closed lossless project document without starting an agent turn', async () => {
+    localProcessRequestMock.mockResolvedValue(projectDocumentResult)
+
+    await expect(
+      service.documentProject({ projectName: 'water', program: 'gaussian', extensions: {} })
+    ).resolves.toEqual(projectDocumentResult)
+
+    expect(localProcessRequestMock).toHaveBeenCalledWith(
+      'project.document',
+      { projectName: 'water', program: 'gaussian', extensions: {} },
+      120_000
+    )
     expect(beginAgentTurnMock).not.toHaveBeenCalled()
     expect(requestApprovalMock).not.toHaveBeenCalled()
   })

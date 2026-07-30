@@ -2387,7 +2387,28 @@
       "none_but_required": "No project yet — this program cannot run without one.",
       "none_needed": "No project needed.",
       "not_required": "No project needed",
+      "open_renderer": "Review method project YAML",
       "overwrite": "Replace if it exists",
+      "renderer": {
+        "digest": "Digest {{digest}}",
+        "node_kind": {
+          "mapping": "Mapping",
+          "scalar": "Scalar",
+          "sequence": "Sequence"
+        },
+        "raw_yaml": "Raw YAML",
+        "read_only": "Read-only projection · raw YAML remains authoritative",
+        "section_empty": "No explicit settings in this section.",
+        "source": {
+          "explicit": "Explicit",
+          "inherited": "Inherited"
+        },
+        "structured_unavailable": "Structured details are unavailable for this legacy document. Review the raw YAML below.",
+        "unrecognized": "Advanced / Unrecognized",
+        "unrecognized_description": "Preserved values that are not part of the current semantic catalog.",
+        "validation": "Validation",
+        "validation_clear": "No validation findings."
+      },
       "required": "Project required",
       "settings": "{{project}} settings",
       "title": "Project YAML",

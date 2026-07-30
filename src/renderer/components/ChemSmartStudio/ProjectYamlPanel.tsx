@@ -1,16 +1,37 @@
+import type { ProjectWorkspaceUnknownNode } from '@chemsmart/studio-protocol'
 import { Alert, Badge, Button, Scrollbar } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
-import type { ChemSmartStudioProjectProgram } from '@shared/ipc/schemas/chemsmartStudio'
 import { FileWarning, FolderOpen, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ProjectYamlEditor } from './ProjectYamlEditor'
+import {
+  type ProjectYamlDocumentPresentation,
+  type ProjectYamlProgram,
+  type ProjectYamlUnknownNodePresentation,
+  ProjectYamlWorkspace
+} from './ProjectYamlWorkspace'
 import { useProjectWorkspace } from './useHarnessWorkbench'
 
 interface ProjectYamlPanelProps {
   /** Load automatically only when the local bridge is already running; direct actions remain available. */
   autoLoad: boolean
+}
+
+function displayYamlScalar(value: boolean | number | string | null): string {
+  if (value === null) return 'null'
+  return String(value)
+}
+
+function presentUnknownNode(node: ProjectWorkspaceUnknownNode): ProjectYamlUnknownNodePresentation {
+  return {
+    children: node.children.map(presentUnknownNode),
+    id: node.id,
+    kind: node.kind,
+    path: node.path,
+    source: node.source,
+    value: node.kind === 'scalar' ? displayYamlScalar(node.value) : undefined
+  }
 }
 
 /**
@@ -20,7 +41,36 @@ interface ProjectYamlPanelProps {
 export function ProjectYamlPanel({ autoLoad }: ProjectYamlPanelProps) {
   const { t } = useTranslation()
   const { detail, failed, list, loading, read, refresh } = useProjectWorkspace(autoLoad)
-  const [selected, setSelected] = useState<{ program: ChemSmartStudioProjectProgram; project: string } | null>(null)
+  const [selected, setSelected] = useState<{ program: ProjectYamlProgram; project: string } | null>(null)
+  const selectedDocument: ProjectYamlDocumentPresentation | null =
+    selected && detail && detail.projectName === selected.project && detail.program === selected.program
+      ? {
+          projectName: detail.projectName,
+          program: selected.program,
+          digest: detail.digest,
+          rawText: detail.yamlText,
+          sections: detail.sections.map((section) => ({
+            fields: section.fields.map((field) => ({
+              id: field.id,
+              label: field.label,
+              source: field.source,
+              value: displayYamlScalar(field.value)
+            })),
+            id: section.id,
+            label: section.label,
+            source: section.source
+          })),
+          unknownNodes: detail.unknownNodes.map(presentUnknownNode),
+          validation: {
+            issues: detail.validation.issues.map((issue) => ({
+              message: issue.message,
+              ruleId: issue.ruleId,
+              severity: issue.severity
+            })),
+            verdict: detail.validation.verdict
+          }
+        }
+      : null
 
   return (
     <section
@@ -45,7 +95,6 @@ export function ProjectYamlPanel({ autoLoad }: ProjectYamlPanelProps) {
           <Alert message={t('chemsmart_studio.project.failed')} role="alert" showIcon type="error" />
         ) : (
           <div className="space-y-3">
-            <ProjectYamlEditor />
             {(list?.programs ?? []).map((entry) => (
               <div className="space-y-1.5" key={entry.program}>
                 <div className="flex items-center gap-2">
@@ -93,16 +142,7 @@ export function ProjectYamlPanel({ autoLoad }: ProjectYamlPanelProps) {
               </div>
             ))}
 
-            {selected && detail ? (
-              <div className="space-y-1.5 rounded-md border border-border p-2.5" data-testid="project-detail">
-                <p className="font-medium text-foreground text-xs">
-                  {t('chemsmart_studio.project.settings', { project: selected.project })}
-                </p>
-                <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-background-subtle p-2.5 font-mono text-foreground-secondary text-xs leading-5">
-                  {detail.yamlText}
-                </pre>
-              </div>
-            ) : null}
+            {selectedDocument ? <ProjectYamlWorkspace document={selectedDocument} /> : null}
           </div>
         )}
       </Scrollbar>

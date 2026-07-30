@@ -3,10 +3,9 @@ import { ipcApi } from '@renderer/ipc'
 import type { UniqueModelId } from '@shared/data/types/model'
 import type {
   ChemSmartStudioCommandSynthesisResult,
-  ChemSmartStudioProjectCheckResult,
+  ChemSmartStudioProjectDocumentResult,
   ChemSmartStudioProjectList,
-  ChemSmartStudioProjectProgram,
-  ChemSmartStudioProjectReadResult
+  ChemSmartStudioProjectProgram
 } from '@shared/ipc/schemas/chemsmartStudio'
 import { useCallback, useEffect, useState } from 'react'
 
@@ -65,7 +64,7 @@ export function isRunnable(outcome: SynthesisOutcome): boolean {
 
 interface ProjectWorkspaceState {
   list: ChemSmartStudioProjectList | null
-  detail: ChemSmartStudioProjectReadResult | null
+  detail: ChemSmartStudioProjectDocumentResult | null
   failed: boolean
   loading: boolean
 }
@@ -93,7 +92,7 @@ export function useProjectWorkspace(enabled: boolean) {
   const read = useCallback(async (project: string, program: ChemSmartStudioProjectProgram) => {
     setState((current) => ({ ...current, failed: false, loading: true }))
     try {
-      const detail = await ipcApi.request('chemsmart_studio.project.read', {
+      const detail = await ipcApi.request('chemsmart_studio.project.document', {
         extensions: {},
         program,
         projectName: project
@@ -110,81 +109,6 @@ export function useProjectWorkspace(enabled: boolean) {
   }, [enabled, refresh])
 
   return { ...state, read, refresh }
-}
-
-export interface ProjectCheck {
-  /** `ok` | `warn` | `reject` from the project validator. */
-  verdict: string
-  issues: readonly { ruleId: string; severity: string; message: string }[]
-}
-
-/** Project a schema-validated validation or critique result for the UI. */
-export function readProjectCheck(result: ChemSmartStudioProjectCheckResult): ProjectCheck {
-  return {
-    issues: result.issues,
-    verdict: result.verdict
-  }
-}
-
-/** Validate and critique a draft. Persisting it requires a separate trusted-action contract. */
-export function useProjectAuthoring(program: ChemSmartStudioProjectProgram) {
-  const [check, setCheck] = useState<ProjectCheck | null>(null)
-  const [critique, setCritique] = useState<ProjectCheck | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
-
-  const run = useCallback(async <Result>(work: () => Promise<Result>, apply: (result: Result) => void) => {
-    setBusy(true)
-    setFailed(false)
-    try {
-      apply(await work())
-    } catch (error) {
-      setFailed(true)
-      logger.error('A project authoring step failed', error as Error)
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  const validate = useCallback(
-    (project: string, yaml: string) =>
-      run(
-        () =>
-          ipcApi.request('chemsmart_studio.project.validate', {
-            extensions: {},
-            program,
-            projectName: project,
-            yamlText: yaml
-          }),
-        (result) => {
-          setCheck(readProjectCheck(result))
-        }
-      ),
-    [program, run]
-  )
-
-  const criticise = useCallback(
-    (project: string, yaml: string) =>
-      run(
-        () =>
-          ipcApi.request('chemsmart_studio.project.critic', {
-            extensions: {},
-            program,
-            projectName: project,
-            yamlText: yaml
-          }),
-        (result) => setCritique(readProjectCheck(result))
-      ),
-    [program, run]
-  )
-
-  const reset = useCallback(() => {
-    setCheck(null)
-    setCritique(null)
-    setFailed(false)
-  }, [])
-
-  return { busy, check, criticise, critique, failed, reset, validate }
 }
 
 /** Turns a request into a chemsmart command through the harness, and keeps both gate verdicts. */

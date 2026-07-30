@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "2",
+  "previewId": "yaml-preview-1",
+  "projectName": "../private",
+  "program": "gaussian",
+  "baseDigest": null,
+  "candidateDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "expectedRevision": 0,
+  "overwrite": false,
+  "changedSections": ["gas"],
+  "verdict": "ok",
+  "issueRuleIds": [],
+  "status": "pending",
+  "createdAt": "2026-07-30T00:00:00.000Z",
+  "expiresAt": "2026-07-30T00:05:00.000Z",
+  "extensions": {}
+}
