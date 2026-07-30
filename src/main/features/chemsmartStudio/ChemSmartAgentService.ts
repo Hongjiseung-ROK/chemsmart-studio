@@ -31,6 +31,7 @@ import {
   PROTOCOL_VERSION,
   SCHEMA_SHA256,
   type StudioAgentAnswer,
+  type StudioAgentActionCue,
   type StudioAgentArtifact,
   type StudioAgentComposerIntent,
   type StudioAgentReportResultInput,
@@ -264,6 +265,7 @@ export class ChemSmartAgentService extends BaseService {
   private readonly activeModelOperations = new Map<string, ActiveModelOperation>()
   private readonly queuedTurns = new Map<string, PendingAgentTurn[]>()
   private readonly pendingSteers = new Map<string, PendingAgentTurn>()
+  private readonly actionCues = new Map<string, StudioAgentActionCue>()
   private readonly agentLive = new StudioAgentLiveChannel((event) =>
     application.get('IpcApiService').broadcast('chemsmart_studio.agent.live_event', event)
   )
@@ -729,6 +731,7 @@ export class ChemSmartAgentService extends BaseService {
         const payload = { ...value }
         delete payload.operationId
         const event = this.agentTrace.emit(operation.turnId ?? operation.operationId, payload)
+        this.projectActionCue(event)
         await this.appendProjectionTrace(value.sessionId as string, operation, event)
         if (event.kind === 'tool_succeeded' || event.kind === 'tool_failed') {
           this.cancelAtSteeringBoundary(value.sessionId as string, operation)
@@ -738,6 +741,54 @@ export class ChemSmartAgentService extends BaseService {
       default:
         throw new JsonRpcFault(-32601, `Method not found: ${method}`)
     }
+  }
+
+  /**
+   * Projects only host-observed tool lifecycle into the Stage cue channel. The model cannot author
+   * coordinates, paths, or renderer commands here; exact affected IDs are added by validated
+   * preview receipts in the control layer.
+   */
+  private projectActionCue(event: StudioAgentTraceEvent): void {
+    if (!event.toolCallId || !event.toolName) return
+    const kind = this.actionCueKind(event.toolName)
+    if (!kind) return
+    if (event.kind === 'tool_started') {
+      const document = application.get('MoleculeDocumentService').getDocument()
+      const cue: StudioAgentActionCue = {
+        cueId: `cue-${randomUUID()}`,
+        turnId: event.turnId,
+        documentId: document.documentId,
+        revision: document.revision,
+        geometryHash: moleculeGeometryHash(document),
+        kind,
+        phase: 'running',
+        atomIds: [],
+        bondIds: [],
+        constraintIds: [],
+        label: event.title
+      }
+      this.actionCues.set(event.toolCallId, cue)
+      application.get('IpcApiService').broadcast('chemsmart_studio.agent.action_cue', cue)
+      return
+    }
+    if (event.kind !== 'tool_succeeded' && event.kind !== 'tool_failed') return
+    const running = this.actionCues.get(event.toolCallId)
+    if (!running) return
+    this.actionCues.delete(event.toolCallId)
+    application.get('IpcApiService').broadcast('chemsmart_studio.agent.action_cue', {
+      ...running,
+      phase: event.kind === 'tool_succeeded' ? 'succeeded' : 'failed'
+    })
+  }
+
+  private actionCueKind(toolName: string): StudioAgentActionCue['kind'] | null {
+    if (toolName === 'analyze_current_molecule' || toolName.startsWith('inspect_')) return 'inspect'
+    if (/freeze/i.test(toolName)) return 'freeze'
+    if (/constraint/i.test(toolName)) return 'constrain'
+    if (/bond/i.test(toolName)) return 'set_bond'
+    if (/place|atom/i.test(toolName)) return 'place_atom'
+    if (/move|position/i.test(toolName)) return 'move'
+    return null
   }
 
   private async reportStudioResult(params: unknown): Promise<{ accepted: true }> {
@@ -1226,7 +1277,7 @@ export class ChemSmartAgentService extends BaseService {
   }
 
   private failActiveTurns(): void {
-    if (this.activeModelOperations.size === 0) return
+    if (this.activeModelOperations.size === 0 && this.actionCues.size === 0) return
     const activeOperations = [...this.activeModelOperations]
     for (const [, operation] of activeOperations) {
       operation.cancelled = true
@@ -1236,6 +1287,13 @@ export class ChemSmartAgentService extends BaseService {
     this.activeModelOperations.clear()
     this.pendingSteers.clear()
     this.queuedTurns.clear()
+    for (const cue of this.actionCues.values()) {
+      application.get('IpcApiService').broadcast('chemsmart_studio.agent.action_cue', {
+        ...cue,
+        phase: 'cancelled'
+      })
+    }
+    this.actionCues.clear()
 
     const controls = application.get('StudioControlService')
     for (const [sessionId, operation] of activeOperations) {
