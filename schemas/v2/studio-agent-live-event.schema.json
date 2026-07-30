@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/studio-agent-live-event.schema.json",
+  "title": "StudioAgentLiveEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "turnId", "blockId", "sequence", "kind", "transient"],
+  "properties": {
+    "threadId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "turnId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "blockId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "kind": {
+      "enum": ["text_started", "text_delta", "text_completed", "public_summary"]
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 16384,
+      "pattern": "^[^\\u0000]*$"
+    },
+    "transient": { "const": true }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": { "enum": ["text_delta", "text_completed", "public_summary"] }
+        },
+        "required": ["kind"]
+      },
+      "then": { "required": ["text"] }
+    }
+  ]
+}

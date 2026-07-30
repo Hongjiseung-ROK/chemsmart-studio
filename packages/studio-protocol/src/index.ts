@@ -1,21 +1,36 @@
 export type * from './generated'
+export type {
+  HistoricalRunDisposition,
+  HistoricalRunV1,
+  NormalizedHistoricalProject
+} from './compatibility-v1'
 export {
+  classifyHistoricalRun,
+  isHistoricalProjectManifestV1,
+  normalizeHistoricalProjectManifest
+} from './compatibility-v1'
+export {
+  CHEMSMART_COMMIT,
+  PROTOCOL_VERSION,
+  SCHEMA_SHA256,
   commandInspectionRuntimeSchema,
   commandSynthesisRuntimeSchema,
   controlledCalculationRuntimeSchema,
-  emitStudioUiUpdateTool,
   manifestRuntimeSchema,
   moleculeCommitReceiptRuntimeSchema,
   moleculeDocumentRuntimeSchema,
   moleculeImportRuntimeSchema,
   moleculePatchRuntimeSchema,
-  nativeViewportRuntimeSchema,
   optimizationReplayRuntimeSchema,
   optimizationRuntimeSchema,
   optimizationTrajectoryRuntimeSchema,
   previewReceiptRuntimeSchema,
+  protocolHelloRuntimeSchema,
   projectWorkspaceRuntimeSchema,
   researchProjectSessionRuntimeSchema,
+  stagePlacementIntentRuntimeSchema,
+  studioAgentActionCueRuntimeSchema,
+  studioAgentLiveEventRuntimeSchema,
   studioAgentMoleculeRequestRuntimeSchema,
   studioAgentToolInputSchemas,
   studioAgentTraceEventRuntimeSchema,
@@ -23,12 +38,10 @@ export {
   studioApprovalRequestRuntimeSchema,
   studioApprovalRequestSchema,
   studioCommonSchema,
+  studioConsoleCompletionRuntimeSchema,
   studioControlRuntimeSchema,
   studioControlSchema,
   studioDraftRuntimeSchema,
   studioMoleculeRequestRuntimeSchema,
-  studioMoleculeRequestSchema,
-  studioUiDeliverySchema,
-  studioUiEventRuntimeSchema,
-  studioUiEventSchema
+  studioMoleculeRequestSchema
 } from './generated'

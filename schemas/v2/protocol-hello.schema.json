@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/protocol-hello.schema.json",
+  "title": "StudioProtocolHello",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "schemaSha256", "chemSmartCommit"],
+  "properties": {
+    "protocolVersion": { "const": "2.0.0" },
+    "schemaSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "chemSmartCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    }
+  }
+}

@@ -18,8 +18,8 @@ import {
 } from './projectFiles'
 
 const logger = loggerService.withContext('MoleculeProjectStore')
-const MANIFEST_SCHEMA_VERSION = '1.0.0'
-const MANIFEST_PROTOCOL_VERSION = '1.0.0'
+const MANIFEST_SCHEMA_VERSION = '2.0.0'
+const MANIFEST_PROTOCOL_VERSION = '2.0.0'
 const JOURNAL_NAME = '.chemsmart-molecule-transaction.json'
 const DRAFT_JOURNAL_NAME = '.chemsmart-molecule-draft.json'
 const MAX_PROJECT_FILES = 10_000

@@ -1,0 +1,13 @@
+{
+  "cueId": "cue-1",
+  "turnId": "turn-1",
+  "documentId": "molecule-1",
+  "revision": 3,
+  "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "kind": "freeze",
+  "phase": "running",
+  "atomIds": ["atom-1"],
+  "bondIds": [],
+  "constraintIds": [],
+  "label": "/tmp/water.xyz"
+}

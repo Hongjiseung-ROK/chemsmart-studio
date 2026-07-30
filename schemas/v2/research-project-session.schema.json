@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chemsmart.studio/schemas/v2/research-project-session.schema.json",
+  "title": "ResearchProjectSession",
+  "description": "Named scientific Agent threads owned by the canonical .cmsproj package. Electron main issues every identifier. A thread carries a researcher-visible title and durable counters only: no raw provider payload, credential, model identifier, socket, or filesystem path may appear in any definition here.",
+  "$defs": {
+    "threadTitle": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "researchThreadSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "activityCount": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "agentBound": { "type": "boolean" },
+        "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "imported": { "type": "boolean" },
+        "threadId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "title": { "$ref": "#/$defs/threadTitle" },
+        "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": ["threadId", "title", "createdAt", "updatedAt", "activityCount", "agentBound", "imported"],
+      "type": "object"
+    },
+    "researchThreadList": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/researchThreadSummary" }
+    },
+    "researchProjectContext": {
+      "additionalProperties": false,
+      "description": "What a renderer may know about the active project. projectName is a display name, never a path or a path fragment a renderer could rejoin.",
+      "properties": {
+        "activeThreadId": {
+          "oneOf": [{ "$ref": "common.schema.json#/$defs/stableId" }, { "type": "null" }]
+        },
+        "projectId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "projectName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "threads": { "$ref": "#/$defs/researchThreadList" }
+      },
+      "required": ["projectId", "projectName", "activeThreadId", "threads"],
+      "type": "object"
+    },
+    "threadIndex": {
+      "additionalProperties": false,
+      "description": "The on-disk sidecar at <project>.cmsproj/agent/threads.json. Main owns it; the Python sidecar never reads or writes it, so manifest.json and molecule.json stay untouched.",
+      "properties": {
+        "activeThreadId": {
+          "oneOf": [{ "$ref": "common.schema.json#/$defs/stableId" }, { "type": "null" }]
+        },
+        "schemaVersion": { "const": 1 },
+        "threads": { "$ref": "#/$defs/researchThreadList" }
+      },
+      "required": ["schemaVersion", "activeThreadId", "threads"],
+      "type": "object"
+    },
+    "createThreadRequest": {
+      "additionalProperties": false,
+      "properties": { "title": { "$ref": "#/$defs/threadTitle" } },
+      "required": ["title"],
+      "type": "object"
+    },
+    "renameThreadRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "threadId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "title": { "$ref": "#/$defs/threadTitle" }
+      },
+      "required": ["threadId", "title"],
+      "type": "object"
+    },
+    "selectThreadRequest": {
+      "additionalProperties": false,
+      "properties": { "threadId": { "$ref": "common.schema.json#/$defs/stableId" } },
+      "required": ["threadId"],
+      "type": "object"
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/researchProjectContext" },
+    { "$ref": "#/$defs/threadIndex" },
+    { "$ref": "#/$defs/researchThreadSummary" },
+    { "$ref": "#/$defs/createThreadRequest" },
+    { "$ref": "#/$defs/renameThreadRequest" },
+    { "$ref": "#/$defs/selectThreadRequest" }
+  ]
+}

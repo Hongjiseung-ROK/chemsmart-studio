@@ -5,6 +5,7 @@ import net from 'node:net'
 import path from 'node:path'
 
 import { loggerService } from '@logger'
+import type { StudioProtocolHello } from '@chemsmart/studio-protocol'
 import type { ChemSmartStudioProcessStatus } from '@shared/ipc/schemas/chemsmartStudio'
 
 import { JsonRpcPeer } from './JsonRpcPeer'
@@ -43,6 +44,7 @@ export interface LocalRpcProcessOptions {
   incomingHandler: (method: string, params: unknown) => Promise<unknown>
   onStateChanged: (status: ChemSmartStudioProcessStatus) => void
   prepareBootstrap?: () => Promise<LocalRpcProcessBootstrap>
+  protocolHello?: StudioProtocolHello
 }
 
 export interface LocalRpcAuthenticatedContext {
@@ -176,6 +178,10 @@ export class LocalRpcProcess {
       const peer = new JsonRpcPeer(socket, this.options.incomingHandler)
       this.peer = peer
       await peer.request('system.authenticate', { token }, 10_000)
+      if (this.options.protocolHello) {
+        const hello = await peer.request('system.protocol_hello', {}, 10_000)
+        this.assertProtocolHello(hello, this.options.protocolHello)
+      }
       if (this.bootstrap) {
         if (!child.pid || child.pid <= 0) throw new Error(`${this.options.name} did not report a valid child PID`)
         await this.bootstrap.onAuthenticated({
@@ -244,6 +250,25 @@ export class LocalRpcProcess {
   request(method: string, params: unknown, timeoutMs?: number): Promise<unknown> {
     if (!this.peer || this.status.state !== 'running') throw new Error(`${this.options.name} is unavailable`)
     return this.peer.request(method, params, timeoutMs)
+  }
+
+  private assertProtocolHello(actual: unknown, expected: StudioProtocolHello): void {
+    if (!actual || typeof actual !== 'object' || Array.isArray(actual)) {
+      throw new Error(`${this.options.name} returned an invalid protocol hello`)
+    }
+    const candidate = actual as Partial<StudioProtocolHello>
+    const keys = Object.keys(actual).sort()
+    if (
+      keys.length !== 3 ||
+      keys[0] !== 'chemSmartCommit' ||
+      keys[1] !== 'protocolVersion' ||
+      keys[2] !== 'schemaSha256' ||
+      candidate.protocolVersion !== expected.protocolVersion ||
+      candidate.schemaSha256 !== expected.schemaSha256 ||
+      candidate.chemSmartCommit !== expected.chemSmartCommit
+    ) {
+      throw new Error(`${this.options.name} protocol identity mismatch`)
+    }
   }
 
   private connect(socketPath: string, child: ChildProcess): Promise<net.Socket> {

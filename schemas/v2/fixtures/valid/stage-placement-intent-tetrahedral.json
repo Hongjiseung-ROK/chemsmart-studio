@@ -1,0 +1,10 @@
+{
+  "documentId": "molecule-1",
+  "expectedRevision": 3,
+  "geometryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "anchorAtomId": "atom-1",
+  "atomicNumber": 1,
+  "bondOrder": 1,
+  "coordinationGeometry": "tetrahedral",
+  "siteIndex": 2
+}

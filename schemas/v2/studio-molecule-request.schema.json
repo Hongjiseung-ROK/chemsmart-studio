@@ -1,0 +1,168 @@
+{
+  "$defs": {
+    "acceptFinalGeometry": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "optimization.accept_final" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+            "runId": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["runId", "expectedRevision"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "cancelOptimization": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "optimization.cancel" },
+        "params": {
+          "additionalProperties": false,
+          "properties": { "runId": { "$ref": "common.schema.json#/$defs/stableId" } },
+          "required": ["runId"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "commitPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "molecule.commit_preview" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+            "previewId": { "$ref": "common.schema.json#/$defs/stableId" }
+          },
+          "required": ["previewId", "expectedRevision"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "discardPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "molecule.discard_preview" },
+        "params": {
+          "additionalProperties": false,
+          "properties": { "previewId": { "$ref": "common.schema.json#/$defs/stableId" } },
+          "required": ["previewId"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "getSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "molecule.get_snapshot" },
+        "params": { "additionalProperties": false, "type": "object" },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "previewPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "molecule.preview_patch" },
+        "params": {
+          "additionalProperties": false,
+          "properties": { "patch": { "$ref": "molecule-patch.schema.json" } },
+          "required": ["patch"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "setSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "molecule.set_selection" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "atomIds": {
+              "items": { "$ref": "common.schema.json#/$defs/stableId" },
+              "maxItems": 4096,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+            "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" }
+          },
+          "required": ["documentId", "expectedRevision", "atomIds"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "rejectFinalGeometry": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "optimization.reject_final" },
+        "params": {
+          "additionalProperties": false,
+          "properties": { "runId": { "$ref": "common.schema.json#/$defs/stableId" } },
+          "required": ["runId"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    },
+    "startOptimization": {
+      "additionalProperties": false,
+      "properties": {
+        "method": { "const": "optimization.start" },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "engine": { "$ref": "optimization.schema.json#/$defs/run/properties/engine" },
+            "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
+            "method": { "$ref": "optimization.schema.json#/$defs/run/properties/method" },
+            "settings": { "$ref": "optimization.schema.json#/$defs/run/properties/settings" }
+          },
+          "required": ["engine", "method", "settings", "expectedRevision"],
+          "type": "object"
+        },
+        "sessionId": { "$ref": "common.schema.json#/$defs/stableId" }
+      },
+      "required": ["sessionId", "method", "params"],
+      "type": "object"
+    }
+  },
+  "$id": "https://chemsmart.studio/schemas/v2/studio-molecule-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    { "$ref": "#/$defs/getSnapshot" },
+    { "$ref": "#/$defs/setSelection" },
+    { "$ref": "#/$defs/previewPatch" },
+    { "$ref": "#/$defs/commitPreview" },
+    { "$ref": "#/$defs/discardPreview" },
+    { "$ref": "#/$defs/startOptimization" },
+    { "$ref": "#/$defs/cancelOptimization" },
+    { "$ref": "#/$defs/acceptFinalGeometry" },
+    { "$ref": "#/$defs/rejectFinalGeometry" }
+  ],
+  "title": "StudioMoleculeRequest"
+}

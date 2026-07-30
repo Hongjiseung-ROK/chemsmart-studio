@@ -1,0 +1,9 @@
+{
+  "threadId": "thread-1",
+  "turnId": "turn-1",
+  "blockId": "answer-1",
+  "sequence": 2,
+  "kind": "text_delta",
+  "text": "The molecule contains three atoms.",
+  "transient": false
+}

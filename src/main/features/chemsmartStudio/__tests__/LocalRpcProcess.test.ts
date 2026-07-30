@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { CHEMSMART_COMMIT, PROTOCOL_VERSION, SCHEMA_SHA256, type StudioProtocolHello } from '@chemsmart/studio-protocol'
+
 import { LocalRpcProcess } from '../LocalRpcProcess'
 
 const fixturePath = fileURLToPath(new URL('./fixtures/localRpcChild.cjs', import.meta.url))
@@ -29,7 +31,7 @@ describe('LocalRpcProcess supervision', () => {
   const processes: LocalRpcProcess[] = []
   const runtimeDirectories: string[] = []
 
-  const createProcess = async (initialMode: string) => {
+  const createProcess = async (initialMode: string, protocolHello?: StudioProtocolHello) => {
     const runtimeDirectory = await mkdtemp('/tmp/chemsmart-local-rpc-')
     runtimeDirectories.push(runtimeDirectory)
     const pidFile = path.join(runtimeDirectory, 'child.pid')
@@ -44,8 +46,10 @@ describe('LocalRpcProcess supervision', () => {
       runtimeDirectory,
       environment: {
         CHEMSMART_TEST_DESCENDANT_PID_FILE: descendantPidFile,
-        CHEMSMART_TEST_PID_FILE: pidFile
+        CHEMSMART_TEST_PID_FILE: pidFile,
+        ...(protocolHello ? { CHEMSMART_TEST_PROTOCOL_HELLO: JSON.stringify(protocolHello) } : {})
       },
+      protocolHello,
       incomingHandler: async () => ({ accepted: true }),
       onStateChanged: (status) => statuses.push({ ...status })
     })
@@ -80,6 +84,32 @@ describe('LocalRpcProcess supervision', () => {
     expect(isPidAlive(pid)).toBe(false)
     expect((await readdir(runtimeDirectory)).filter((entry) => entry.endsWith('.sock'))).toEqual([])
     expect(statuses.map((status) => status.state)).toEqual(['starting', 'running', 'stopping', 'stopped'])
+  })
+
+  it('publishes running state only after the authenticated protocol identity matches', async () => {
+    const expected = {
+      protocolVersion: PROTOCOL_VERSION,
+      schemaSha256: SCHEMA_SHA256,
+      chemSmartCommit: CHEMSMART_COMMIT
+    } as const
+    const { statuses, supervisedProcess } = await createProcess('normal', expected)
+
+    await expect(supervisedProcess.start()).resolves.toMatchObject({ state: 'running' })
+    expect(statuses.map((status) => status.state)).toEqual(['starting', 'running'])
+  })
+
+  it('terminates the sidecar before ready when its protocol identity mismatches', async () => {
+    const expected = {
+      protocolVersion: PROTOCOL_VERSION,
+      schemaSha256: SCHEMA_SHA256,
+      chemSmartCommit: CHEMSMART_COMMIT
+    } as const
+    const { pidFile, statuses, supervisedProcess } = await createProcess('protocol-mismatch', expected)
+
+    await expect(supervisedProcess.start()).rejects.toThrow('protocol identity mismatch')
+    const pid = Number(await readFile(pidFile, 'utf8'))
+    expect(isPidAlive(pid)).toBe(false)
+    expect(statuses.at(-1)).toMatchObject({ state: 'failed', pid: null })
   })
 
   it('discloses a prepared bootstrap only after authentication and disposes it on stop', async () => {

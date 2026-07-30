@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import { application } from '@application'
 import {
+  CHEMSMART_COMMIT,
   type CommandInspectionRequest,
   type CommandInspectionResult,
   commandInspectionRuntimeSchema,
@@ -24,7 +25,9 @@ import {
   type ProjectWorkspaceListResult,
   type ProjectWorkspaceReadRequest,
   type ProjectWorkspaceReadResult,
+  PROTOCOL_VERSION,
   projectWorkspaceRuntimeSchema,
+  SCHEMA_SHA256,
   type ProjectWorkspaceValidateRequest,
   type ProjectWorkspaceValidateResult,
   type StudioAgentAnswer,
@@ -68,6 +71,11 @@ import { generateStudioModelResponse } from './StudioModelAdapter'
 import { type StudioUiDelivery, StudioUiEventChannel } from './StudioUiEventChannel'
 
 const logger = loggerService.withContext('ChemSmartAgentService')
+const protocolHello = {
+  protocolVersion: PROTOCOL_VERSION,
+  schemaSha256: SCHEMA_SHA256,
+  chemSmartCommit: CHEMSMART_COMMIT
+} as const
 const commandInspectionValidator = new CfWorkerJsonSchemaValidator({
   draft: '2020-12',
   shortcircuit: false
@@ -324,6 +332,7 @@ export class ChemSmartAgentService extends BaseService {
         cwd: application.getPath('feature.chemsmart_studio.workspace'),
         runtimeDirectory: application.getPath('feature.chemsmart_studio.runtime'),
         environment: { PYTHONDONTWRITEBYTECODE: '1' },
+        protocolHello,
         incomingHandler: (method, params) => this.handleSidecarRequest(method, params),
         onStateChanged: (status) => {
           application.get('IpcApiService').broadcast('chemsmart_studio.agent.state_changed', status)
