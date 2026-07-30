@@ -1259,6 +1259,61 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     }
   )
 
+  it('projects host-observed scientific tool lifecycle as path-free Stage action cues', async () => {
+    localProcessRequestMock.mockImplementation(async (_method: string, params: unknown) => {
+      const operationId = (params as { operationId: string }).operationId
+      await internals.handleSidecarRequest('agent.trace', {
+        sessionId: 'session-1',
+        operationId,
+        kind: 'turn_started',
+        title: 'Inspect molecule',
+        summary: 'Starting inspection'
+      })
+      await internals.handleSidecarRequest('agent.trace', {
+        sessionId: 'session-1',
+        operationId,
+        kind: 'tool_started',
+        toolCallId: 'tool-1',
+        toolName: 'analyze_current_molecule',
+        title: 'Inspect current molecule',
+        summary: 'Reading trusted molecule state'
+      })
+      await internals.handleSidecarRequest('agent.trace', {
+        sessionId: 'session-1',
+        operationId,
+        kind: 'tool_succeeded',
+        toolCallId: 'tool-1',
+        toolName: 'analyze_current_molecule',
+        title: 'Inspect current molecule',
+        summary: 'Inspection complete'
+      })
+      return advisoryTurnResult
+    })
+
+    await service.runTurn('session-1', 'provider::model', 'Inspect the molecule.', 'window-1')
+
+    const cues = broadcastMock.mock.calls
+      .filter(([event]) => event === 'chemsmart_studio.agent.action_cue')
+      .map(([, cue]) => cue)
+    expect(cues).toEqual([
+      expect.objectContaining({
+        turnId: 'turn-1',
+        documentId: visibleMolecule.documentId,
+        kind: 'inspect',
+        phase: 'running',
+        atomIds: [],
+        bondIds: [],
+        constraintIds: []
+      }),
+      expect.objectContaining({
+        turnId: 'turn-1',
+        documentId: visibleMolecule.documentId,
+        kind: 'inspect',
+        phase: 'succeeded'
+      })
+    ])
+  })
+
   it('does not authorize agent-only callbacks with a command-synthesis token', async () => {
     localProcessRequestMock.mockImplementation(async (method: string, params: unknown) => {
       if (method !== 'command.synthesize') return { accepted: true }
