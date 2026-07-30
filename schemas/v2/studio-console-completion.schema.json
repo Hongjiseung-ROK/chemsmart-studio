@@ -4,7 +4,7 @@
   "title": "StudioConsoleCompletionResult",
   "type": "object",
   "additionalProperties": false,
-  "required": ["commandPath", "replaceRange", "items", "semantic"],
+  "required": ["commandPath", "stage", "disclosure", "hasMore", "replaceRange", "items", "semantic"],
   "properties": {
     "commandPath": {
       "type": "array",
@@ -16,6 +16,9 @@
         "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]*$"
       }
     },
+    "stage": { "enum": ["root", "subcommand", "required_value", "option", "complete"] },
+    "disclosure": { "enum": ["primary", "all"] },
+    "hasMore": { "type": "boolean" },
     "replaceRange": {
       "type": "object",
       "additionalProperties": false,
@@ -220,6 +223,25 @@
           "maxLength": 512,
           "pattern": "^[^\\u0000\\r\\n]*$"
         }
+      }
+    },
+    "fileDropRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "cursor", "filePath"],
+      "properties": {
+        "line": { "type": "string", "maxLength": 8192 },
+        "cursor": { "type": "integer", "minimum": 0, "maximum": 8192 },
+        "filePath": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      }
+    },
+    "fileDropResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replaceRange", "item"],
+      "properties": {
+        "replaceRange": { "$ref": "#/properties/replaceRange" },
+        "item": { "$ref": "#/properties/items/items" }
       }
     }
   }

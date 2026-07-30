@@ -1,5 +1,8 @@
 {
   "commandPath": ["chemsmart", "run"],
+  "stage": "subcommand",
+  "disclosure": "primary",
+  "hasMore": false,
   "replaceRange": { "start": 0, "end": 3 },
   "items": [
     {

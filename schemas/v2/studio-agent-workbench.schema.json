@@ -5,7 +5,7 @@
       "properties": {
         "heading": { "$ref": "#/$defs/shortText" },
         "kind": { "enum": ["finding", "evidence", "warning", "next_step"] },
-        "summary": { "$ref": "#/$defs/safeText" }
+        "summary": { "$ref": "#/$defs/safeMarkdown" }
       },
       "required": ["kind", "heading", "summary"],
       "type": "object"
@@ -15,13 +15,20 @@
     },
     "capability": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "discovery": { "const": "task" } }, "required": ["discovery"] },
+          "then": { "required": ["workflow"] }
+        }
+      ],
       "properties": {
         "capability": { "enum": ["inspect", "plan", "act", "navigation"] },
         "contextRef": { "$ref": "common.schema.json#/$defs/stableId" },
         "description": { "$ref": "#/$defs/shortText" },
-        "discovery": { "enum": ["plus", "mention", "command"] },
+        "discovery": { "enum": ["plus", "mention", "task"] },
         "key": { "$ref": "#/$defs/safeKey" },
-        "label": { "$ref": "#/$defs/shortText" }
+        "label": { "$ref": "#/$defs/shortText" },
+        "workflow": { "$ref": "#/$defs/studioAgentWorkflow" }
       },
       "required": ["discovery", "key", "label", "description", "capability"],
       "type": "object"
@@ -93,6 +100,12 @@
       "pattern": "^[^\\u0000-\\u001f\\u007f`<>]+$",
       "type": "string"
     },
+    "safeMarkdown": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f<>]+$",
+      "type": "string"
+    },
     "shortText": {
       "maxLength": 256,
       "minLength": 1,
@@ -111,7 +124,7 @@
           "minItems": 1,
           "type": "array"
         },
-        "summary": { "$ref": "#/$defs/safeText" }
+        "summary": { "$ref": "#/$defs/safeMarkdown" }
       },
       "required": ["answerId", "heading", "summary", "sections", "extensions"],
       "type": "object"
@@ -223,11 +236,32 @@
         "extensions": { "$ref": "common.schema.json#/$defs/extensions" },
         "intentId": { "$ref": "common.schema.json#/$defs/stableId" },
         "kind": { "enum": ["inspect", "plan", "dry_run", "run", "review", "history", "new", "context"] },
-        "prompt": { "$ref": "#/$defs/safeText" },
-        "requiresExecutionApproval": { "type": "boolean" }
+        "prompt": { "$ref": "#/$defs/safeMarkdown" },
+        "requiresExecutionApproval": { "type": "boolean" },
+        "workflow": { "$ref": "#/$defs/studioAgentWorkflow" }
       },
-      "required": ["intentId", "kind", "capability", "contextRefs", "requiresExecutionApproval", "extensions"],
+      "required": [
+        "intentId",
+        "kind",
+        "capability",
+        "workflow",
+        "contextRefs",
+        "requiresExecutionApproval",
+        "extensions"
+      ],
       "type": "object"
+    },
+    "studioAgentRunReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "turnId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "outcome": { "$ref": "#/$defs/terminalOutcome" }
+      },
+      "required": ["turnId", "outcome"],
+      "type": "object"
+    },
+    "studioAgentWorkflow": {
+      "enum": ["general", "project_setup", "command", "molecule", "calculation", "results"]
     },
     "studioAgentTurnEvent": {
       "additionalProperties": false,
@@ -380,6 +414,7 @@
     { "$ref": "#/$defs/studioAgentArtifact" },
     { "$ref": "#/$defs/studioAgentCapabilityManifest" },
     { "$ref": "#/$defs/studioAgentComposerIntent" },
+    { "$ref": "#/$defs/studioAgentRunReceipt" },
     { "$ref": "#/$defs/reportStudioResultInput" },
     { "$ref": "#/$defs/turnPage" },
     { "$ref": "#/$defs/turnPageRequest" },

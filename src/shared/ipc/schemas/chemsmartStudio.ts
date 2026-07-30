@@ -47,11 +47,16 @@ import {
   type StudioAgentCapabilityManifestRequest,
   type StudioAgentComposerIntent,
   type StudioAgentLiveEvent,
+  type StudioAgentRunReceipt,
   type StudioAgentTraceEvent,
   type StudioAgentTurnEvent,
   type StudioAgentTurnPage,
   type StudioAgentTurnPageRequest,
   studioAgentWorkbenchRuntimeSchema,
+  type StudioConsoleCompletionResult,
+  studioConsoleCompletionRuntimeSchema,
+  type StudioConsoleFileDropRequest,
+  type StudioConsoleFileDropResult,
   studioControlRuntimeSchema,
   type StudioControlSnapshot,
   studioDraftRuntimeSchema,
@@ -201,6 +206,21 @@ const studioAgentCapabilityManifestSchema = runtimeDefinitionSchema<StudioAgentC
 const studioAgentComposerIntentSchema = runtimeDefinitionSchema<StudioAgentComposerIntent>(
   studioAgentWorkbenchRuntimeSchema,
   'studioAgentComposerIntent'
+)
+const studioAgentRunReceiptSchema = runtimeDefinitionSchema<StudioAgentRunReceipt>(
+  studioAgentWorkbenchRuntimeSchema,
+  'studioAgentRunReceipt'
+)
+const studioConsoleCompletionResultSchema = runtimeRootSchema<StudioConsoleCompletionResult>(
+  studioConsoleCompletionRuntimeSchema
+)
+const studioConsoleFileDropRequestSchema = runtimeDefinitionSchema<StudioConsoleFileDropRequest>(
+  studioConsoleCompletionRuntimeSchema,
+  'fileDropRequest'
+)
+const studioConsoleFileDropResultSchema = runtimeDefinitionSchema<StudioConsoleFileDropResult>(
+  studioConsoleCompletionRuntimeSchema,
+  'fileDropResult'
 )
 const replayCatalogQuerySchema = runtimeDefinitionSchema<OptimizationReplayCatalogQuery>(
   optimizationReplayRuntimeSchema,
@@ -375,7 +395,7 @@ export const chemsmartStudioRequestSchemas = {
       request: z.string().min(1).max(100_000),
       intent: studioAgentComposerIntentSchema.nullable().optional()
     }),
-    output: z.object({ completed: z.literal(true) })
+    output: studioAgentRunReceiptSchema
   }),
   'chemsmart_studio.agent.control_turn': defineRoute({
     input: z.discriminatedUnion('action', [
@@ -600,51 +620,17 @@ export const chemsmartStudioRequestSchemas = {
   }),
   /** Pure: resolves completions against the parsed command path. Starts no process. */
   'chemsmart_studio.console.complete': defineRoute({
-    input: z.strictObject({ line: z.string().max(8192), cursor: z.number().int().nonnegative().max(8192) }),
-    output: z.strictObject({
-      commandPath: z.array(z.string().min(1)),
-      replaceRange: z.strictObject({
-        start: z.number().int().nonnegative(),
-        end: z.number().int().nonnegative()
-      }),
-      items: z.array(
-        z.strictObject({
-          id: z.string().min(1),
-          label: z.string().min(1),
-          insertText: z.string().min(1),
-          kind: z.enum(['command', 'option', 'choice', 'argument', 'file', 'project', 'server']),
-          group: z.enum(['commands', 'options', 'values', 'files', 'projects', 'servers']),
-          detail: z.string(),
-          valueHint: z.string().min(1).optional(),
-          contextRef: stableIdSchema.optional(),
-          openAction: z.enum(['molecule', 'project_yaml']).optional(),
-          appendSpace: z.boolean()
-        })
-      ),
-      semantic: z.strictObject({
-        breadcrumb: z.array(z.string().min(1).max(128)).max(16),
-        slots: z.array(
-          z.strictObject({
-            id: stableIdSchema,
-            label: z.string().min(1).max(512),
-            insertText: z.string().max(256),
-            valueHint: z.string().min(1).max(256),
-            kind: z.enum(['leaf', 'option']),
-            required: z.boolean(),
-            consumed: z.boolean(),
-            insertAt: z.number().int().nonnegative().max(8192)
-          })
-        ),
-        ghostSuffix: z.string().max(2048),
-        complete: z.boolean()
-      }),
-      diagnostic: z
-        .strictObject({
-          code: z.enum(['unsupported_shell_syntax', 'invalid_prefix', 'value_required']),
-          message: z.string().min(1)
-        })
-        .optional()
-    })
+    input: z.strictObject({
+      line: z.string().max(8192),
+      cursor: z.number().int().nonnegative().max(8192),
+      disclosure: z.enum(['primary', 'all'])
+    }),
+    output: studioConsoleCompletionResultSchema
+  }),
+  /** Human-only Finder drop validation. It never starts ChemSmart, Python, or a chemistry executable. */
+  'chemsmart_studio.console.prepare_file_drop': defineRoute({
+    input: studioConsoleFileDropRequestSchema,
+    output: studioConsoleFileDropResultSchema
   }),
   /** Submit-time deterministic inspection. It never starts a chemistry executable. */
   'chemsmart_studio.console.preflight': defineRoute({

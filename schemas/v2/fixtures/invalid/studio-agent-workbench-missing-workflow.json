@@ -1,0 +1,9 @@
+{
+  "intentId": "intent-general-1",
+  "kind": "inspect",
+  "capability": "inspect",
+  "contextRefs": [],
+  "prompt": "Inspect the visible molecule.",
+  "requiresExecutionApproval": false,
+  "extensions": {}
+}

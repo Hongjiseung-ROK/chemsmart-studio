@@ -1,5 +1,8 @@
 {
   "commandPath": ["chemsmart", "run", "xtb", "sp"],
+  "stage": "option",
+  "disclosure": "primary",
+  "hasMore": true,
   "replaceRange": { "start": 18, "end": 20 },
   "items": [
     {

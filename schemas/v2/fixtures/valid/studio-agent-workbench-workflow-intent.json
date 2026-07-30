@@ -1,0 +1,10 @@
+{
+  "intentId": "intent-general-1",
+  "kind": "inspect",
+  "capability": "inspect",
+  "workflow": "general",
+  "contextRefs": [],
+  "prompt": "Inspect the visible molecule.\n\n- Report the **formula**.\n- Keep `revision` explicit.",
+  "requiresExecutionApproval": false,
+  "extensions": {}
+}

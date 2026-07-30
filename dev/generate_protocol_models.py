@@ -554,8 +554,13 @@ export interface StagePlacementIntent {{ documentId: StableId; expectedRevision:
 export interface StagePlacementCandidate {{ siteIndex: number; position: Vector3; bondLength: number; minimumClearance: number; occupied: boolean; safe: boolean }}
 export interface StagePlacementPreview {{ documentId: StableId; revision: number; geometryHash: string; anchorAtomId?: StableId; atomicNumber: number; bondOrder: 1 | 2 | 3; coordinationGeometry: CoordinationGeometry; candidates: StagePlacementCandidate[]; selectedSiteIndex?: number; status: 'ready' | 'coordination_full' | 'steric_collision' }}
 export type StudioConsoleCompletionKind = 'command' | 'option' | 'choice' | 'argument' | 'file' | 'project' | 'server'
-export interface StudioConsoleCompletionItem {{ id: StableId; label: string; insertText: string; kind: StudioConsoleCompletionKind; detail: string; appendSpace: boolean }}
-export interface StudioConsoleCompletionResult {{ commandPath: string[]; replaceRange: {{ start: number; end: number }}; items: StudioConsoleCompletionItem[]; diagnostic?: {{ code: 'unsupported_shell_syntax' | 'invalid_prefix' | 'value_required'; message: string }} }}
+export type StudioConsoleCompletionStage = 'root' | 'subcommand' | 'required_value' | 'option' | 'complete'
+export type StudioConsoleCompletionDisclosure = 'primary' | 'all'
+export interface StudioConsoleCompletionItem {{ id: StableId; label: string; insertText: string; kind: StudioConsoleCompletionKind; group: 'commands' | 'options' | 'values' | 'files' | 'projects' | 'servers'; detail: string; valueHint?: string; appendSpace: boolean; contextRef?: StableId; openAction?: 'molecule' | 'project_yaml' }}
+export interface StudioConsoleSemanticSlot {{ id: StableId; label: string; insertText: string; valueHint: string; kind: 'leaf' | 'option'; required: boolean; consumed: boolean; insertAt: number }}
+export interface StudioConsoleCompletionResult {{ commandPath: string[]; stage: StudioConsoleCompletionStage; disclosure: StudioConsoleCompletionDisclosure; hasMore: boolean; replaceRange: {{ start: number; end: number }}; items: StudioConsoleCompletionItem[]; semantic: {{ breadcrumb: string[]; slots: StudioConsoleSemanticSlot[]; ghostSuffix: string; complete: boolean }}; diagnostic?: {{ code: 'unsupported_shell_syntax' | 'invalid_prefix' | 'value_required'; message: string }} }}
+export interface StudioConsoleFileDropRequest {{ line: string; cursor: number; filePath: string }}
+export interface StudioConsoleFileDropResult {{ replaceRange: {{ start: number; end: number }}; item: StudioConsoleCompletionItem }}
 export type MoleculeImportFormat = 'cjson' | 'sdf' | 'xyz'
 export interface MoleculeImportRequest {{ capabilityId: StableId; format: MoleculeImportFormat; documentId: StableId; sizeBytes: number; extensions: Extensions }}
 export interface MoleculeImportChunkRequest {{ capabilityId: StableId; offset: number; length: number; extensions: Extensions }}
@@ -597,10 +602,12 @@ export interface StudioAgentToolProjection {{ toolCallId: StableId; toolName: st
 export type StudioAgentTurnEventKind = 'user_message' | 'reasoning_summary' | 'tool_started' | 'permission_waiting' | 'tool_progress' | 'tool_succeeded' | 'tool_failed' | 'artifact_published' | 'answer_published' | 'turn_terminal'
 export type StudioAgentTurnStatus = 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'denied' | 'cancelled' | 'needs_user'
 export type StudioAgentTurnOutcome = 'completed' | 'denied' | 'failed' | 'cancelled' | 'needs_user'
+export type StudioAgentWorkflow = 'general' | 'project_setup' | 'command' | 'molecule' | 'calculation' | 'results'
 export interface StudioAgentTurnEvent {{ eventId: StableId; threadId: StableId; turnId: StableId; sequence: number; timestamp: string; kind: StudioAgentTurnEventKind; status: StudioAgentTurnStatus; summary: string; tool?: StudioAgentToolProjection; approvalRef?: StableId; artifact?: StudioAgentArtifact; answer?: StudioAgentAnswer; outcome?: StudioAgentTurnOutcome; extensions: Extensions }}
-export interface StudioAgentCapability {{ discovery: 'plus' | 'mention' | 'command'; key: string; label: string; description: string; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRef?: StableId }}
+export interface StudioAgentCapability {{ discovery: 'plus' | 'mention' | 'task'; key: string; label: string; description: string; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRef?: StableId; workflow?: StudioAgentWorkflow }}
 export interface StudioAgentCapabilityManifest {{ projectId: StableId; threadId: StableId; generatedAt: string; items: StudioAgentCapability[]; extensions: Extensions }}
-export interface StudioAgentComposerIntent {{ intentId: StableId; kind: 'inspect' | 'plan' | 'dry_run' | 'run' | 'review' | 'history' | 'new' | 'context'; capability: 'inspect' | 'plan' | 'act' | 'navigation'; contextRefs: StableId[]; prompt?: string; requiresExecutionApproval: boolean; extensions: Extensions }}
+export interface StudioAgentComposerIntent {{ intentId: StableId; kind: 'inspect' | 'plan' | 'dry_run' | 'run' | 'review' | 'history' | 'new' | 'context'; capability: 'inspect' | 'plan' | 'act' | 'navigation'; workflow: StudioAgentWorkflow; contextRefs: StableId[]; prompt?: string; requiresExecutionApproval: boolean; extensions: Extensions }}
+export interface StudioAgentRunReceipt {{ turnId: StableId; outcome: StudioAgentTurnOutcome }}
 export interface StudioAgentReportResultInput {{ answer: StudioAgentAnswer; artifactRefs?: StableId[]; artifacts: StudioAgentArtifact[] }}
 export interface StudioAgentTurnPage {{ threadId: StableId; events: StudioAgentTurnEvent[]; nextBeforeSequence: number | null; extensions: Extensions }}
 export interface StudioAgentTurnPageRequest {{ threadId: StableId; beforeSequence: number | null; limit: number }}
@@ -1087,18 +1094,51 @@ class StudioConsoleCompletionItem(TypedDict):
     label: str
     insertText: str
     kind: Literal["command", "option", "choice", "argument", "file", "project", "server"]
+    group: Literal["commands", "options", "values", "files", "projects", "servers"]
     detail: str
+    valueHint: NotRequired[str]
     appendSpace: bool
+    contextRef: NotRequired[str]
+    openAction: NotRequired[Literal["molecule", "project_yaml"]]
+
+class StudioConsoleSemanticSlot(TypedDict):
+    id: str
+    label: str
+    insertText: str
+    valueHint: str
+    kind: Literal["leaf", "option"]
+    required: bool
+    consumed: bool
+    insertAt: int
 
 class StudioConsoleCompletionDiagnostic(TypedDict):
     code: Literal["unsupported_shell_syntax", "invalid_prefix", "value_required"]
     message: str
 
+class StudioConsoleSemantic(TypedDict):
+    breadcrumb: list[str]
+    slots: list[StudioConsoleSemanticSlot]
+    ghostSuffix: str
+    complete: bool
+
 class StudioConsoleCompletionResult(TypedDict):
     commandPath: list[str]
+    stage: Literal["root", "subcommand", "required_value", "option", "complete"]
+    disclosure: Literal["primary", "all"]
+    hasMore: bool
     replaceRange: dict[str, int]
     items: list[StudioConsoleCompletionItem]
+    semantic: StudioConsoleSemantic
     diagnostic: NotRequired[StudioConsoleCompletionDiagnostic]
+
+class StudioConsoleFileDropRequest(TypedDict):
+    line: str
+    cursor: int
+    filePath: str
+
+class StudioConsoleFileDropResult(TypedDict):
+    replaceRange: dict[str, int]
+    item: StudioConsoleCompletionItem
 
 class MoleculeAtom(TypedDict):
     id: str
@@ -1365,6 +1405,7 @@ StudioAgentTurnStatus = Literal[
     "needs_user",
 ]
 StudioAgentTurnOutcome = Literal["completed", "denied", "failed", "cancelled", "needs_user"]
+StudioAgentWorkflow = Literal["general", "project_setup", "command", "molecule", "calculation", "results"]
 
 class StudioAgentTurnEvent(TypedDict):
     eventId: str
@@ -1383,12 +1424,13 @@ class StudioAgentTurnEvent(TypedDict):
     extensions: Extensions
 
 class StudioAgentCapability(TypedDict):
-    discovery: Literal["plus", "mention", "command"]
+    discovery: Literal["plus", "mention", "task"]
     key: str
     label: str
     description: str
     capability: Literal["inspect", "plan", "act", "navigation"]
     contextRef: NotRequired[str]
+    workflow: NotRequired[StudioAgentWorkflow]
 
 class StudioAgentCapabilityManifest(TypedDict):
     projectId: str
@@ -1401,10 +1443,15 @@ class StudioAgentComposerIntent(TypedDict):
     intentId: str
     kind: Literal["inspect", "plan", "dry_run", "run", "review", "history", "new", "context"]
     capability: Literal["inspect", "plan", "act", "navigation"]
+    workflow: StudioAgentWorkflow
     contextRefs: list[str]
     prompt: NotRequired[str]
     requiresExecutionApproval: bool
     extensions: Extensions
+
+class StudioAgentRunReceipt(TypedDict):
+    turnId: str
+    outcome: StudioAgentTurnOutcome
 
 class StudioAgentReportResultInput(TypedDict):
     answer: StudioAgentAnswer
