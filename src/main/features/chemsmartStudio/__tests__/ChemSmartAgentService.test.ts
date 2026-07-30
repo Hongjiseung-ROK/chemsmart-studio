@@ -220,6 +220,22 @@ const materializedInput = {
   sha256: '3'.repeat(64)
 }
 
+function modelSseResponse(content: string): Response {
+  const chunk = {
+    id: 'chatcmpl-test',
+    model: 'provider:model',
+    created: 1,
+    choices: [{ index: 0, delta: { content }, finish_reason: null }]
+  }
+  const done = {
+    ...chunk,
+    choices: [{ index: 0, delta: {}, finish_reason: 'stop' }]
+  }
+  return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify(done)}\n\ndata: [DONE]\n\n`, {
+    headers: { 'Content-Type': 'text/event-stream' }
+  })
+}
+
 vi.mock('@main/features/apiGateway/proxyStream', () => ({
   processMessage: processMessageMock
 }))
@@ -500,6 +516,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
   })
 
   it('publishes one schema-validated scientific result and rejects duplicate publication', async () => {
+    processMessageMock.mockResolvedValue(modelSseResponse('The verified result is ready for review.'))
     const report = {
       answer: {
         answerId: 'answer-1',
@@ -564,6 +581,29 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       'session-1',
       'turn-1',
       expect.objectContaining({ kind: 'answer_published', answer: report.answer })
+    )
+    expect(processMessageMock).toHaveBeenCalledOnce()
+    expect(processMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          stream: true,
+          tools: undefined
+        })
+      })
+    )
+    expect(
+      broadcastMock.mock.calls
+        .filter(([channel]) => channel === 'chemsmart_studio.agent.live_event')
+        .map(([, event]) => event)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'text_started', transient: true }),
+        expect.objectContaining({
+          kind: 'text_completed',
+          text: 'The verified result is ready for review.',
+          transient: true
+        })
+      ])
     )
     expect(duplicateError).toMatchObject({ code: -32003 })
   })
@@ -870,9 +910,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
 
   it('requests high reasoning effort for a DeepSeek Studio agent turn', async () => {
     modelGetByKeyMock.mockReturnValue({ apiModelId: 'deepseek-v4-pro' })
-    processMessageMock.mockResolvedValue(
-      new Response(JSON.stringify({ choices: [{ message: { content: 'Ready.' } }] }), { status: 200 })
-    )
+    processMessageMock.mockResolvedValue(modelSseResponse('Ready.'))
     localProcessRequestMock.mockImplementation(async (method: string, params: unknown) => {
       if (method === 'studio_ui.replay') return { replayed: 0, nextSequence: 0 }
       if (method === 'agent.run_turn') {
@@ -894,7 +932,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
         params: expect.objectContaining({
           model: 'deepseek:deepseek-v4-pro',
           reasoning_effort: 'high',
-          stream: false
+          stream: true
         })
       })
     )

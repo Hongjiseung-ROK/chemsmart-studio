@@ -66,8 +66,9 @@ import {
 import { JsonRpcFault } from './JsonRpcPeer'
 import { LocalRpcProcess } from './LocalRpcProcess'
 import { validateImportFile } from './projectFiles'
+import { StudioAgentLiveChannel } from './StudioAgentLiveChannel'
 import { StudioAgentTraceChannel } from './StudioAgentTraceChannel'
-import { generateStudioModelResponse } from './StudioModelAdapter'
+import { generateStudioModelResponse, type StudioModelStreamObserver } from './StudioModelAdapter'
 import { type StudioUiDelivery, StudioUiEventChannel } from './StudioUiEventChannel'
 
 const logger = loggerService.withContext('ChemSmartAgentService')
@@ -265,6 +266,9 @@ export class ChemSmartAgentService extends BaseService {
   private readonly activeModelOperations = new Map<string, ActiveModelOperation>()
   private readonly queuedTurns = new Map<string, PendingAgentTurn[]>()
   private readonly pendingSteers = new Map<string, PendingAgentTurn>()
+  private readonly agentLive = new StudioAgentLiveChannel((event) =>
+    application.get('IpcApiService').broadcast('chemsmart_studio.agent.live_event', event)
+  )
   private readonly agentTrace = new StudioAgentTraceChannel((event) =>
     application.get('IpcApiService').broadcast('chemsmart_studio.agent.trace', event)
   )
@@ -439,6 +443,7 @@ export class ChemSmartAgentService extends BaseService {
     const projection = application.get('StudioAgentProjectionService')
     if (intent) await projection.validateComposerIntent(sessionId, sessionId, intent)
     const started = await projection.beginTurn(sessionId, request)
+    this.agentLive.beginTurn(sessionId, started.turnId)
     const capability = capabilityFromIntent(intent)
     const turnToken: ActiveModelOperation = {
       abortController: new AbortController(),
@@ -490,6 +495,7 @@ export class ChemSmartAgentService extends BaseService {
       turnToken.terminalized = true
       if (this.activeModelOperations.get(sessionId) === turnToken) controls.completeAgentTurn(sessionId)
     } catch (error) {
+      if (turnToken.cancelled) this.agentLive.stopText(started.turnId)
       if (!turnToken.terminalized) {
         const outcome: StudioAgentTurnOutcome = turnToken.cancelled ? 'cancelled' : 'failed'
         try {
@@ -510,6 +516,7 @@ export class ChemSmartAgentService extends BaseService {
         turnToken.abortController.abort()
         this.activeModelOperations.delete(sessionId)
       }
+      this.agentLive.finishTurn(started.turnId)
       this.scheduleNextTurn(sessionId)
     }
   }
@@ -806,6 +813,7 @@ export class ChemSmartAgentService extends BaseService {
         artifact
       })
     }
+    await this.narrateValidatedResult(sessionId, operation, result, artifacts)
     await projection.appendTurnEvent(sessionId, operation.turnId, {
       kind: 'answer_published',
       status: 'succeeded',
@@ -814,6 +822,66 @@ export class ChemSmartAgentService extends BaseService {
     })
     operation.resultReported = true
     return { accepted: true }
+  }
+
+  private async narrateValidatedResult(
+    sessionId: string,
+    operation: ActiveModelOperation,
+    result: StudioAgentReportResultInput,
+    artifacts: readonly StudioAgentArtifact[]
+  ): Promise<void> {
+    if (!operation.turnId) return
+    const { providerId, modelId } = parseUniqueModelId(operation.modelId)
+    if (operation.modelId === this.getDeterministicModelId()) {
+      this.agentLive.publishText(operation.turnId, result.answer.summary)
+      return
+    }
+    const model = modelService.getByKey(providerId, modelId)
+    const publicProjection = {
+      answer: {
+        heading: result.answer.heading,
+        summary: result.answer.summary,
+        sections: result.answer.sections.map((section) => ({
+          kind: section.kind,
+          heading: section.heading,
+          summary: section.summary
+        }))
+      },
+      artifacts: artifacts.map((artifact) => ({
+        kind: artifact.kind,
+        heading: artifact.heading,
+        summary: artifact.summary,
+        verdict: artifact.verdict
+      }))
+    }
+    try {
+      await generateStudioModelResponse({
+        providerId,
+        apiModelId: model.apiModelId ?? modelId,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Write one short, natural transition to the verified Studio result cards. Do not state numbers, units, identifiers, hashes, paths, methods, energies, charges, multiplicities, or unverified scientific claims. Do not use tools.'
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(publicProjection)
+          }
+        ],
+        signal: operation.abortController.signal,
+        timeoutMs: 60_000,
+        observer: this.liveObserver(operation),
+        publicTextPolicy: 'narration'
+      })
+    } catch (error) {
+      if (operation.cancelled || operation.abortController.signal.aborted) throw error
+      logger.warn('Studio final narration was unavailable after verified result publication', {
+        sessionId,
+        turnId: operation.turnId
+      })
+      this.agentLive.publishText(operation.turnId, 'Summary unavailable')
+    }
   }
 
   private async registerCommandPreflight(params: unknown): Promise<{ accepted: true }> {
@@ -1065,7 +1133,8 @@ export class ChemSmartAgentService extends BaseService {
         messages: Array.isArray(value.messages) ? value.messages : [],
         tools: Array.isArray(value.tools) ? value.tools : undefined,
         timeoutMs: typeof value.timeoutMs === 'number' ? value.timeoutMs : undefined,
-        signal: operation.abortController.signal
+        signal: operation.abortController.signal,
+        ...(operation.kind === 'agent_turn' ? { observer: this.liveObserver(operation) } : {})
       })
     }
     this.cancelAtSteeringBoundary(sessionId, operation)
@@ -1073,6 +1142,16 @@ export class ChemSmartAgentService extends BaseService {
       throw new JsonRpcFault(-32003, 'Host model request was cancelled')
     }
     return body
+  }
+
+  private liveObserver(operation: ActiveModelOperation): StudioModelStreamObserver | undefined {
+    if (!operation.turnId) return undefined
+    return {
+      onTextStarted: () => this.agentLive.beginText(operation.turnId!),
+      onTextDelta: (delta) => this.agentLive.appendText(operation.turnId!, delta),
+      onTextCompleted: (text) => this.agentLive.completeText(operation.turnId!, text),
+      onTextStopped: () => this.agentLive.stopText(operation.turnId!)
+    }
   }
 
   private inspectIntent(): StudioAgentComposerIntent {
