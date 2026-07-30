@@ -1,0 +1,3 @@
+# Public skills tracked by skills:sync and skills:check.
+# ChemSmart Studio uses one canonical product-development skill.
+chemsmart-studio

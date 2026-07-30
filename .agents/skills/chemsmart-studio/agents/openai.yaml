@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChemSmart Studio"
+  short_description: "Develop the integrated scientific workbench"
+  default_prompt: "Use $chemsmart-studio to design, implement, or validate a ChemSmart Studio workflow."

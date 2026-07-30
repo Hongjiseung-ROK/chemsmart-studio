@@ -55,7 +55,23 @@ local
 .cursorrules
 .cursor/*
 .claude/
+!.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/.gitignore
+!.claude/skills/chemsmart-studio
 .agents/
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/.gitignore
+!.agents/skills/README.md
+!.agents/skills/README.zh.md
+!.agents/skills/public-skills.txt
+!.agents/skills/chemsmart-studio/
+!.agents/skills/chemsmart-studio/**
 .gjc/
 .context/
 .studio-upstreams/
@@ -70,6 +86,7 @@ local
 **/CLAUDE.md
 **/CLAUDE.local.md
 **/AGENTS.md
+!/AGENTS.md
 **/AGENTS.override.md
 
 # vitest

@@ -32,8 +32,11 @@ The Studio chrome is deliberately neutral. Primary actions use `var(--color-prim
 - a narrow Activity Bar with Explorer, Calculations, Agent/Decisions, Console, and Studio Settings;
 - a project-only Explorer;
 - IDE-style molecule document tabs and the central 3D Stage;
-- an optional right Inspector with Properties, Agent, and Decisions;
-- an optional bottom panel with Console, Jobs, and Problems.
+- a dedicated right ChemSmart Agent pane with streaming conversation, grouped
+  tool activity, inline decisions, and structured scientific artifacts;
+- contextual Properties and artifact Review Sheets;
+- an optional bottom panel inside the central column with Console, Jobs, and
+  Problems.
 
 The consumer Sidebar, browser-style app tabs, Launchpad, global consumer search, and generic Chat, Work, Translation, Paintings, Knowledge Base, Files, Code, Notes, and Mini App surfaces are not ChemSmart Studio product UI. Do not add entry points or fallbacks that expose them. The Electron window, provider, lifecycle, data, and shared UI foundations remain internal implementation details and must not appear as product identity.
 
@@ -50,7 +53,7 @@ Pane intent is independent of window size. Resizing may change only how an open 
 
 `StudioLayoutTier` is therefore a chrome-density and presentation capability, not a panel-state policy. Do not reintroduce fixed viewport thresholds as effects that call `setInspectorOpen(false)` or `setBottomOpen(false)`.
 
-Project Open, Import, and Save As belong in the Explorer header and Studio command palette. Molecule document switching belongs in editor tabs. Build, select, move, rotate, measure, constrain, and fit belong in the viewport toolbar. Run, trajectory, replay, cancellation, and final-geometry decisions belong in Jobs. Properties, Agent, and Decisions belong in the Inspector; human-entered commands belong in Console.
+Project Open, Import, and Save As belong in the Explorer header and Studio command palette. Molecule document switching belongs in editor tabs. Build, select, move, rotate, measure, constrain, and fit belong in the viewport toolbar. Run, trajectory, replay, cancellation, and final-geometry decisions belong in Jobs. Properties opens as a contextual Sheet; Agent decisions appear inline and in artifact Review. Human-entered commands belong in the central-column Console.
 
 The geometry label is a truth boundary, not decoration:
 
@@ -507,9 +510,19 @@ These patterns define the current product workspace and should be treated as des
 - Selection, build mode, run/replay state, and errors use text or icons in addition to color.
 
 **IDE Panels**
-- Explorer, Inspector, and the bottom panel use quiet borders and low-contrast surfaces; avoid nesting every row in a card.
-- Inspector and bottom-panel tabs are compact, keyboard reachable, and preserve their selected tab while closed.
+- Explorer, ChemSmart Agent, and the central bottom panel use quiet borders and low-contrast surfaces; avoid nesting every row in a card.
+- Agent and bottom-panel controls are compact, keyboard reachable, and preserve their selected state while closed.
 - Problems accumulate actionable import, schema, persistence, and execution failures. A current viewport failure may also appear inline, but not as a large permanent banner.
+
+**Agent Conversation**
+- Present each turn as user request, streamed assistant prose, grouped host-observed tools, and inline artifact or decision.
+- Collapse successful tool groups into a bounded summary. Keep failed, denied, or approval-waiting tools expanded.
+- Render only public summaries and validated artifacts. Raw chain-of-thought, provider payloads, paths, credentials, and model-authored approval UI are never visible.
+
+**Guided Console and YAML**
+- Keep completion in a workspace overlay so Console scrolling and panel clipping cannot obscure it. Semantic rails distinguish required and optional slots and clear immediately with stale input.
+- Use the pinned ChemSmart Click tree as completion authority. Typing and completion start no chemistry process; deterministic preflight starts only after submission.
+- Render raw project YAML through a read-only semantic projection with ordered unknown fields preserved. Agent YAML proposals use the same Review Sheet and an immutable digest-bound decision.
 
 **Decision Surfaces**
 - Preview and final-geometry cards use structured scientific summaries and explicit verbs: Review, Deny, Commit, Accept, Reject.
@@ -825,14 +838,14 @@ Use icon-library defaults unless a component has a documented reason to override
 
 | Tier | Exact condition | Required layout |
 |------|-----------------|-----------------|
-| `wide` | width ≥1180px **and** height ≥680px | Activity Bar and Explorer shown. Inspector and bottom panel start closed. |
-| `focused` | width 840–1179px, or height 640–679px | Icon-only Activity Bar. All auxiliary panels start closed. Editor tabs and Stage take priority. |
-| `viewport-only` | width <840px, or height <640px | Only the title bar, editor tab, 3D Stage, thin status bar, and one overflow control remain in the base layout. |
+| `wide` | width ≥1180px **and** height ≥680px | Activity Bar, Explorer, and ChemSmart Agent shown. The central bottom panel starts closed. |
+| `focused` | width 840–1179px, or height 640–679px | Compact chrome; pane intent is preserved while Stage and editor tabs retain priority. |
+| `viewport-only` | width <840px, or height <640px | Title bar, editor tab, 3D Stage, and thin status bar form the base layout; open panes use relative Sheets. |
 
 ### Collapsing Strategy
 
-- In `viewport-only`, Explorer, Inspector, Console, Jobs, Problems, document summaries, and separate mode rows are absent from the base DOM and accessibility tree.
-- The overflow control opens Explorer, Properties, Agent, Decisions, Jobs, or Problems one at a time in a full-height Sheet. Closing the Sheet removes it from the focus order.
+- In `viewport-only`, Explorer, Agent, Console, Jobs, Problems, document summaries, and separate mode rows are absent from the base DOM when their relative Sheet is closed.
+- Direct Agent and Console title-bar toggles remain available. Auxiliary panes open one at a time as workspace-relative Sheets; closing the Sheet removes it from the focus order without clearing another pane's saved intent.
 - The 3D canvas occupies at least 80% of the workbench body area in the default `viewport-only` state.
 - Returning to a larger tier restores the researcher's pre-collapse pane intent and persisted splitter sizes.
 - Panel transitions last 120–180ms. With reduced motion enabled, transitions complete immediately.
@@ -861,8 +874,8 @@ Use icon-library defaults unless a component has a documented reason to override
 | Shadow | `var(--shadow-xs)` for hover, `var(--shadow-md)` for floating | 7-level scale |
 
 ### Example Component Prompts
-- "Create the ChemSmart Studio wide workbench on `var(--color-background)`: a 32px Activity Bar, project-only Explorer, editor tab, dominant 3D Stage, and closed Inspector/bottom-panel toggles. Use quiet semantic borders and no static card shadows."
-- "Create the viewport-only workbench below 840×640: keep the integrated title bar, molecule editor tab, geometry-state label, 3D Stage, thin status bar, and one overflow button. Do not mount hidden panels; open one auxiliary pane at a time in a full-height Drawer."
+- "Create the ChemSmart Studio wide workbench on `var(--color-background)`: a 32px Activity Bar, project-only Explorer, editor tab, dominant 3D Stage, dedicated ChemSmart Agent, and closed central bottom panel. Use quiet semantic borders and no static card shadows."
+- "Create the viewport-only workbench below 840×640: keep the integrated title bar with direct Agent and Console toggles, molecule editor tab, geometry-state label, 3D Stage, and thin status bar. Do not mount hidden panels; open one auxiliary pane at a time as a relative Sheet."
 - "Design a molecule viewport toolbar with 32px ghost icon controls for build, select, move, rotate, measure, constrain, and fit. Give every control a tooltip, accessible name, visible focus ring, and text-or-icon selected state."
 - "Design a pending preview decision using `StudioPreviewSummary`: show operation kinds, element transitions, coordinate/bond/constraint counts, and affected IDs. State that committed geometry remains displayed and the proposal is not saved. Use warning color only as a secondary cue."
 - "Build a settings card: `var(--color-card)` background, 1px `var(--color-border)`, `var(--radius-lg)`. Title in `var(--font-size-heading-sm)` with the matching heading line-height. Description in `var(--font-size-body-sm)` `var(--font-weight-regular)`, `var(--color-foreground-secondary)`. Toggles and inputs at `var(--radius-md)`."

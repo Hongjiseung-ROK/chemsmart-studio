@@ -1,46 +1,39 @@
 # Upstream reuse analysis
 
-Audit date: 2026-07-28. Exact active commits are machine-readable in
+Audit date: 2026-07-30. Exact active commits and trees are machine-readable in
 `upstreams.lock.json`.
 
-## Cherry Studio
+## Inherited application foundation
 
-Cherry supplies the React chat shell, provider/model settings, AI Core, data
-layer, i18n, central logger, secure preload boundary, typed `IpcApi`, lifecycle
-container, path registry, and electron-builder pipeline. ChemSmart Studio
-extends those boundaries through the self-contained
-`src/main/features/chemsmartStudio` domain.
+ChemSmart Studio retains the actively referenced provider/model gateway,
+Electron window lifecycle, application lifecycle container, data services,
+i18n, central logger, secure preload boundary, typed `IpcApi`, shared
+`@cherrystudio/ui` components, and electron-builder pipeline inherited from its
+original application foundation. These are internal implementation layers, not
+consumer product routes or visible product identity.
 
-The model boundary remains Cherry's local API gateway. It preserves OpenAI Chat
-Completions tool-call shapes and resolves gateway model addresses, so Studio
-does not add a second provider or secret-distribution layer.
+The provider boundary remains the local gateway. Studio therefore does not add
+a second credential-distribution or provider-configuration system.
 
-## ChemSmart
+## Pinned ChemSmart
 
-The pinned ChemSmart agent supplies `AgentSession.run_loop()`, provider wire
-adapters, deterministic harness gates, the tool registry and permission policy,
-approval decisions, decision logs, and workspace/geometry/calculation tools.
-Studio imports those components from the clean pinned submodule.
+The clean pinned ChemSmart submodule supplies the Click command tree,
+deterministic synthesis adapter, parser, intent and semantic gates, Agent tool
+registry, approval decisions, project-YAML rendering, and calculation/HPC
+workflow primitives.
 
-The bridge adds a Cherry provider adapter, RPC-backed approval, path-free Studio
-molecule tools, bounded molecular import, and the portable optimization
-trajectory store. Electron main remains responsible for trusted UI state,
-project persistence, exact-argument approval cards, and supervised execution.
+The Python bridge adds Studio context binding, RPC approval, path-free molecule
+tools, bounded import, Protocol v2 identity, and portable trajectory storage.
+Electron main remains responsible for projects, revisions, trusted decisions,
+atomic YAML publication, supervised execution, and human-facing projections.
 
-## Retired Avogadro lineage
+## Historical provenance
 
-AvogadroLibs was evaluated and used in the historical native-editor prototype.
-That architecture has been retired: the gitlink and lock entry are absent, the
-repository contains no Qt/Avogadro helper or UFF execution path, and historical
-plans are read-only evidence. Current molecule authority is TypeScript main,
-rendering is Three.js, and trajectory/import work belongs to Python.
+The retired native prototype evaluated AvogadroLibs and Qt. That lineage is
+provenance only: no gitlink, lock entry, runtime branch, package helper, UFF
+adapter, C++ generator, or current development instruction depends on it.
+Current molecule authority is TypeScript main, rendering is embedded Three.js,
+and trajectory/import work belongs to Python.
 
-The historical validation receipts remain append-only. They prove prior
-behavior; they do not describe current runtime or packaging readiness.
-
-## Explicit non-reuse
-
-The dirty `/Users/hongjiseung/developer/chemsmart` checkout and its untracked
-application trees remain excluded. No application scaffold, packaging claim, or
-local secret is imported from them. Only the reproducible pinned ChemSmart
-commit is executable dependency input.
+No source or secret is copied from a dirty external ChemSmart checkout. Only the
+reproducible pinned submodule commit is executable dependency input.

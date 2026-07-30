@@ -2,37 +2,65 @@
 
 ## Decision
 
-ChemSmart Studio uses a dedicated `/app/chemsmart` route whose page owns one
-scientific workspace state surface. ChemSmart is not a `TopicRightPane`
-capability. Generic conversation resource, branch, and trace panels remain
-available only in the generic conversation route.
+`/app/chemsmart` is the sole product workspace. Its information architecture is:
 
-The workspace adapts by priority:
+```text
+Activity | Explorer | Stage and editor tabs | ChemSmart Agent
+                    | Console / Jobs / Problems
+```
 
-1. Wide: project and molecule navigation, scientific work surface, and
-   ChemSmart Agent activity are visible together.
-2. Medium: project navigation collapses before molecule or Agent state.
-3. Narrow: Molecule, Agent, and Run tabs share a persistent document and
-   trusted-decision status strip.
+- Explorer owns project selection and human file context.
+- The embedded Three.js Stage is the dominant document surface.
+- Console is docked only beneath the central Stage column; it never extends
+  beneath Explorer or Agent.
+- The right pane is dedicated to Agent threads, streamed prose, grouped tool
+  lifecycle, inline decisions, and structured artifacts.
+- Properties opens as a contextual Sheet. Decisions live inline and in artifact
+  Review; they are not permanent peer tabs beside Agent.
 
-Pending trusted approvals, active runs, and actionable failures live outside
-the scrollable scientific detail regions. The native 3D Molecule Editor remains
-a lifecycle-owned companion window until existing architecture can prove safe
-in-process embedding, input routing, and crash recovery.
+The generic consumer Sidebar, browser tab bar, Launchpad, and Chat, Work,
+Translation, Paintings, Knowledge Base, Files, Code, Notes, or Mini App routes
+are not product UI. Active inherited framework services remain internal.
 
-Cross-process state continues to arrive only through schema-validated snapshots
-and ordered events. The renderer may choose presentation from trusted host
-state, but neither a model response nor an untrusted event can create approval
-wording, trusted controls, raw paths, arbitrary HTML, or layout.
+## Pane intent and presentation
 
-## Why maximizing the old panel is insufficient
+Pane intent records whether the researcher opened a pane and its normalized
+splitter ratio. Window size may change only presentation:
 
-`canMaximize` changes only the geometry of a generic trailing capability. It
-does not change product ownership or reading order, remove the assistant rail
-and generic empty chat, establish scientific navigation, preserve critical
-decisions outside a scroll boundary, or define responsive degradation.
-Maximizing also leaves two competing ChemSmart surfaces: the generic
-conversation remains the owning route while the scientific state is an
-optional panel. A dedicated route makes the scientific workspace the owner,
-allows one recoverable state model, and gives approval, run, replay, and Agent
-state stable placement at every supported window size.
+- wide/focused workspaces use docked panes when space permits;
+- compact workspaces use relative Sheets;
+- Agent and Console toggles remain directly available in the title bar;
+- resizing never closes a pane, changes its intent, clears input, or steals
+  focus;
+- closing a compact Sheet removes it from the focus and accessibility trees but
+  preserves other pane intent.
+
+Explorer and Agent open by default in a wide clean profile. The bottom panel is
+closed until explicitly requested. Background Agent, job, or replay events may
+update content and badges but cannot open a pane or move focus.
+
+## Scientific interaction
+
+The Stage always labels whether it shows committed, draft, run, or replay
+geometry. Build tools use stable IDs, explicit bonds, a searchable periodic
+table, and a user-selected Coordination guide. Main rotates validated geometry
+templates, applies element radii, checks global clearance, and returns only safe
+placement sites. Changing tools clears prior selection; Agent action overlays
+never replace researcher selection.
+
+The guided Console shows Click-derived completion in a workspace overlay,
+semantic required/optional slots, and green/warning/rejected preflight. Exact
+molecule candidates open through the existing importer; project YAML opens in a
+read-only semantic tab. Typing and completion start no chemistry process.
+
+The Agent conversation streams safe prose deltas while host callbacks report
+tool progress. Successful groups collapse to summaries; failures, denial, and
+approval remain open. Raw reasoning, provider payloads, credentials, paths, and
+model-authored trusted controls never render.
+
+## Trust boundary
+
+Cross-process state arrives only through Protocol v2 validated snapshots and
+ordered events. Renderer presentation may derive from trusted host state, but
+neither a model response nor an untrusted event can create approval wording,
+filesystem authority, arbitrary HTML, pane activation, or scientific state.

@@ -1,4 +1,24 @@
-# Cherry Studio Documentation
+# ChemSmart Studio Documentation
+
+## Product authority
+
+These documents describe the shipped scientific workbench and take precedence
+over inherited framework examples when their scopes overlap.
+
+| Document | Description |
+|----------|-------------|
+| [Product README](../README.md) | Version, installation, supported workflows, and internal-release boundary |
+| [Design system](../DESIGN.md) | Studio pane model, molecular interaction, Agent conversation, Console, YAML review, and accessibility |
+| [Studio architecture](./architecture/chemsmart-studio-architecture.md) | Main/Three.js/Python/ChemSmart ownership, Protocol v2, durability, and controlled runs |
+| [Workspace UI](./architecture/chemsmart-workspace-ui.md) | Explorer, embedded Stage, central Console, dedicated Agent pane, and responsive presentation |
+| [Upstream reuse](./architecture/upstream-analysis.md) | Active inherited framework and pinned ChemSmart provenance |
+| [Agent tool surface](./references/chemsmart-studio-agent-tool-surface.md) | Capability profiles, path-free context, YAML artifacts, and exact approvals |
+
+## Inherited framework references
+
+The remaining guides describe active Electron, provider, lifecycle, data,
+IpcApi, and shared-UI foundations. They are implementation references, not
+separate ChemSmart Studio product surfaces.
 
 ## Guides
 
