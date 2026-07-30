@@ -39,9 +39,11 @@ import {
   type StudioAgentArtifact,
   type StudioAgentComposerIntent,
   type StudioAgentReportResultInput,
+  type StudioAgentRunReceipt,
   type StudioAgentTraceEvent,
   type StudioAgentTurnOutcome,
-  studioAgentWorkbenchRuntimeSchema
+  studioAgentWorkbenchRuntimeSchema,
+  type StudioAgentWorkflow
 } from '@chemsmart/studio-protocol'
 import { modelService } from '@data/services/ModelService'
 import { loggerService } from '@logger'
@@ -439,7 +441,7 @@ export class ChemSmartAgentService extends BaseService {
     request: string,
     intentOrSender: StudioAgentComposerIntent | WindowId | null,
     senderId?: WindowId
-  ): Promise<void> {
+  ): Promise<StudioAgentRunReceipt> {
     const intent = typeof intentOrSender === 'string' ? null : intentOrSender
     const resolvedSenderId = typeof intentOrSender === 'string' ? intentOrSender : senderId
     if (!resolvedSenderId) {
@@ -454,7 +456,8 @@ export class ChemSmartAgentService extends BaseService {
 
     const projection = application.get('StudioAgentProjectionService')
     if (intent) await projection.validateComposerIntent(sessionId, sessionId, intent)
-    const started = await projection.beginTurn(sessionId, request)
+    const workflow: StudioAgentWorkflow = intent?.workflow ?? 'general'
+    const started = await projection.beginTurn(sessionId, request, workflow)
     this.agentLive.beginTurn(sessionId, started.turnId)
     const capability = capabilityFromIntent(intent)
     const turnToken: ActiveModelOperation = {
@@ -482,7 +485,8 @@ export class ChemSmartAgentService extends BaseService {
           operationId: turnToken.operationId,
           request,
           capability,
-          intentKind: intent?.kind ?? 'inspect'
+          intentKind: intent?.kind ?? 'inspect',
+          workflow
         },
         15 * 60 * 1000
       )
@@ -505,11 +509,23 @@ export class ChemSmartAgentService extends BaseService {
       }
       await projection.terminalize(sessionId, started.turnId, outcome, this.terminalSummary(outcome))
       turnToken.terminalized = true
-      if (this.activeModelOperations.get(sessionId) === turnToken) controls.completeAgentTurn(sessionId)
+      if (this.activeModelOperations.get(sessionId) === turnToken) {
+        try {
+          controls.settleAgentTurn(sessionId, outcome)
+        } catch (error) {
+          logger.error('Failed to reconcile the terminal Agent outcome with Studio controls', {
+            sessionId,
+            turnId: started.turnId,
+            outcome,
+            error
+          })
+        }
+      }
+      return { turnId: started.turnId, outcome }
     } catch (error) {
       if (turnToken.cancelled) this.agentLive.stopText(started.turnId)
+      const outcome: StudioAgentTurnOutcome = turnToken.cancelled ? 'cancelled' : 'failed'
       if (!turnToken.terminalized) {
-        const outcome: StudioAgentTurnOutcome = turnToken.cancelled ? 'cancelled' : 'failed'
         try {
           await projection.terminalize(sessionId, started.turnId, outcome, this.terminalSummary(outcome))
           turnToken.terminalized = true
@@ -519,9 +535,28 @@ export class ChemSmartAgentService extends BaseService {
             turnId: started.turnId,
             error: terminalError
           })
+          throw terminalError
         }
       }
-      if (this.activeModelOperations.get(sessionId) === turnToken) controls.failAgentTurn(sessionId)
+      if (this.activeModelOperations.get(sessionId) === turnToken) {
+        try {
+          controls.settleAgentTurn(sessionId, outcome)
+        } catch (controlError) {
+          logger.error('Failed to reconcile the failed Agent outcome with Studio controls', {
+            sessionId,
+            turnId: started.turnId,
+            outcome,
+            error: controlError
+          })
+        }
+      }
+      logger.warn('ChemSmart Agent turn stopped at the host boundary', {
+        sessionId,
+        turnId: started.turnId,
+        outcome,
+        error
+      })
+      if (turnToken.cancelled) return { turnId: started.turnId, outcome }
       throw error
     } finally {
       if (this.activeModelOperations.get(sessionId) === turnToken) {
@@ -1112,9 +1147,14 @@ export class ChemSmartAgentService extends BaseService {
     if (typeof value !== 'string') {
       throw new JsonRpcFault(-32603, 'Advisory Agent output must be bounded plain text')
     }
-    const summary = value.replace(/\s+/g, ' ').trim()
-    if (summary.length === 0 || summary.length > 2_048 || containsAbsoluteFilesystemPath(summary)) {
-      throw new JsonRpcFault(-32603, 'Advisory Agent output must be bounded path-free plain text')
+    const summary = value.trim()
+    if (
+      summary.length === 0 ||
+      summary.length > 8_192 ||
+      /[<>]/.test(summary) ||
+      containsAbsoluteFilesystemPath(summary)
+    ) {
+      throw new JsonRpcFault(-32603, 'Advisory Agent output must be bounded path-free safe Markdown')
     }
     return {
       answerId: `answer-${randomUUID()}`,
@@ -1253,6 +1293,7 @@ export class ChemSmartAgentService extends BaseService {
       intentId: `intent-${randomUUID()}`,
       kind: 'inspect',
       capability: 'inspect',
+      workflow: 'general',
       contextRefs: [],
       requiresExecutionApproval: false,
       extensions: {}

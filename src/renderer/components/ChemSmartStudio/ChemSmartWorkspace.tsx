@@ -6,7 +6,8 @@ import type {
   StudioAgentCapability,
   StudioAgentComposerIntent,
   StudioAgentLiveEvent,
-  StudioAgentTurnEvent
+  StudioAgentTurnEvent,
+  StudioAgentWorkflow
 } from '@chemsmart/studio-protocol'
 import { Alert, Badge, Button, Scrollbar } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
@@ -98,6 +99,7 @@ type DraftReviewRequest =
   | { context: 'run' }
   | { action: 'save_as'; context: 'save' }
   | { action: 'import_molecule' | 'open_project'; context: 'switch' }
+  | { consoleContextRef: string; context: 'switch' }
   | { context: 'switch'; projectId: string }
 
 const projectActionRoutes = {
@@ -141,40 +143,47 @@ function classifyControlActionFailure(error: unknown): ControlActionFailure {
   return 'generic'
 }
 
-function composerIntent(request: string, manifest: readonly StudioAgentCapability[]): StudioAgentComposerIntent | null {
-  const selected = manifest.filter((item) => {
-    const prefix = item.discovery === 'plus' ? '+' : item.discovery === 'mention' ? '@' : '/'
+function composerIntent(
+  request: string,
+  workflow: StudioAgentWorkflow,
+  manifest: readonly StudioAgentCapability[]
+): StudioAgentComposerIntent {
+  const selectedContexts = manifest.filter((item) => {
+    if (item.discovery === 'task') return false
+    const prefix = item.discovery === 'plus' ? '+' : '@'
     return request.split(/\s+/).includes(`${prefix}${item.key}`)
   })
-  if (selected.length === 0) return null
-  const command = selected.findLast((item) => item.discovery === 'command')
-  const contextRefs = [...new Set(selected.flatMap((item) => (item.contextRef === undefined ? [] : [item.contextRef])))]
-  const capability = selected.reduce<'inspect' | 'plan' | 'act' | 'navigation'>((current, item) => {
-    const rank = { inspect: 0, navigation: 0, plan: 1, act: 2 } as const
-    return rank[item.capability] > rank[current] ? item.capability : current
-  }, 'inspect')
+  const contextRefs = [
+    ...new Set(selectedContexts.flatMap((item) => (item.contextRef === undefined ? [] : [item.contextRef])))
+  ]
+  const task = manifest.find((item) => item.discovery === 'task' && item.workflow === workflow)
+  const capability =
+    task?.capability ??
+    (
+      {
+        calculation: 'act',
+        command: 'plan',
+        general: 'inspect',
+        molecule: 'plan',
+        project_setup: 'plan',
+        results: 'inspect'
+      } as const
+    )[workflow]
   const kind =
-    command?.key === 'dry-run'
-      ? 'dry_run'
-      : command?.key === 'run'
-        ? 'run'
-        : command?.key === 'plan'
+    workflow === 'calculation'
+      ? 'run'
+      : workflow === 'command'
+        ? 'dry_run'
+        : workflow === 'molecule' || workflow === 'project_setup'
           ? 'plan'
-          : command?.key === 'review'
-            ? 'review'
-            : command?.key === 'history'
-              ? 'history'
-              : command?.key === 'new'
-                ? 'new'
-                : contextRefs.length > 0
-                  ? 'context'
-                  : 'inspect'
+          : 'inspect'
   return {
     intentId: `intent-${crypto.randomUUID()}`,
     kind,
     capability,
+    workflow,
     contextRefs,
-    requiresExecutionApproval: capability === 'act',
+    requiresExecutionApproval: workflow === 'calculation',
     extensions: {}
   }
 }
@@ -275,11 +284,12 @@ export function ChemSmartWorkspace({
     selectionEnd: 0,
     selectionStart: 0,
     scrollTop: 0,
-    value: ''
+    value: '',
+    workflow: 'general'
   })
   const [agentReviewRequestId, setAgentReviewRequestId] = useState(0)
   const [agentTurnBusy, setAgentTurnBusy] = useState(false)
-  const [agentTurnFailed, setAgentTurnFailed] = useState(false)
+  const [agentPreTurnNotice, setAgentPreTurnNotice] = useState(false)
   const agentTurnControlRef = useRef<'stop' | 'steer' | null>(null)
   const [moleculeSummary, setMoleculeSummary] = useState<ChemSmartStudioMoleculeSummary | null>(null)
   const [documentName, setDocumentName] = useState<string | null>(null)
@@ -368,58 +378,49 @@ export function ChemSmartWorkspace({
     const request = agentComposer.value.trim()
     const modelId = activeModelId
     if (!request || !modelId || agentTurnBusy) return
-    const intent = composerIntent(request, agentCapabilities)
-    if (intent?.kind === 'new') {
-      await onCreateThread?.(t('chemsmart_studio.agent_workbench.new_title'))
-      return
-    }
-    if (intent?.kind === 'history' || intent?.kind === 'review') {
-      setAgentReviewRequestId((current) => current + 1)
-      return
-    }
+    const intent = composerIntent(request, agentComposer.workflow, agentCapabilities)
 
     setAgentTurnBusy(true)
-    setAgentTurnFailed(false)
+    setAgentPreTurnNotice(false)
     agentTurnControlRef.current = null
     try {
       await ipcApi.request('chemsmart_studio.agent.run_turn', { sessionId, modelId, request, intent })
       setAgentComposer((current) =>
-        current.value.trim() === request ? { selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' } : current
+        current.value.trim() === request
+          ? { selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '', workflow: 'general' }
+          : current
       )
     } catch (error) {
       if (agentTurnControlRef.current === null) {
-        setAgentTurnFailed(true)
-        logger.error('ChemSmart Agent turn failed', error as Error)
+        setAgentPreTurnNotice(true)
+        logger.error('ChemSmart Agent request failed before a canonical turn receipt was available', error as Error)
       }
     } finally {
       setAgentTurnBusy(false)
       agentTurnControlRef.current = null
     }
-  }, [activeModelId, agentCapabilities, agentComposer.value, agentTurnBusy, onCreateThread, sessionId, t])
+  }, [activeModelId, agentCapabilities, agentComposer.value, agentComposer.workflow, agentTurnBusy, sessionId])
 
   const controlAgentTurn = useCallback(
     async (action: 'stop' | 'steer' | 'queue') => {
       const request = agentComposer.value.trim()
       if (action !== 'stop' && request.length === 0) return
-      const intent = action === 'stop' ? null : composerIntent(request, agentCapabilities)
-      if (intent?.capability === 'navigation') return
+      const intent = action === 'stop' ? null : composerIntent(request, agentComposer.workflow, agentCapabilities)
       if (action === 'stop' || action === 'steer') agentTurnControlRef.current = action
-      setAgentTurnFailed(false)
       try {
         await ipcApi.request(
           'chemsmart_studio.agent.control_turn',
           action === 'stop' ? { sessionId, action } : { sessionId, action, request, intent }
         )
         if (action !== 'stop') {
-          setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
+          setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '', workflow: 'general' })
         }
       } catch (error) {
         if (action === 'stop' || action === 'steer') agentTurnControlRef.current = null
-        setAgentTurnFailed(true)
         logger.error('ChemSmart Agent turn control failed', error as Error)
       }
     },
-    [agentCapabilities, agentComposer.value, sessionId]
+    [agentCapabilities, agentComposer.value, agentComposer.workflow, sessionId]
   )
 
   const refreshControlSnapshot = useCallback(async () => {
@@ -596,6 +597,15 @@ export function ChemSmartWorkspace({
     [refreshOpenDocuments]
   )
 
+  const resumeConsoleCompletionAfterDraftReview = useCallback(
+    (contextRef: string) => {
+      if (!molecule.draft?.dirty) return false
+      setDraftReview({ consoleContextRef: contextRef, context: 'switch' })
+      return true
+    },
+    [molecule.draft?.dirty]
+  )
+
   useEffect(() => {
     setAgentCapabilities([])
     setAgentLiveEvents([])
@@ -604,7 +614,8 @@ export function ChemSmartWorkspace({
     setProjectYamlCandidateStatuses({})
     actionCueTimersRef.current.forEach(clearTimeout)
     actionCueTimersRef.current.clear()
-    setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '' })
+    setAgentComposer({ selectionEnd: 0, selectionStart: 0, scrollTop: 0, value: '', workflow: 'general' })
+    setAgentPreTurnNotice(false)
     setAgentReviewRequestId(0)
     setMoleculeSummary(null)
     setDocumentName(null)
@@ -765,6 +776,12 @@ export function ChemSmartWorkspace({
           if (tier === 'viewport-only') setSheetPane('jobs')
         } else if ('projectId' in request) {
           await executeActivateDocument(request.projectId)
+        } else if ('consoleContextRef' in request) {
+          openConsoleCompletion(
+            await ipcApi.request('chemsmart_studio.console.accept_completion', {
+              contextRef: request.consoleContextRef
+            })
+          )
         } else {
           await executeWorkspaceAction(request.action)
         }
@@ -779,6 +796,7 @@ export function ChemSmartWorkspace({
       executeActivateDocument,
       executeWorkspaceAction,
       molecule,
+      openConsoleCompletion,
       setWorkbenchMode,
       tier
     ]
@@ -1449,6 +1467,7 @@ export function ChemSmartWorkspace({
                   draft={consoleDraft}
                   onDraftChange={setConsoleDraft}
                   onOpenCompletion={openConsoleCompletion}
+                  onOpenCompletionRequest={resumeConsoleCompletionAfterDraftReview}
                 />
               ),
               jobs: (
@@ -1603,7 +1622,7 @@ export function ChemSmartWorkspace({
             busy={agentBusy}
             capabilities={agentCapabilities}
             composer={agentComposer}
-            failed={agentTurnFailed}
+            preTurnNotice={agentPreTurnNotice}
             pendingDecisionCount={pendingDecisionCount}
             reviewContent={
               <StudioDecisionList
@@ -1624,7 +1643,10 @@ export function ChemSmartWorkspace({
               if (tier === 'viewport-only') setSheetPane(null)
               else setInspectorOpen(false)
             }}
-            onComposerChange={setAgentComposer}
+            onComposerChange={(snapshot) => {
+              setAgentPreTurnNotice(false)
+              setAgentComposer(snapshot)
+            }}
             onCreateThread={() =>
               void onCreateThread?.(
                 t('chemsmart_studio.agent_workbench.new_title_numbered', {

@@ -21,6 +21,7 @@ import {
   type StudioAgentMoleculeRequest,
   studioAgentMoleculeRequestRuntimeSchema,
   type StudioAgentPhase,
+  type StudioAgentTurnOutcome,
   type StudioAgentWorkspaceState,
   type StudioApprovalRequest,
   studioApprovalRequestRuntimeSchema,
@@ -462,6 +463,32 @@ export class StudioControlService extends BaseService {
       currentObject: 'session',
       latestGate: 'passed',
       terminalResult: 'completed'
+    })
+  }
+
+  settleAgentTurn(sessionId: string, outcome: StudioAgentTurnOutcome): void {
+    if (outcome === 'completed') {
+      this.completeAgentTurn(sessionId)
+      return
+    }
+    if (outcome === 'failed') {
+      this.failAgentTurn(sessionId)
+      return
+    }
+    const phase = this.ensureSession(sessionId).agent?.phase
+    if (
+      phase === 'awaiting_preview_decision' ||
+      phase === 'awaiting_calculation_approval' ||
+      phase === 'running_calculation' ||
+      phase === 'awaiting_final_geometry_decision'
+    ) {
+      return
+    }
+    this.setAgentPhase(sessionId, outcome === 'needs_user' ? 'understanding_request' : 'idle', {
+      currentObject: 'session',
+      latestGate: outcome === 'denied' ? 'denied' : null,
+      requiresUserInput: outcome === 'needs_user',
+      terminalResult: outcome === 'needs_user' ? null : outcome
     })
   }
 

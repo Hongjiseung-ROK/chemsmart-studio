@@ -1,4 +1,9 @@
-import type { ResearchThreadSummary, StudioAgentCapability, StudioAgentTurnEvent } from '@chemsmart/studio-protocol'
+import type {
+  ResearchThreadSummary,
+  StudioAgentCapability,
+  StudioAgentTurnEvent,
+  StudioAgentWorkflow
+} from '@chemsmart/studio-protocol'
 import {
   Badge,
   Button,
@@ -31,7 +36,6 @@ import {
   MoreHorizontal,
   Plus,
   ShieldQuestion,
-  Slash,
   Square,
   X
 } from 'lucide-react'
@@ -55,6 +59,7 @@ export interface AgentComposerSnapshot {
   selectionStart: number
   scrollTop: number
   value: string
+  workflow: StudioAgentWorkflow
 }
 
 export interface AgentWorkbenchArtifact {
@@ -65,7 +70,7 @@ export interface AgentWorkbenchArtifact {
   title: string
 }
 
-type DiscoveryTrigger = '+' | '/' | '@'
+type DiscoveryTrigger = '+' | '@' | '@['
 
 interface AgentComposerCapability {
   capability: StudioAgentCapability
@@ -78,8 +83,8 @@ interface AgentComposerCapability {
 
 const triggerIcons = {
   '+': Plus,
-  '/': Slash,
-  '@': AtSign
+  '@': AtSign,
+  '@[': ListPlus
 } as const
 
 const artifactStatusKeys = {
@@ -94,6 +99,10 @@ const artifactStatusClasses = {
   waiting: 'border-warning text-warning'
 } as const
 
+function workflowLabel(workflow: StudioAgentWorkflow) {
+  return workflow.replace('_', '-')
+}
+
 interface ChemSmartAgentPaneProps {
   activeThreadId: string
   artifacts: readonly AgentWorkbenchArtifact[]
@@ -101,7 +110,7 @@ interface ChemSmartAgentPaneProps {
   busy: boolean
   capabilities: readonly StudioAgentCapability[]
   composer: AgentComposerSnapshot
-  failed: boolean
+  preTurnNotice: boolean
   pendingDecisionCount: number
   reviewRequestId: number
   reviewContent: ReactNode
@@ -121,17 +130,23 @@ interface ChemSmartAgentPaneProps {
   onSubmit: () => void
 }
 
-function snapshotFromTextarea(element: HTMLTextAreaElement): AgentComposerSnapshot {
+function snapshotFromTextarea(element: HTMLTextAreaElement, workflow: StudioAgentWorkflow): AgentComposerSnapshot {
   return {
     selectionEnd: element.selectionEnd,
     selectionStart: element.selectionStart,
     scrollTop: element.scrollTop,
-    value: element.value
+    value: element.value,
+    workflow
   }
 }
 
 function findDiscovery(value: string, cursor: number) {
-  const match = value.slice(0, cursor).match(/(?:^|\s)([+/@])([^\s]*)$/)
+  const taskMatch = value.slice(0, cursor).match(/(?:^|\s)@\[([^\]\s]*)$/)
+  if (taskMatch) {
+    const query = taskMatch[1].toLocaleLowerCase()
+    return { query, tokenStart: cursor - query.length - 2, trigger: '@[' as const }
+  }
+  const match = value.slice(0, cursor).match(/(?:^|\s)([+@])([^\s]*)$/)
   if (!match) return null
   const trigger = match[1] as DiscoveryTrigger
   const query = match[2].toLocaleLowerCase()
@@ -150,7 +165,7 @@ export function ChemSmartAgentPane({
   busy,
   capabilities,
   composer,
-  failed,
+  preTurnNotice,
   pendingDecisionCount,
   reviewRequestId,
   reviewContent,
@@ -188,12 +203,13 @@ export function ChemSmartAgentPane({
   const composerCapabilities = useMemo<AgentComposerCapability[]>(
     () =>
       capabilities.map((capability) => {
-        const trigger = capability.discovery === 'plus' ? '+' : capability.discovery === 'mention' ? '@' : '/'
+        const trigger = capability.discovery === 'plus' ? '+' : capability.discovery === 'mention' ? '@' : '@['
         return {
           capability,
           description: capability.description,
           id: `${capability.discovery}.${capability.key}`,
-          insertText: `${trigger}${capability.key}`,
+          insertText:
+            trigger === '@[' ? `@[${workflowLabel(capability.workflow ?? 'general')}]` : `${trigger}${capability.key}`,
           label: capability.label,
           trigger
         }
@@ -212,8 +228,10 @@ export function ChemSmartAgentPane({
   }, [composerCapabilities, discovery, discoveryKey, dismissedDiscoveryKey])
   const selectedCapabilities = useMemo(
     () =>
-      composerCapabilities.filter((capability) =>
-        composer.value.split(/\s+/).some((token) => token === capability.insertText)
+      composerCapabilities.filter(
+        (capability) =>
+          capability.capability.discovery !== 'task' &&
+          composer.value.split(/\s+/).some((token) => token === capability.insertText)
       ),
     [composer.value, composerCapabilities]
   )
@@ -265,23 +283,32 @@ export function ChemSmartAgentPane({
 
   const updateComposer = useCallback(
     (element: HTMLTextAreaElement) => {
-      setDismissedDiscoveryKey(null)
-      onComposerChange(snapshotFromTextarea(element))
+      if (
+        element.value !== composer.value ||
+        element.selectionStart !== composer.selectionStart ||
+        element.selectionEnd !== composer.selectionEnd
+      ) {
+        setDismissedDiscoveryKey(null)
+      }
+      onComposerChange(snapshotFromTextarea(element, composer.workflow))
     },
-    [onComposerChange]
+    [composer.selectionEnd, composer.selectionStart, composer.value, composer.workflow, onComposerChange]
   )
 
   const selectSuggestion = useCallback(
     (capability: AgentComposerCapability) => {
       if (!discovery) return
       const suffix = composer.value.slice(composer.selectionEnd)
-      const nextValue = `${composer.value.slice(0, discovery.tokenStart)}${capability.insertText} ${suffix}`
-      const nextCursor = discovery.tokenStart + capability.insertText.length + 1
+      const task = capability.capability.discovery === 'task'
+      const inserted = task ? '' : `${capability.insertText} `
+      const nextValue = `${composer.value.slice(0, discovery.tokenStart)}${inserted}${suffix}`
+      const nextCursor = discovery.tokenStart + inserted.length
       onComposerChange({
         selectionEnd: nextCursor,
         selectionStart: nextCursor,
         scrollTop: composer.scrollTop,
-        value: nextValue
+        value: nextValue,
+        workflow: capability.capability.workflow ?? composer.workflow
       })
       setDismissedDiscoveryKey(null)
       requestAnimationFrame(() => {
@@ -306,7 +333,8 @@ export function ChemSmartAgentPane({
         selectionEnd: cursor,
         selectionStart: cursor,
         scrollTop: composer.scrollTop,
-        value
+        value,
+        workflow: composer.workflow
       })
       requestAnimationFrame(() => textareaRef.current?.focus())
     },
@@ -493,34 +521,38 @@ export function ChemSmartAgentPane({
           event.preventDefault()
           onSubmit()
         }}>
-        {failed ? (
+        {preTurnNotice ? (
           <p
             className="mb-2 rounded-md border border-error-border bg-error-bg px-2.5 py-2 text-error-text text-xs"
             role="alert">
             {t('chemsmart_studio.workspace.agent_turn_failed')}
           </p>
         ) : null}
-        {selectedCapabilities.length > 0 ? (
-          <div
-            aria-label={t('chemsmart_studio.agent_workbench.discovery.selected')}
-            className="mb-2 flex flex-wrap gap-1.5">
-            {selectedCapabilities.map((capability) => (
-              <Button
-                aria-label={t('chemsmart_studio.agent_workbench.discovery.remove', {
-                  label: capability.label
-                })}
-                className="h-8 max-w-full gap-1.5 rounded-full px-2.5"
-                key={capability.id}
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() => removeSelectedCapability(capability)}>
-                <span className="truncate">{capability.label}</span>
-                <X aria-hidden className="size-3.5 shrink-0" />
-              </Button>
-            ))}
-          </div>
-        ) : null}
+        <div
+          aria-label={t('chemsmart_studio.agent_workbench.discovery.selected')}
+          className="mb-2 flex flex-wrap gap-1.5">
+          <Badge
+            className="h-8 max-w-full rounded-full border-primary px-2.5 text-primary"
+            data-testid="agent-workflow-chip"
+            variant="outline">
+            <span className="truncate">@[{workflowLabel(composer.workflow)}]</span>
+          </Badge>
+          {selectedCapabilities.map((capability) => (
+            <Button
+              aria-label={t('chemsmart_studio.agent_workbench.discovery.remove', {
+                label: capability.label
+              })}
+              className="h-8 max-w-full gap-1.5 rounded-full px-2.5"
+              key={capability.id}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => removeSelectedCapability(capability)}>
+              <span className="truncate">{capability.label}</span>
+              <X aria-hidden className="size-3.5 shrink-0" />
+            </Button>
+          ))}
+        </div>
         {suggestions.length > 0 ? (
           <div
             aria-label={t('chemsmart_studio.agent_workbench.discovery.label')}

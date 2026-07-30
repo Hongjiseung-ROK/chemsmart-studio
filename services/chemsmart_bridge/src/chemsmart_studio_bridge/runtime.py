@@ -67,6 +67,7 @@ from .generated_protocol import (
     STUDIO_AGENT_TOOL_INPUT_SCHEMAS,
     STUDIO_AGENT_WORKBENCH_RUNTIME_SCHEMA,
     STUDIO_CONTROL_RUNTIME_SCHEMA,
+    StudioAgentWorkflow,
 )
 from .molecule_import import import_molecule
 from .protocol_identity import protocol_hello
@@ -522,129 +523,105 @@ _STUDIO_SPECIALIST_TOOLS = (
     "repair_command",
     "report_studio_result",
 )
-_STUDIO_INSPECT_TOOLS = frozenset(
-    {
+_STUDIO_WORKFLOW_TOOLS: dict[StudioAgentWorkflow, tuple[str, ...]] = {
+    "general": (
         "get_studio_context",
         "get_molecule_snapshot",
         "analyze_current_molecule",
+        "recommend_method",
+        "report_studio_result",
+    ),
+    "project_setup": (
+        "get_studio_context",
+        "analyze_current_molecule",
+        "read_project_yaml",
+        "render_project_yaml",
+        "validate_project_yaml",
+        "critic_project_yaml",
+        "report_studio_result",
+    ),
+    "command": (
+        "get_studio_context",
+        "analyze_current_molecule",
+        "recommend_method",
+        "synthesize_command",
+        "repair_command",
+        "report_studio_result",
+    ),
+    "molecule": (
+        "get_studio_context",
+        "get_molecule_snapshot",
+        "analyze_current_molecule",
+        "preview_molecule_patch",
+        "commit_molecule_preview",
+        "discard_molecule_preview",
+        "report_studio_result",
+    ),
+    "calculation": (
+        "get_studio_context",
+        "analyze_current_molecule",
+        "prepare_molecule_optimization",
+        "validate_prepared_optimization",
+        "recommend_method",
+        "synthesize_command",
+        "repair_command",
+        "report_studio_result",
+    ),
+    "results": (
+        "get_studio_context",
         "get_optimization_status",
         "list_calculation_artifacts",
         "read_calculation_artifact",
         "get_optimization_replay",
         "compare_optimization_frames",
         "inspect_calculation",
-        "recommend_method",
         "report_studio_result",
-    }
-)
-_STUDIO_PLAN_TOOLS = _STUDIO_INSPECT_TOOLS | {
-    "prepare_molecule_optimization",
-    "validate_prepared_optimization",
-    "preview_molecule_patch",
-    "discard_molecule_preview",
-    "synthesize_command",
-    "repair_command",
-    "read_project_yaml",
-    "render_project_yaml",
-    "validate_project_yaml",
-    "critic_project_yaml",
+    ),
 }
-_STUDIO_INSPECT_DIRECT = (
-    "get_studio_context",
-    "analyze_current_molecule",
-    "get_optimization_status",
-    "get_optimization_replay",
-    "list_calculation_artifacts",
-    "inspect_calculation",
-    "recommend_method",
-    "report_studio_result",
-)
-_STUDIO_ACT_DIRECT = (
+_STUDIO_CALCULATION_EXECUTION_TOOLS = (
     "get_studio_context",
     "analyze_current_molecule",
     "start_prepared_optimization",
     "get_optimization_status",
+    "run_local",
+    "submit_hpc",
+    "execute_chemsmart_command",
     "report_studio_result",
 )
 _STUDIO_COMPOSER_INTENTS = frozenset(
     {"inspect", "plan", "dry_run", "run", "review", "history", "new", "context"}
 )
-_STUDIO_DRY_RUN_TOOLS = (
-    "get_studio_context",
-    "analyze_current_molecule",
-    "recommend_method",
-    "synthesize_command",
-    "repair_command",
-    "report_studio_result",
+_STUDIO_WORKFLOWS = frozenset(_STUDIO_WORKFLOW_TOOLS)
+_STUDIO_WORKFLOW_CAPABILITY = {
+    "general": StudioCapability.INSPECT,
+    "project_setup": StudioCapability.PLAN,
+    "command": StudioCapability.PLAN,
+    "molecule": StudioCapability.PLAN,
+    "calculation": StudioCapability.ACT,
+    "results": StudioCapability.INSPECT,
+}
+_STUDIO_TERMINAL_OUTCOMES = frozenset(
+    {"completed", "denied", "failed", "cancelled", "needs_user"}
 )
-_STUDIO_RUN_TOOLS = (
-    "get_studio_context",
-    "analyze_current_molecule",
-    "recommend_method",
-    "synthesize_command",
-    "repair_command",
-    "execute_chemsmart_command",
-    "report_studio_result",
+_STUDIO_LIMIT_REASONS = frozenset(
+    {
+        "max_consecutive_errors",
+        "max_model_steps",
+        "max_tool_calls",
+        "provider_errors",
+        "repeat_signature",
+        "studio_result_required",
+    }
 )
 
 
 def _studio_agent_tool_profile(
-    capability: StudioCapability,
-    intent_kind: str | None = None,
+    workflow: StudioAgentWorkflow,
 ) -> PhaseToolProfile:
-    if intent_kind == "dry_run":
-        return PhaseToolProfile(
-            {phase: _STUDIO_DRY_RUN_TOOLS for phase in _STUDIO_PHASE_TOOLS},
-            specialist_tools=(
-                "recommend_method",
-                "synthesize_command",
-                "repair_command",
-                "report_studio_result",
-            ),
-        )
-    if intent_kind == "run":
-        return PhaseToolProfile(
-            {phase: _STUDIO_RUN_TOOLS for phase in _STUDIO_PHASE_TOOLS},
-            specialist_tools=(
-                "recommend_method",
-                "synthesize_command",
-                "repair_command",
-                "execute_chemsmart_command",
-                "report_studio_result",
-            ),
-        )
-    if capability is StudioCapability.INSPECT:
-        phase_tools = {phase: _STUDIO_INSPECT_DIRECT for phase in _STUDIO_PHASE_TOOLS}
-    elif capability is StudioCapability.PLAN:
-        phase_tools = {}
-        for phase, tools in _STUDIO_PHASE_TOOLS.items():
-            base = (
-                "get_studio_context",
-                "analyze_current_molecule",
-            )
-            additions = tuple(
-                tool
-                for tool in tools
-                if tool in _STUDIO_PLAN_TOOLS
-                and tool not in base
-                and tool != "report_studio_result"
-            )
-            phase_tools[phase] = (
-                *base,
-                *additions[: 10 - len(base) - 1],
-                "report_studio_result",
-            )
-    else:
-        phase_tools = {}
-        for phase, tools in _STUDIO_PHASE_TOOLS.items():
-            actions = tuple(
-                tool for tool in tools if tool not in _STUDIO_ACT_DIRECT and tool != "render_project_yaml"
-            )
-            phase_tools[phase] = (
-                *_STUDIO_ACT_DIRECT[:-1],
-                *actions[: 10 - len(_STUDIO_ACT_DIRECT)],
-                _STUDIO_ACT_DIRECT[-1],
-            )
+    direct_tools = _STUDIO_WORKFLOW_TOOLS[workflow]
+    phase_tools = {phase: direct_tools for phase in _STUDIO_PHASE_TOOLS}
+    if workflow == "calculation":
+        phase_tools[TaskPhase.EXECUTION] = _STUDIO_CALCULATION_EXECUTION_TOOLS
     allowed = frozenset(tool for tools in phase_tools.values() for tool in tools)
     return PhaseToolProfile(
         phase_tools,
@@ -654,9 +631,9 @@ def _studio_agent_tool_profile(
     )
 
 
-# Compatibility export for deterministic harnesses that exercise the complete act surface.
-# Runtime Agent turns select a narrower profile from their main-issued capability.
-STUDIO_AGENT_TOOL_PROFILE = _studio_agent_tool_profile(StudioCapability.ACT)
+# Compatibility export for deterministic harnesses that exercise the calculation surface.
+# Runtime Agent turns select a narrower profile from their main-issued workflow.
+STUDIO_AGENT_TOOL_PROFILE = _studio_agent_tool_profile("calculation")
 
 
 _REPORT_STUDIO_RESULT_INPUT_SCHEMA = {
@@ -924,6 +901,25 @@ def _public_agent_result(value: Any) -> dict[str, Any]:
             if key in runtime
         }
     return result
+
+
+def _normalized_agent_outcome(value: dict[str, Any]) -> tuple[str, str | None]:
+    outcome = value.get("terminal_outcome")
+    if outcome not in _STUDIO_TERMINAL_OUTCOMES:
+        raise RpcFault(-32603, "AgentSession returned an invalid terminal outcome")
+    raw_limit_reason = value.get("limit_reason")
+    if raw_limit_reason is None:
+        return outcome, None
+    if not isinstance(raw_limit_reason, str):
+        raise RpcFault(-32603, "AgentSession returned an invalid runtime limit")
+    limit_reason = (
+        raw_limit_reason
+        if raw_limit_reason in _STUDIO_LIMIT_REASONS
+        else "runtime_limit"
+    )
+    if outcome != "failed":
+        raise RpcFault(-32603, "AgentSession runtime limit disagrees with its outcome")
+    return outcome, limit_reason
 
 
 def _path_free_calculation_result(value: Any) -> Any:
@@ -1420,13 +1416,28 @@ class StudioAgentRuntime:
                 -32602,
                 "Agent capability is invalid",
             ) from error
+        legacy_workflow = {
+            StudioCapability.INSPECT: "general",
+            StudioCapability.PLAN: "command",
+            StudioCapability.ACT: "calculation",
+        }[capability]
+        workflow_value = (
+            params.get("workflow", legacy_workflow)
+            if isinstance(params, dict)
+            else legacy_workflow
+        )
+        if not isinstance(workflow_value, str) or workflow_value not in _STUDIO_WORKFLOWS:
+            raise RpcFault(-32602, "Agent workflow is invalid")
+        workflow = workflow_value
+        if capability is not _STUDIO_WORKFLOW_CAPABILITY[workflow]:
+            raise RpcFault(-32602, "Agent workflow capability is inconsistent")
         intent_kind = params.get("intentKind", "inspect")
         if (
             not isinstance(intent_kind, str)
             or intent_kind not in _STUDIO_COMPOSER_INTENTS
         ):
             raise RpcFault(-32602, "Agent composer intent is invalid")
-        tool_profile = _studio_agent_tool_profile(capability, intent_kind)
+        tool_profile = _studio_agent_tool_profile(workflow)
         with self._session_lock(session_id):
             with self._operation_scope(session_id, operation_id):
                 provider, command_session = self._provider_and_command_session(
@@ -1473,14 +1484,12 @@ class StudioAgentRuntime:
                 session.bind_provider(provider)
                 session.bind_tool_profile(tool_profile)
                 turn_request = request
-                if intent_kind == "run":
+                if workflow == "calculation":
                     turn_request = (
                         f"{request}\n\n"
-                        "Studio act intent: after deterministic command synthesis "
-                        "returns a ready command, call execute_chemsmart_command "
-                        "with that exact command. Do not finish with a preflight-only "
-                        "answer. The trusted host will request one-shot approval and "
-                        "revalidate the current molecule before starting a process."
+                        "Studio calculation workflow: complete deterministic preflight "
+                        "before requesting an exact one-shot execution approval. A "
+                        "denial is terminal and must not be followed by another tool."
                     )
 
                 try:
@@ -1517,24 +1526,30 @@ class StudioAgentRuntime:
                     session_id,
                     internal_session_id,
                 )
-                limit_reason = raw_result.get("limit_reason")
-                if isinstance(limit_reason, str) and limit_reason:
+                outcome, limit_reason = _normalized_agent_outcome(raw_result)
+                if limit_reason is not None:
                     self._publish_agent_trace(
                         session_id,
                         kind="turn_blocked",
                         title="ChemSmart Agent",
                         summary="The turn reached a bounded runtime limit.",
                     )
-                    raise RpcFault(
-                        -32603,
-                        f"ChemSmart agent turn stopped before completion ({limit_reason})",
-                    )
                 result = _public_agent_result(raw_result)
+                result["terminal_outcome"] = outcome
+                result["limit_reason"] = limit_reason
                 self._publish_agent_trace(
                     session_id,
-                    kind="turn_completed",
+                    kind=(
+                        "turn_completed"
+                        if outcome == "completed"
+                        else "turn_blocked"
+                    ),
                     title="ChemSmart Agent",
-                    summary="The turn completed.",
+                    summary=(
+                        "The turn completed."
+                        if outcome == "completed"
+                        else "The turn reached a terminal domain outcome."
+                    ),
                 )
                 event = {
                     "sessionId": session_id,

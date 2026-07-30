@@ -14,9 +14,11 @@ import {
   type StudioAgentTurnOutcome,
   type StudioAgentTurnPage,
   type StudioAgentTurnStatus,
-  studioAgentWorkbenchRuntimeSchema
+  studioAgentWorkbenchRuntimeSchema,
+  type StudioAgentWorkflow
 } from '@chemsmart/studio-protocol'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { t } from '@main/i18n'
 import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker'
 import { chemsmartStudioErrorCodes } from '@shared/ipc/errors/chemsmartStudio'
@@ -117,7 +119,11 @@ export class StudioAgentProjectionService extends BaseService {
   private queue: Promise<unknown> = Promise.resolve()
   private readonly contextBindings = new Map<string, unknown>()
 
-  async beginTurn(threadId: string, userMessage: string): Promise<StudioAgentTurnEvent> {
+  async beginTurn(
+    threadId: string,
+    userMessage: string,
+    workflow: StudioAgentWorkflow = 'general'
+  ): Promise<StudioAgentTurnEvent> {
     return this.enqueue(async () => {
       const binding = await this.requireThread(threadId)
       const transcript = await this.load(binding.projectId, threadId)
@@ -128,7 +134,7 @@ export class StudioAgentProjectionService extends BaseService {
       const event = this.createEvent(threadId, `turn-${randomUUID()}`, transcript.events.length, {
         kind: 'user_message',
         status: 'running',
-        summary: userMessage
+        summary: `@[${workflow.replace('_', '-')}] ${userMessage}`
       })
       transcript.events.push(event)
       await this.persist(binding.projectId, threadId, transcript)
@@ -247,48 +253,6 @@ export class StudioAgentProjectionService extends BaseService {
           ]
         : []),
       {
-        discovery: 'plus',
-        key: 'inspect',
-        label: 'Inspect',
-        description: 'Inspect the visible scientific state without execution.',
-        capability: 'inspect'
-      },
-      {
-        discovery: 'plus',
-        key: 'plan_calculation',
-        label: 'Plan calculation',
-        description: 'Prepare a reviewable calculation plan.',
-        capability: 'plan'
-      },
-      {
-        discovery: 'plus',
-        key: 'dry-run',
-        label: 'Dry-run',
-        description: 'Validate a plan without starting a process.',
-        capability: 'plan'
-      },
-      {
-        discovery: 'plus',
-        key: 'run_calculation',
-        label: 'Run calculation',
-        description: 'Validate and request exact approval for the current-molecule calculation.',
-        capability: 'act'
-      },
-      {
-        discovery: 'plus',
-        key: 'review_decisions',
-        label: 'Review decisions',
-        description: 'Review trusted decisions for this project.',
-        capability: 'navigation'
-      },
-      {
-        discovery: 'plus',
-        key: 'recent_results',
-        label: 'Recent results',
-        description: 'Inspect recent structured calculation results.',
-        capability: 'inspect'
-      },
-      {
         discovery: 'mention',
         key: 'project',
         label: 'Project',
@@ -328,20 +292,52 @@ export class StudioAgentProjectionService extends BaseService {
             }
           ]
         : []),
-      ...[
-        ['inspect', 'Inspect', 'Inspect the current scientific context.', 'inspect'],
-        ['plan', 'Plan', 'Create a calculation plan.', 'plan'],
-        ['dry-run', 'Dry-run', 'Validate without executing.', 'plan'],
-        ['run', 'Run', 'Validate and request exact approval before executing.', 'act'],
-        ['review', 'Review', 'Review pending and prior decisions.', 'navigation'],
-        ['history', 'History', 'Open project thread history.', 'navigation'],
-        ['new', 'New', 'Create an independent project thread.', 'navigation']
-      ].map(([key, label, description, capability]) => ({
-        discovery: 'command' as const,
-        key,
+      ...(
+        [
+          {
+            workflow: 'general',
+            capability: 'inspect',
+            label: t('chemsmart_studio.agent_workflow.general.label'),
+            description: t('chemsmart_studio.agent_workflow.general.description')
+          },
+          {
+            workflow: 'project_setup',
+            capability: 'plan',
+            label: t('chemsmart_studio.agent_workflow.project_setup.label'),
+            description: t('chemsmart_studio.agent_workflow.project_setup.description')
+          },
+          {
+            workflow: 'command',
+            capability: 'plan',
+            label: t('chemsmart_studio.agent_workflow.command.label'),
+            description: t('chemsmart_studio.agent_workflow.command.description')
+          },
+          {
+            workflow: 'molecule',
+            capability: 'plan',
+            label: t('chemsmart_studio.agent_workflow.molecule.label'),
+            description: t('chemsmart_studio.agent_workflow.molecule.description')
+          },
+          {
+            workflow: 'calculation',
+            capability: 'act',
+            label: t('chemsmart_studio.agent_workflow.calculation.label'),
+            description: t('chemsmart_studio.agent_workflow.calculation.description')
+          },
+          {
+            workflow: 'results',
+            capability: 'inspect',
+            label: t('chemsmart_studio.agent_workflow.results.label'),
+            description: t('chemsmart_studio.agent_workflow.results.description')
+          }
+        ] as const
+      ).map(({ workflow, capability, label, description }) => ({
+        discovery: 'task' as const,
+        key: workflow,
         label,
         description,
-        capability: capability as 'inspect' | 'plan' | 'act' | 'navigation'
+        capability,
+        workflow
       }))
     ]
     const manifest: StudioAgentCapabilityManifest = {
@@ -363,18 +359,11 @@ export class StudioAgentProjectionService extends BaseService {
     if (intent.contextRefs.some((contextRef) => !contextRefs.has(contextRef))) {
       throw invalid('The Agent composer referenced an unavailable context')
     }
-    const commandKey = intent.kind === 'dry_run' ? 'dry-run' : intent.kind === 'context' ? null : intent.kind
-    const command =
-      commandKey === null
-        ? null
-        : manifest.items.find((item) => item.discovery === 'command' && item.key === commandKey)
-    if (commandKey !== null && (!command || command.capability !== intent.capability)) {
-      throw invalid('The Agent composer intent is not available in the current workspace')
+    const task = manifest.items.find((item) => item.discovery === 'task' && item.workflow === intent.workflow)
+    if (!task || task.capability !== intent.capability) {
+      throw invalid('The Agent workflow is not available in the current workspace')
     }
-    if (intent.kind === 'context' && intent.contextRefs.length === 0) {
-      throw invalid('A context intent requires a main-issued context reference')
-    }
-    if (intent.requiresExecutionApproval !== (intent.capability === 'act')) {
+    if (intent.requiresExecutionApproval !== (intent.workflow === 'calculation')) {
       throw invalid('The Agent composer approval declaration is inconsistent')
     }
   }

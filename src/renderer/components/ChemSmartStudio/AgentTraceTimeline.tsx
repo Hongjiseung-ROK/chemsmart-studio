@@ -74,18 +74,36 @@ function answerToMarkdown(event: StudioAgentTurnEvent) {
   const answer = event.answer
   if (!answer) return ''
 
-  const sections = answer.sections.filter(
-    (section) => section.summary.trim() !== answer.summary.trim() && section.summary.trim().length > 0
-  )
+  const seen = new Set<string>()
   const parts: string[] = []
   if (answer.heading.trim() && answer.heading.trim() !== answer.summary.trim()) {
     parts.push(`### ${answer.heading.trim()}`)
   }
-  if (answer.summary.trim()) parts.push(answer.summary.trim())
-  for (const section of sections) {
-    parts.push(`#### ${section.heading.trim()}\n\n${section.summary.trim()}`)
+  if (answer.summary.trim()) {
+    seen.add(answer.summary.trim())
+    parts.push(answer.summary.trim())
+  }
+  for (const section of answer.sections) {
+    const summary = section.summary.trim()
+    if (!summary || seen.has(summary)) continue
+    seen.add(summary)
+    const heading = section.heading.trim()
+    if (heading && heading.toLowerCase() !== answer.heading.trim().toLowerCase()) {
+      parts.push(`#### ${heading}\n\n${summary}`)
+    } else {
+      parts.push(summary)
+    }
   }
   return stripRawHtml(parts.join('\n\n'))
+}
+
+function workflowRequest(summary: string) {
+  const match = summary.match(/^(@\[(general|project-setup|command|molecule|calculation|results)\])(?:\s+|$)/)
+  if (!match) return { label: '', text: summary }
+  return {
+    label: match[1],
+    text: summary.slice(match[0].length)
+  }
 }
 
 function collectLiveText(events: readonly StudioAgentLiveProjection[], turnId: string): LiveTextProjection {
@@ -512,6 +530,7 @@ function AgentProjectionTurn({
 }) {
   const { t } = useTranslation()
   const request = turn.events.find((event) => event.kind === 'user_message')
+  const requestContent = request ? workflowRequest(request.summary) : undefined
   const reasoning = [...turn.events].reverse().find((event) => event.kind === 'reasoning_summary')
   const liveSummary = [...liveEvents]
     .reverse()
@@ -550,7 +569,14 @@ function AgentProjectionTurn({
         <div
           aria-label={t('chemsmart_studio.agent_workbench.request')}
           className="ml-8 rounded-2xl rounded-br-md bg-secondary px-3 py-2 text-foreground text-sm leading-5">
-          {request.summary}
+          <span className="flex items-start gap-2">
+            {requestContent?.label ? (
+              <Badge className="shrink-0 font-mono" data-testid="agent-workflow-tag" variant="outline">
+                {requestContent.label}
+              </Badge>
+            ) : null}
+            <span>{requestContent?.text}</span>
+          </span>
         </div>
       ) : null}
       {(liveSummary || reasoning) && !canonicalAnswer && !live.text ? (
