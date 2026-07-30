@@ -1890,11 +1890,17 @@
   },
   "chemsmart_studio": {
     "agent_trace": {
+      "assistant_response": "ChemSmart 智能体回复",
       "current": "当前",
       "elapsed": "{{duration}} 毫秒",
       "input": "已验证的输入",
+      "jump_latest": "跳至最新内容",
       "output": "结果",
       "rules": "门控规则",
+      "tools_running_one": "正在使用 {{count}} 个工具",
+      "tools_running_other": "正在使用 {{count}} 个工具",
+      "tools_used_one": "已使用 {{count}} 个工具 · {{duration}}",
+      "tools_used_other": "已使用 {{count}} 个工具 · {{duration}}",
       "turn": "智能体轮次 {{index}}",
       "verdict": "判定"
     },
