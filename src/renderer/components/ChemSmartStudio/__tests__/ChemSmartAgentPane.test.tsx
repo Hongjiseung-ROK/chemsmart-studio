@@ -216,7 +216,7 @@ describe('ChemSmartAgentPane', () => {
     expect(
       screen.getByText('Checking the visible molecule without exposing private provider data.')
     ).toBeInTheDocument()
-    expect(screen.getByText('chemsmart_studio.agent_workbench.reasoning')).toBeInTheDocument()
+    expect(screen.queryByText('chemsmart_studio.agent_workbench.reasoning')).toBeNull()
     expect(screen.queryByText('RAW_CHAIN_OF_THOUGHT')).toBeNull()
     expect(screen.queryByText('/Users/researcher/private.xyz')).toBeNull()
   })

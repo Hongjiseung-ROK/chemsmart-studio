@@ -19,6 +19,7 @@ import {
 } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import {
+  ArrowDown,
   ArrowUp,
   AtSign,
   Bot,
@@ -47,7 +48,7 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { AgentTraceTimeline } from './AgentTraceTimeline'
+import { AgentTraceTimeline, type StudioAgentLiveProjection } from './AgentTraceTimeline'
 
 export interface AgentComposerSnapshot {
   selectionEnd: number
@@ -107,6 +108,7 @@ interface ChemSmartAgentPaneProps {
   threadTitle: string
   threads: readonly ResearchThreadSummary[]
   turnEvents: readonly StudioAgentTurnEvent[]
+  liveEvents?: readonly StudioAgentLiveProjection[]
   onClose: () => void
   onComposerChange: (snapshot: AgentComposerSnapshot) => void
   onCreateThread: () => void
@@ -155,6 +157,7 @@ export function ChemSmartAgentPane({
   threadTitle,
   threads,
   turnEvents,
+  liveEvents = [],
   onClose,
   onComposerChange,
   onCreateThread,
@@ -168,6 +171,7 @@ export function ChemSmartAgentPane({
 }: ChemSmartAgentPaneProps) {
   const { t } = useTranslation()
   const textareaRef = useRef<ComponentRef<typeof Textarea.Input>>(null)
+  const conversationRef = useRef<HTMLDivElement>(null)
   const reviewTriggerRef = useRef<HTMLButtonElement | null>(null)
   const moreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [reviewArtifactId, setReviewArtifactId] = useState<string | null>(null)
@@ -176,6 +180,7 @@ export function ChemSmartAgentPane({
   const [dismissedDiscoveryKey, setDismissedDiscoveryKey] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
   const [renameTitle, setRenameTitle] = useState(threadTitle)
+  const [followingConversation, setFollowingConversation] = useState(true)
   const discovery = useMemo(
     () => findDiscovery(composer.value, composer.selectionStart),
     [composer.selectionStart, composer.value]
@@ -219,6 +224,8 @@ export function ChemSmartAgentPane({
   }, [historyQuery, threads])
   const selectedArtifact = artifacts.find((artifact) => artifact.id === reviewArtifactId) ?? null
   const reviewOpen = reviewMode !== null
+  const liveTailKey = liveEvents.at(-1)?.sequence ?? -1
+  const canonicalTailKey = turnEvents.at(-1)?.sequence ?? -1
 
   useEffect(() => setRenameTitle(threadTitle), [threadTitle])
 
@@ -234,6 +241,27 @@ export function ChemSmartAgentPane({
     setReviewMode('decisions')
     setReviewArtifactId(null)
   }, [reviewRequestId])
+
+  useLayoutEffect(() => {
+    if (!followingConversation) return
+    const conversation = conversationRef.current
+    if (!conversation) return
+    conversation.scrollTop = conversation.scrollHeight
+  }, [canonicalTailKey, followingConversation, liveTailKey])
+
+  const updateConversationFollow = useCallback(() => {
+    const conversation = conversationRef.current
+    if (!conversation) return
+    const distanceFromBottom = conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight
+    setFollowingConversation(distanceFromBottom <= 48)
+  }, [])
+
+  const jumpToLatest = useCallback(() => {
+    const conversation = conversationRef.current
+    if (!conversation) return
+    setFollowingConversation(true)
+    conversation.scrollTop = conversation.scrollHeight
+  }, [])
 
   const updateComposer = useCallback(
     (element: HTMLTextAreaElement) => {
@@ -365,84 +393,98 @@ export function ChemSmartAgentPane({
         </Tooltip>
       </header>
 
-      <Scrollbar className="min-h-0 flex-1" data-testid="agent-conversation">
-        <div className="space-y-3 p-3">
-          {turnEvents.length === 0 ? (
-            <div className="rounded-lg border border-border border-dashed px-3 py-8 text-center">
-              <Bot aria-hidden className="mx-auto size-5 text-foreground-muted" />
-              <p className="mt-2 font-medium text-foreground text-sm">
-                {t('chemsmart_studio.agent_workbench.empty_title')}
-              </p>
-              <p className="mt-1 text-foreground-muted text-xs leading-5">
-                {t('chemsmart_studio.agent_workbench.empty_description')}
-              </p>
-            </div>
-          ) : (
-            <AgentTraceTimeline events={turnEvents} />
-          )}
-
-          {artifacts.length > 0 ? (
-            <section aria-labelledby="chemsmart-agent-artifacts-title" className="space-y-2">
-              <h3 className="font-medium text-foreground-secondary text-xs" id="chemsmart-agent-artifacts-title">
-                {t('chemsmart_studio.agent_workbench.artifacts')}
-              </h3>
-              {artifacts.map((artifact) => (
-                <article
-                  className={cn(
-                    'rounded-lg border bg-background-subtle p-2.5',
-                    artifact.status === 'waiting' ? 'border-warning' : 'border-border-subtle'
-                  )}
-                  key={artifact.id}>
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <h4 className="font-medium text-foreground text-sm">{artifact.title}</h4>
-                        <Badge className={artifactStatusClasses[artifact.status]} variant="outline">
-                          {t(artifactStatusKeys[artifact.status])}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-foreground-muted text-xs leading-5">{artifact.summary}</p>
-                    </div>
-                    <Button
-                      className="h-8 shrink-0 gap-1"
-                      size="sm"
-                      variant="ghost"
-                      onClick={(event) => openReview('artifact', event.currentTarget, artifact.id)}>
-                      {t('chemsmart_studio.agent_workbench.review')}
-                      <ChevronRight aria-hidden className="size-3.5" />
-                    </Button>
-                  </div>
-                </article>
-              ))}
-            </section>
-          ) : null}
-
-          {pendingDecisionCount > 0 ? (
-            <article
-              className="rounded-lg border border-warning bg-background-subtle p-3"
-              data-testid="agent-inline-approval">
-              <div className="flex items-start gap-2">
-                <ShieldQuestion aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-medium text-foreground text-sm">
-                    {t('chemsmart_studio.agent_workbench.approval_title')}
-                  </h3>
-                  <p className="mt-1 text-foreground-secondary text-xs leading-5">
-                    {t('chemsmart_studio.approval.pending_count', { count: pendingDecisionCount })}
-                  </p>
-                </div>
-                <Button
-                  className="h-8 shrink-0"
-                  size="sm"
-                  variant="outline"
-                  onClick={(event) => openReview('decisions', event.currentTarget)}>
-                  {t('chemsmart_studio.approval.review')}
-                </Button>
+      <div className="relative min-h-0 flex-1">
+        <Scrollbar
+          className="h-full min-h-0"
+          data-testid="agent-conversation"
+          ref={conversationRef}
+          onScroll={updateConversationFollow}>
+          <div className="space-y-3 p-3">
+            {turnEvents.length === 0 ? (
+              <div className="rounded-lg border border-border border-dashed px-3 py-8 text-center">
+                <Bot aria-hidden className="mx-auto size-5 text-foreground-muted" />
+                <p className="mt-2 font-medium text-foreground text-sm">
+                  {t('chemsmart_studio.agent_workbench.empty_title')}
+                </p>
+                <p className="mt-1 text-foreground-muted text-xs leading-5">
+                  {t('chemsmart_studio.agent_workbench.empty_description')}
+                </p>
               </div>
-            </article>
-          ) : null}
-        </div>
-      </Scrollbar>
+            ) : (
+              <AgentTraceTimeline events={turnEvents} liveEvents={liveEvents} />
+            )}
+
+            {artifacts.length > 0 ? (
+              <section aria-label={t('chemsmart_studio.agent_workbench.artifacts')} className="space-y-2">
+                {artifacts.map((artifact) => (
+                  <article
+                    className={cn(
+                      'rounded-lg border bg-background-subtle p-2.5',
+                      artifact.status === 'waiting' ? 'border-warning' : 'border-border-subtle'
+                    )}
+                    key={artifact.id}>
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <h4 className="font-medium text-foreground text-sm">{artifact.title}</h4>
+                          <Badge className={artifactStatusClasses[artifact.status]} variant="outline">
+                            {t(artifactStatusKeys[artifact.status])}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-foreground-muted text-xs leading-5">{artifact.summary}</p>
+                      </div>
+                      <Button
+                        className="h-8 shrink-0 gap-1"
+                        size="sm"
+                        variant="ghost"
+                        onClick={(event) => openReview('artifact', event.currentTarget, artifact.id)}>
+                        {t('chemsmart_studio.agent_workbench.review')}
+                        <ChevronRight aria-hidden className="size-3.5" />
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </section>
+            ) : null}
+
+            {pendingDecisionCount > 0 ? (
+              <article
+                className="rounded-lg border border-warning bg-background-subtle p-3"
+                data-testid="agent-inline-approval">
+                <div className="flex items-start gap-2">
+                  <ShieldQuestion aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-foreground text-sm">
+                      {t('chemsmart_studio.agent_workbench.approval_title')}
+                    </h3>
+                    <p className="mt-1 text-foreground-secondary text-xs leading-5">
+                      {t('chemsmart_studio.approval.pending_count', { count: pendingDecisionCount })}
+                    </p>
+                  </div>
+                  <Button
+                    className="h-8 shrink-0"
+                    size="sm"
+                    variant="outline"
+                    onClick={(event) => openReview('decisions', event.currentTarget)}>
+                    {t('chemsmart_studio.approval.review')}
+                  </Button>
+                </div>
+              </article>
+            ) : null}
+          </div>
+        </Scrollbar>
+        {!followingConversation && turnEvents.length > 0 ? (
+          <Button
+            className="absolute right-3 bottom-3 h-8 gap-1.5 rounded-full border border-border bg-popover px-3 shadow-md"
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={jumpToLatest}>
+            <ArrowDown aria-hidden className="size-3.5" />
+            {t('chemsmart_studio.agent_trace.jump_latest')}
+          </Button>
+        ) : null}
+      </div>
 
       <form
         aria-label={t('chemsmart_studio.workspace.agent_composer')}
