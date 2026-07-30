@@ -1,5 +1,10 @@
 import { MoleculeCanvas, type Vec3 } from '@chemsmart/molecular-engine'
-import type { MoleculeOperation, StageGestureIntent } from '@chemsmart/studio-protocol'
+import type {
+  MoleculeOperation,
+  StageGestureIntent,
+  StagePlacementPreview,
+  StudioAgentActionCue
+} from '@chemsmart/studio-protocol'
 import { Alert, Badge, Button, Tooltip } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { loggerService } from '@logger'
@@ -8,22 +13,24 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { type CoordinationGeometry, MoleculeBuildTools } from './MoleculeBuildTools'
-import { positionForNextCoordinationSite } from './moleculePlacement'
+import { cyclePlacementSite } from './moleculePlacement'
 import type { useMoleculeDocument } from './useMoleculeDocument'
 import type { WorkbenchMode, WorkbenchModeContract } from './useWorkbenchMode'
 
 const logger = loggerService.withContext('MoleculeStage')
 
 /** The two things a pointer can mean on the canvas. Both reuse the existing molecule-tool wording. */
-const STAGE_TOOLS = ['select', 'manipulate', 'rotate'] as const
+const STAGE_TOOLS = ['build', 'select', 'move', 'rotate', 'measure', 'constrain'] as const
 type StageTool = (typeof STAGE_TOOLS)[number]
 
 const TOOL_ICONS: Record<StageTool, LucideIcon> = {
+  build: Atom,
   select: MousePointer2,
-  manipulate: Move3D,
-  rotate: Rotate3D
+  move: Move3D,
+  rotate: Rotate3D,
+  measure: Ruler,
+  constrain: Lock
 }
-const INSERT_BOND_LENGTH = 1.5
 
 interface MoleculeStageProps {
   compact?: boolean
@@ -35,6 +42,8 @@ interface MoleculeStageProps {
   onModeChange: (mode: WorkbenchMode) => void
   /** Selection remains safe while a run owns only the displayed coordinates. */
   selectable: boolean
+  actionCues?: readonly StudioAgentActionCue[]
+  reduceMotion?: boolean
 }
 
 /**
@@ -55,18 +64,22 @@ export function MoleculeStage({
   mode,
   molecule,
   onModeChange,
-  selectable
+  selectable,
+  actionCues = [],
+  reduceMotion = false
 }: MoleculeStageProps) {
   const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<MoleculeCanvas | null>(null)
   const [unavailable, setUnavailable] = useState(false)
-  const [tool, setTool] = useState<StageTool>('select')
+  const [tool, setTool] = useState<StageTool>('build')
   const [atomicNumber, setAtomicNumber] = useState(6)
   const [bondOrder, setBondOrder] = useState<1 | 2 | 3>(1)
   const [coordination, setCoordination] = useState<CoordinationGeometry>('tetrahedral')
   const [insertionMode, setInsertionMode] = useState(true)
+  const [placementPreview, setPlacementPreview] = useState<StagePlacementPreview | null>(null)
+  const [moveTargetAtomId, setMoveTargetAtomId] = useState<string | null>(null)
 
   const document = molecule.displayDocument
   const importProvenance = molecule.document?.extensions['chemsmart.import']
@@ -80,58 +93,47 @@ export function MoleculeStage({
   const patchMode = mode === 'run' || mode === 'replay' ? null : mode
   const canMove = editable && !busy && patchMode !== null && contract.allowedOperations.includes('set_positions')
   const canInsert = editable && !busy && mode === 'build' && contract.allowedOperations.includes('add_atoms')
-  const canSelect = selectable && !busy && mode !== 'replay' && tool === 'select' && !insertionMode
+  const canSelect =
+    selectable &&
+    !busy &&
+    mode !== 'replay' &&
+    (tool === 'select' || tool === 'measure' || tool === 'constrain') &&
+    !insertionMode
   const canTravel = editable && !busy && document !== null
-  const gizmoActive = tool === 'manipulate' && canMove
+  const gizmoActive = tool === 'move' && canMove
+
+  const activateStageTool = useCallback(
+    (nextTool: StageTool) => {
+      setTool(nextTool)
+      setPlacementPreview(null)
+      setMoveTargetAtomId(null)
+      setInsertionMode(nextTool === 'build')
+      if (selection.length > 0) void molecule.setSelection([])
+      if (nextTool === 'measure' || nextTool === 'constrain' || nextTool === 'build') {
+        onModeChange(nextTool)
+      } else if (mode === 'measure' || mode === 'constrain') {
+        onModeChange('build')
+      }
+    },
+    [mode, molecule, onModeChange, selection.length]
+  )
 
   const handlePick = useCallback(
     (atomId: string | null, additive: boolean, emptyPosition: Vec3 | null) => {
-      if (canInsert && insertionMode && document) {
-        const anchor = atomId ? document.atoms.find((atom) => atom.id === atomId) : undefined
-        const base = anchor?.position ?? emptyPosition ?? [0, 0, 0]
-        const position: Vec3 = anchor
-          ? [...positionForNextCoordinationSite(document, anchor.id, coordination, INSERT_BOND_LENGTH)]
-          : [base[0], base[1], base[2]]
-        const insertedAtomId = `atom-${crypto.randomUUID()}`
-        const operations: MoleculeOperation[] = [
-          {
-            op: 'add_atoms',
-            atoms: [
-              {
-                id: insertedAtomId,
-                atomicNumber,
-                position,
-                formalCharge: 0,
-                extensions: {}
-              }
-            ]
-          }
-        ]
-        if (anchor && contract.allowedOperations.includes('add_bonds')) {
-          operations.push({
-            op: 'add_bonds',
-            bonds: [
-              {
-                id: `bond-${crypto.randomUUID()}`,
-                atomIds: [anchor.id, insertedAtomId],
-                order: bondOrder,
-                extensions: {}
-              }
-            ]
+      if (canInsert && insertionMode && document && !placementPreview) {
+        void molecule
+          .previewPlacement({
+            ...(atomId ? { anchorAtomId: atomId } : emptyPosition ? { origin: emptyPosition } : {}),
+            atomicNumber,
+            bondOrder,
+            coordinationGeometry: coordination
           })
-        }
-        const gesture: StageGestureIntent = {
-          gestureId: `gesture-${crypto.randomUUID()}`,
-          kind: 'insert_atom',
-          atomicNumber,
-          ...(anchor ? { anchorAtomId: anchor.id, bondOrder } : {}),
-          position,
-          createdAt: new Date().toISOString(),
-          extensions: {}
-        }
-        void molecule.proposePatch('build', operations, gesture).then((draft) => {
-          if (draft) void molecule.setSelection([insertedAtomId])
-        })
+          .then(setPlacementPreview)
+        return
+      }
+      if (tool === 'move' && canMove) {
+        setMoveTargetAtomId(atomId)
+        void molecule.setSelection(atomId ? [atomId] : [])
         return
       }
       if (!canSelect) return
@@ -159,8 +161,23 @@ export function MoleculeStage({
       document,
       insertionMode,
       molecule,
+      placementPreview,
+      tool,
       selection
     ]
+  )
+
+  const handlePlacementPick = useCallback(
+    (siteIndex: number) => {
+      const preview = placementPreview
+      if (!preview) return
+      void molecule.applyPlacement(preview, siteIndex).then((insertedAtomId) => {
+        if (!insertedAtomId) return
+        setPlacementPreview(null)
+        void molecule.setSelection([insertedAtomId])
+      })
+    },
+    [molecule, placementPreview]
   )
 
   const proposeOperations = useCallback(
@@ -192,10 +209,10 @@ export function MoleculeStage({
 
   // The engine is built once, so it reads the current gesture handlers through a ref rather than
   // closing over the first render's copies.
-  const gesturesRef = useRef({ handleAtomMoved, handlePick })
+  const gesturesRef = useRef({ handleAtomMoved, handlePick, handlePlacementPick })
   useEffect(() => {
-    gesturesRef.current = { handleAtomMoved, handlePick }
-  }, [handleAtomMoved, handlePick])
+    gesturesRef.current = { handleAtomMoved, handlePick, handlePlacementPick }
+  }, [handleAtomMoved, handlePick, handlePlacementPick])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -206,7 +223,8 @@ export function MoleculeStage({
     try {
       engine = new MoleculeCanvas(canvas, {
         onAtomMoved: (atomId, position) => gesturesRef.current.handleAtomMoved(atomId, position),
-        onPick: (atomId, additive, emptyPosition) => gesturesRef.current.handlePick(atomId, additive, emptyPosition)
+        onPick: (atomId, additive, emptyPosition) => gesturesRef.current.handlePick(atomId, additive, emptyPosition),
+        onPlacementPick: (siteIndex) => gesturesRef.current.handlePlacementPick(siteIndex)
       })
     } catch (error) {
       // A machine without a usable WebGL context must say so rather than show a blank rectangle.
@@ -239,9 +257,31 @@ export function MoleculeStage({
   }, [gizmoActive])
 
   useEffect(() => {
-    // One atom moves at a time: a gizmo over a multi-atom pick would have no single origin to drag.
-    engineRef.current?.setGizmoTarget(selection.length === 1 ? selection[0] : null)
-  }, [gizmoActive, selection])
+    engineRef.current?.setGizmoTarget(gizmoActive ? moveTargetAtomId : null)
+  }, [gizmoActive, moveTargetAtomId])
+
+  useEffect(() => {
+    engineRef.current?.setPlacementPreview(placementPreview)
+  }, [placementPreview])
+
+  useEffect(() => {
+    engineRef.current?.setActionCues(actionCues, reduceMotion)
+  }, [actionCues, reduceMotion])
+
+  useEffect(() => {
+    if (!placementPreview) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPlacementPreview(null)
+        return
+      }
+      if (event.key !== 'Tab') return
+      event.preventDefault()
+      setPlacementPreview((current) => (current ? cyclePlacementSite(current, event.shiftKey ? -1 : 1) : current))
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [placementPreview])
 
   const frameAll = useCallback(() => engineRef.current?.frameAll(), [])
   const displayLabel =
@@ -324,76 +364,36 @@ export function MoleculeStage({
         )}
         data-testid="viewport-toolbar"
         role="toolbar">
-        <Tooltip title={t('chemsmart_studio.workspace.mode.build')}>
-          <Button
-            aria-label={t('chemsmart_studio.workspace.mode.build')}
-            aria-pressed={mode === 'build'}
-            className="size-8 shrink-0"
-            disabled={!editable}
-            size="icon-sm"
-            variant={mode === 'build' ? 'secondary' : 'ghost'}
-            onClick={() => {
-              setTool('select')
-              setInsertionMode(false)
-              onModeChange('build')
-            }}>
-            <Atom aria-hidden className="size-4" />
-          </Button>
-        </Tooltip>
         {STAGE_TOOLS.map((stageTool) => {
           const ToolIcon = TOOL_ICONS[stageTool]
-          const label = t(`chemsmart_studio.stage.tools.${stageTool}.label`)
+          const translationKey =
+            stageTool === 'build'
+              ? 'chemsmart_studio.workspace.mode.build'
+              : stageTool === 'measure' || stageTool === 'constrain'
+                ? `chemsmart_studio.workspace.mode.${stageTool}`
+                : stageTool === 'move'
+                  ? 'chemsmart_studio.stage.tools.manipulate.label'
+                  : `chemsmart_studio.stage.tools.${stageTool}.label`
+          const label = t(translationKey)
           const active = tool === stageTool
           return (
-            <Tooltip key={stageTool} title={t(`chemsmart_studio.stage.tools.${stageTool}.description`)}>
+            <Tooltip key={stageTool} title={label}>
               <Button
                 aria-label={label}
                 aria-pressed={active}
-                className="size-8 shrink-0"
-                data-testid={`stage-tool-${stageTool}`}
-                disabled={stageTool === 'manipulate' && !canMove}
-                size="icon-sm"
+                className={cn('h-8 min-w-8 shrink-0 gap-1.5 px-2', compact && !active && 'w-8 px-0')}
+                data-testid={stageTool === 'move' ? 'stage-tool-manipulate' : `stage-tool-${stageTool}`}
+                disabled={(stageTool === 'move' && !canMove) || (stageTool === 'build' && !editable)}
+                size="sm"
                 variant={active ? 'secondary' : 'ghost'}
-                onClick={() => {
-                  setTool(stageTool)
-                  setInsertionMode(false)
-                }}>
+                onClick={() => activateStageTool(stageTool)}>
                 <ToolIcon aria-hidden className="size-4" />
+                {!compact || active ? <span>{label}</span> : null}
               </Button>
             </Tooltip>
           )
         })}
         <div aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border-muted" />
-        <Tooltip title={t('chemsmart_studio.workspace.mode.measure')}>
-          <Button
-            aria-label={t('chemsmart_studio.workspace.mode.measure')}
-            aria-pressed={mode === 'measure'}
-            className="size-8 shrink-0"
-            size="icon-sm"
-            variant={mode === 'measure' ? 'secondary' : 'ghost'}
-            onClick={() => {
-              setTool('select')
-              setInsertionMode(false)
-              onModeChange('measure')
-            }}>
-            <Ruler aria-hidden className="size-4" />
-          </Button>
-        </Tooltip>
-        <Tooltip title={t('chemsmart_studio.workspace.mode.constrain')}>
-          <Button
-            aria-label={t('chemsmart_studio.workspace.mode.constrain')}
-            aria-pressed={mode === 'constrain'}
-            className="size-8 shrink-0"
-            size="icon-sm"
-            variant={mode === 'constrain' ? 'secondary' : 'ghost'}
-            onClick={() => {
-              setTool('select')
-              setInsertionMode(false)
-              onModeChange('constrain')
-            }}>
-            <Lock aria-hidden className="size-4" />
-          </Button>
-        </Tooltip>
         <Tooltip title={t('chemsmart_studio.stage.frame_all')}>
           <Button
             aria-label={t('chemsmart_studio.stage.frame_all')}
@@ -428,8 +428,8 @@ export function MoleculeStage({
           onBondOrderChange={setBondOrder}
           onCoordinationChange={setCoordination}
           onInsertionModeChange={(active) => {
-            setInsertionMode(active)
-            if (active) setTool('select')
+            if (active) activateStageTool('build')
+            else setInsertionMode(false)
           }}
           onPropose={proposeOperations}
         />
@@ -437,6 +437,19 @@ export function MoleculeStage({
 
       <div ref={containerRef} className="relative min-h-0 flex-1">
         <canvas ref={canvasRef} className="block size-full" data-testid="molecule-canvas" />
+        {placementPreview ? (
+          <div
+            className={cn(
+              'absolute right-3 bottom-3 rounded-md border px-3 py-2 text-xs shadow-sm backdrop-blur',
+              placementPreview.status === 'ready'
+                ? 'border-info/40 bg-info-bg text-info'
+                : 'border-warning/40 bg-warning-bg text-warning'
+            )}
+            data-testid="placement-guide-status"
+            role="status">
+            {t(`chemsmart_studio.build.placement.${placementPreview.status}`)}
+          </div>
+        ) : null}
 
         {unavailable || !document ? (
           <div className="absolute inset-0 flex items-center justify-center bg-card/80 p-6 text-center">

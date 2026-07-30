@@ -25,6 +25,7 @@ export const coordinationGeometries = [
   'linear',
   'trigonal_planar',
   'tetrahedral',
+  'trigonal_bipyramidal',
   'square_planar',
   'octahedral'
 ] as const

@@ -76,6 +76,7 @@ vi.mock('@renderer/ipc', () => ({
 const stageEngine = vi.hoisted(() => ({
   handlers: null as {
     onAtomMoved?: (atomId: string, position: readonly [number, number, number]) => void
+    onPlacementPick?: (siteIndex: number) => void
     onPick?: (
       atomId: string | null,
       additive: boolean,
@@ -83,7 +84,9 @@ const stageEngine = vi.hoisted(() => ({
     ) => void
   } | null,
   setGizmoTarget: vi.fn(),
-  setTransformEnabled: vi.fn()
+  setTransformEnabled: vi.fn(),
+  setPlacementPreview: vi.fn(),
+  setActionCues: vi.fn()
 }))
 
 vi.mock('@chemsmart/molecular-engine', () => ({
@@ -94,6 +97,8 @@ vi.mock('@chemsmart/molecular-engine', () => ({
     dispose = vi.fn()
     setGizmoTarget = stageEngine.setGizmoTarget
     setTransformEnabled = stageEngine.setTransformEnabled
+    setPlacementPreview = stageEngine.setPlacementPreview
+    setActionCues = stageEngine.setActionCues
     constructor(_canvas: HTMLCanvasElement, handlers: NonNullable<typeof stageEngine.handlers>) {
       stageEngine.handlers = handlers
     }
@@ -569,6 +574,8 @@ describe('ChemSmartStudioPanel', () => {
     stageEngine.handlers = null
     stageEngine.setGizmoTarget.mockReset()
     stageEngine.setTransformEnabled.mockReset()
+    stageEngine.setPlacementPreview.mockReset()
+    stageEngine.setActionCues.mockReset()
     ipcMocks.request.mockImplementation(async (route: string) => {
       ipcMocks.order.push(`request:${route}`)
       if (route === 'chemsmart_studio.status') return stoppedStatus()
@@ -1287,7 +1294,18 @@ describe('ChemSmartStudioPanel', () => {
     expect(stageEngine.setTransformEnabled).not.toHaveBeenCalledWith(true)
     await user.click(screen.getByTestId('stage-tool-manipulate'))
     await waitFor(() => expect(stageEngine.setTransformEnabled).toHaveBeenLastCalledWith(true))
-    expect(stageEngine.setGizmoTarget).toHaveBeenLastCalledWith('atom-2')
+    // Activating a new editing tool clears the old target. Move acquires only the next atom picked.
+    await waitFor(() =>
+      expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.molecule.set_selection', {
+        sessionId: 'topic-a',
+        documentId: 'molecule-1',
+        expectedRevision: 4,
+        atomIds: []
+      })
+    )
+    expect(stageEngine.setGizmoTarget).toHaveBeenLastCalledWith(null)
+    act(() => stageEngine.handlers?.onPick?.('atom-2', false))
+    await waitFor(() => expect(stageEngine.setGizmoTarget).toHaveBeenLastCalledWith('atom-2'))
 
     act(() => stageEngine.handlers?.onAtomMoved?.('atom-2', [1.2, 0.5, 0]))
     await waitFor(() =>
@@ -1311,6 +1329,91 @@ describe('ChemSmartStudioPanel', () => {
     await user.click(screen.getByTestId('molecule-undo'))
     await waitFor(() =>
       expect(ipcMocks.request).toHaveBeenCalledWith('chemsmart_studio.molecule.draft_undo', { sessionId: 'topic-a' })
+    )
+  })
+
+  it('previews main-validated coordination sites and cycles only those sites with Tab', async () => {
+    const document = moleculeDocument()
+    ipcMocks.request.mockImplementation(async (route: string, input?: unknown) => {
+      if (route === 'chemsmart_studio.status') return stoppedStatus()
+      if (route === 'chemsmart_studio.molecule.summary') return { documentId: document.documentId, revision: 4 }
+      if (route === 'chemsmart_studio.molecule.document') return document
+      if (route === 'chemsmart_studio.control.snapshot') return emptyControlSnapshot()
+      if (route === 'chemsmart_studio.optimization.replay_catalog') {
+        return { totalRuns: 0, runs: [], nextRunId: null, extensions: {} }
+      }
+      if (route === 'chemsmart_studio.molecule.placement_preview') {
+        const intent = (input as { intent: { geometryHash: string } }).intent
+        return {
+          documentId: document.documentId,
+          revision: 4,
+          geometryHash: intent.geometryHash,
+          anchorAtomId: 'atom-1',
+          atomicNumber: 6,
+          bondOrder: 1,
+          coordinationGeometry: 'tetrahedral',
+          candidates: [
+            {
+              siteIndex: 0,
+              position: [1, 0, 0],
+              bondLength: 1,
+              minimumClearance: 0,
+              occupied: true,
+              safe: false
+            },
+            {
+              siteIndex: 1,
+              position: [0, 1, 0],
+              bondLength: 1,
+              minimumClearance: 1,
+              occupied: false,
+              safe: true
+            },
+            {
+              siteIndex: 2,
+              position: [0, 0, 1],
+              bondLength: 1,
+              minimumClearance: 1,
+              occupied: false,
+              safe: true
+            }
+          ],
+          selectedSiteIndex: 1,
+          status: 'ready'
+        }
+      }
+      if (route === 'chemsmart_studio.molecule.placement_apply') {
+        return { snapshot: moleculeDraft(document), insertedAtomId: 'atom-new' }
+      }
+      if (route === 'chemsmart_studio.molecule.set_selection') return document
+      throw new Error(`Unexpected route: ${route}`)
+    })
+
+    render(<ChemSmartStudioPanel active sessionId="topic-a" />)
+    await screen.findByTestId('molecule-stage')
+    act(() => stageEngine.handlers?.onPick?.('atom-1', false))
+    await screen.findByTestId('placement-guide-status')
+    await waitFor(() =>
+      expect(stageEngine.setPlacementPreview).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selectedSiteIndex: 1, status: 'ready' })
+      )
+    )
+
+    fireEvent.keyDown(window, { key: 'Tab' })
+    await waitFor(() =>
+      expect(stageEngine.setPlacementPreview).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selectedSiteIndex: 2 })
+      )
+    )
+    act(() => stageEngine.handlers?.onPlacementPick?.(2))
+    await waitFor(() =>
+      expect(ipcMocks.request).toHaveBeenCalledWith(
+        'chemsmart_studio.molecule.placement_apply',
+        expect.objectContaining({
+          sessionId: 'topic-a',
+          intent: expect.objectContaining({ siteIndex: 2 })
+        })
+      )
     )
   })
 

@@ -1,46 +1,61 @@
-import type { MoleculeDocument } from '@chemsmart/studio-protocol'
+import type { MoleculeDocument, StagePlacementPreview } from '@chemsmart/studio-protocol'
 import { describe, expect, it } from 'vitest'
 
-import { angle, distance } from '../moleculeGeometry'
-import { positionForNextCoordinationSite } from '../moleculePlacement'
+import { cyclePlacementSite, moleculeGeometryHash } from '../moleculePlacement'
 
-function documentWithOneBond(): MoleculeDocument {
-  return {
-    documentId: 'document-water',
-    revision: 0,
-    atoms: [
-      { id: 'O', atomicNumber: 8, position: [0, 0, 0], formalCharge: 0, extensions: {} },
-      {
-        id: 'H1',
-        atomicNumber: 1,
-        position: [1 / Math.sqrt(3), 1 / Math.sqrt(3), 1 / Math.sqrt(3)],
-        formalCharge: 0,
-        extensions: {}
-      }
-    ],
-    bonds: [{ id: 'OH1', atomIds: ['O', 'H1'], order: 1, extensions: {} }],
-    selections: [],
-    frozenAxes: {},
-    constraints: [],
-    properties: { charge: 0, multiplicity: 1, extensions: {} },
-    extensions: {}
-  }
+const document: MoleculeDocument = {
+  documentId: 'document-water',
+  revision: 2,
+  atoms: [
+    { id: 'O', atomicNumber: 8, position: [0, 0, 0], formalCharge: 0, extensions: {} },
+    { id: 'H', atomicNumber: 1, position: [1, 0, 0], formalCharge: 0, extensions: {} }
+  ],
+  bonds: [{ id: 'OH', atomIds: ['O', 'H'], order: 1, extensions: {} }],
+  selections: [],
+  frozenAxes: {},
+  constraints: [],
+  properties: { extensions: {} },
+  extensions: {}
 }
 
-describe('positionForNextCoordinationSite', () => {
-  it('uses a vacant tetrahedral direction for a second bonded atom', () => {
-    const document = documentWithOneBond()
-    const secondHydrogen = positionForNextCoordinationSite(document, 'O', 'tetrahedral', 1)
+const preview: StagePlacementPreview = {
+  documentId: document.documentId,
+  revision: document.revision,
+  geometryHash: `sha256:${'a'.repeat(64)}`,
+  anchorAtomId: 'O',
+  atomicNumber: 1,
+  bondOrder: 1,
+  coordinationGeometry: 'tetrahedral',
+  candidates: [
+    { siteIndex: 0, position: [1, 0, 0], bondLength: 1, minimumClearance: 0, occupied: true, safe: false },
+    { siteIndex: 1, position: [0, 1, 0], bondLength: 1, minimumClearance: 1, occupied: false, safe: true },
+    { siteIndex: 2, position: [0, 0, 1], bondLength: 1, minimumClearance: 1, occupied: false, safe: true }
+  ],
+  selectedSiteIndex: 1,
+  status: 'ready'
+}
 
-    expect(secondHydrogen).not.toEqual(document.atoms[1].position)
-    expect(distance([0, 0, 0], secondHydrogen)).toBeCloseTo(1, 8)
-    expect(angle(document.atoms[1].position, [0, 0, 0], secondHydrogen)).toBeCloseTo(109.47, 2)
+describe('molecule placement renderer helpers', () => {
+  it('hashes geometry independently of selection and atom order', async () => {
+    const reordered = {
+      ...document,
+      atoms: [...document.atoms].reverse(),
+      selections: ['O']
+    }
+
+    expect(await moleculeGeometryHash(reordered)).toBe(await moleculeGeometryHash(document))
   })
 
-  it('places the second linear neighbor opposite the occupied bond', () => {
-    const document = documentWithOneBond()
-    document.atoms[1].position = [1, 0, 0]
+  it('changes identity when visible coordinates change', async () => {
+    const moved = structuredClone(document)
+    moved.atoms[1].position = [1.1, 0, 0]
 
-    expect(positionForNextCoordinationSite(document, 'O', 'linear', 1.5)).toEqual([-1.5, 0, 0])
+    expect(await moleculeGeometryHash(moved)).not.toBe(await moleculeGeometryHash(document))
+  })
+
+  it('cycles only through safe main-validated sites', () => {
+    expect(cyclePlacementSite(preview, 1).selectedSiteIndex).toBe(2)
+    expect(cyclePlacementSite({ ...preview, selectedSiteIndex: 2 }, 1).selectedSiteIndex).toBe(1)
+    expect(cyclePlacementSite(preview, -1).selectedSiteIndex).toBe(2)
   })
 })
