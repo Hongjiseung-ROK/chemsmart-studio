@@ -1,28 +1,35 @@
 /**
- * Completion for the ChemSmart CLI, resolved against the command path.
+ * Deterministic completion for ChemSmart's exported Click tree.
  *
- * chemsmart's short flags change meaning by level — `-m` is `--mem-gb` at run/sub level but
- * `--multiplicity` at program level, `-p` is `--project` for gaussian/orca but `--program` in the
- * folder options, and `-s`, `-c`, `-f` are likewise overloaded. A flat flag table is therefore wrong
- * by construction: the only way to answer "what does `-m` mean here" is to walk the tokens to the
- * node they land on and offer that node's own options.
- *
- * The prose comes from the schema itself (click's own help and docstrings), so the meaning a
- * researcher reads is the meaning chemsmart will act on — there is no second copy to drift.
+ * This module is deliberately pure. Generating the manifest and discovering human-only
+ * filesystem candidates happen outside the keystroke path; here we only parse the line and
+ * project the authoritative Click metadata into renderer-safe completion items.
  */
 
-/** One click option, exactly as `chemsmart agent _dump-cli-schema` writes it. */
+export type CliValueType =
+  | string
+  | {
+      type: string
+      choices?: string[]
+      exists?: boolean
+      file_okay?: boolean
+      dir_okay?: boolean
+      min?: number | null
+      max?: number | null
+    }
+
 export interface CliOption {
   name: string
   opts: string[]
   help: string | null
   choices: string[] | null
   is_flag: boolean
+  multiple: boolean
   required: boolean
-  type: string | null
+  nargs: number
+  type: CliValueType | null
 }
 
-/** One command node. The dumped root is this shape plus `_meta`. */
 export interface CliCommand {
   name: string
   description: string | null
@@ -31,193 +38,353 @@ export interface CliCommand {
 }
 
 export interface CliSchemaDocument extends CliCommand {
-  _meta?: { chemsmart_version?: string; schema_hash?: string }
+  _meta?: {
+    chemsmart_version?: string
+    schema_hash?: string
+    chemsmart_commit?: string
+  }
 }
 
-export type CompletionKind = 'subcommand' | 'option' | 'choice'
+export type CompletionItemKind = 'command' | 'option' | 'choice' | 'argument' | 'file' | 'project' | 'server'
 
-export interface Completion {
-  /** Text that replaces the word being completed. */
-  value: string
-  kind: CompletionKind
-  /** What it means, in chemsmart's own words. Empty when the schema carries no help. */
+export interface CompletionItem {
+  id: string
+  label: string
+  insertText: string
+  kind: CompletionItemKind
   detail: string
-  /** For an option, the long form it is a short alias of — the answer to "what does -m mean here". */
-  expandsTo?: string
+  appendSpace: boolean
+}
+
+export interface CompletionDiagnostic {
+  code: 'unsupported_shell_syntax' | 'invalid_prefix' | 'value_required'
+  message: string
 }
 
 export interface CompletionResult {
-  /** The command path the tokens resolved to, e.g. `['chemsmart', 'run', 'gaussian']`. */
   commandPath: string[]
-  /** Start offset of the word being completed, so a caller can splice a choice in. */
-  replaceFrom: number
-  completions: Completion[]
+  replaceRange: { start: number; end: number }
+  items: CompletionItem[]
+  diagnostic?: CompletionDiagnostic
+}
+
+export interface DynamicCompletionCandidate {
+  label: string
+  insertText: string
+  kind: 'file' | 'project' | 'server'
+  detail: string
+  /** Option names which may consume this value, e.g. `filename` or `server`. */
+  optionNames: string[]
 }
 
 interface Token {
+  raw: string
   text: string
   start: number
+  end: number
+  quote: '"' | "'" | null
+  closed: boolean
 }
 
-/**
- * Splits on whitespace, keeping quoted runs together so a path with a space stays one token.
- * Deliberately not a shell parser: it only has to be good enough to find the command path.
- */
+interface ParseState {
+  command: CliCommand
+  path: string[]
+  pending: { option: CliOption; remaining: number } | null
+  consumedOptions: Set<string>
+  invalid: boolean
+}
+
+function emptyRange(cursor: number): { start: number; end: number } {
+  return { start: cursor, end: cursor }
+}
+
+/** Tokenize shell words without executing or expanding any shell syntax. */
 export function tokenize(line: string): Token[] {
   const tokens: Token[] = []
-  let quote: '"' | "'" | null = null
-  let current = ''
   let start = -1
+  let quote: '"' | "'" | null = null
+  let tokenQuote: '"' | "'" | null = null
+  let escaped = false
+  let text = ''
+
+  const flush = (end: number, closed = true) => {
+    if (start < 0) return
+    tokens.push({ raw: line.slice(start, end), text, start, end, quote: tokenQuote, closed })
+    start = -1
+    quote = null
+    tokenQuote = null
+    escaped = false
+    text = ''
+  }
 
   for (let index = 0; index < line.length; index += 1) {
     const character = line[index]
+    if (start < 0 && /\s/.test(character)) continue
+    if (start < 0) start = index
+    if (escaped) {
+      text += character
+      escaped = false
+      continue
+    }
+    if (character === '\\' && quote !== "'") {
+      escaped = true
+      continue
+    }
     if (quote) {
       if (character === quote) quote = null
-      else current += character
+      else text += character
       continue
     }
     if (character === '"' || character === "'") {
-      if (start < 0) start = index
       quote = character
+      tokenQuote ??= character
       continue
     }
     if (/\s/.test(character)) {
-      if (start >= 0) {
-        tokens.push({ text: current, start })
-        current = ''
-        start = -1
-      }
+      flush(index)
       continue
     }
-    if (start < 0) start = index
-    current += character
+    text += character
   }
-  if (start >= 0) tokens.push({ text: current, start })
+  if (start >= 0) flush(line.length, quote === null && !escaped)
   return tokens
 }
 
-/** The long form a short flag stands for, so `-m` can be shown as what it actually means here. */
-function longForm(option: CliOption): string | undefined {
-  return option.opts.find((opt) => opt.startsWith('--'))
-}
-
-function optionCompletions(command: CliCommand, prefix: string): Completion[] {
-  const completions: Completion[] = []
-  for (const option of command.options) {
-    for (const opt of option.opts) {
-      if (!opt.startsWith(prefix)) continue
-      const long = longForm(option)
-      completions.push({
-        value: opt,
-        kind: 'option',
-        detail: option.help ?? '',
-        ...(long && long !== opt ? { expandsTo: long } : {})
-      })
+function unsupportedShellSyntax(line: string): boolean {
+  let quote: '"' | "'" | null = null
+  let escaped = false
+  for (const character of line) {
+    if (escaped) {
+      escaped = false
+      continue
     }
+    if (character === '\\' && quote !== "'") {
+      escaped = true
+      continue
+    }
+    if (quote) {
+      if (character === quote) quote = null
+      continue
+    }
+    if (character === '"' || character === "'") {
+      quote = character
+      continue
+    }
+    if (';&|<>'.includes(character)) return true
   }
-  return completions
+  return false
 }
 
-function subcommandCompletions(command: CliCommand, prefix: string): Completion[] {
-  return Object.values(command.subcommands)
-    .filter((child) => child.name.startsWith(prefix))
-    .map((child) => ({ value: child.name, kind: 'subcommand' as const, detail: child.description ?? '' }))
+function optionAt(
+  command: CliCommand,
+  text: string
+): { option: CliOption; inlineValue?: string; valueStart?: number } | null {
+  const equals = text.indexOf('=')
+  const flag = equals >= 0 ? text.slice(0, equals) : text
+  const option = command.options.find((candidate) => candidate.opts.includes(flag))
+  if (!option) return null
+  return equals >= 0 ? { option, inlineValue: text.slice(equals + 1), valueStart: equals + 1 } : { option }
 }
 
-/**
- * Finds the node the tokens before the cursor land on.
- *
- * A token is a step down the tree only when it names a subcommand of the current node. Anything else
- * — an option, its value, a filename — leaves the node where it is, which is what makes the level
- * correct for a line like `chemsmart run -c 0 gaussian`.
- */
-function resolveCommandPath(root: CliCommand, tokens: readonly Token[]): { command: CliCommand; path: string[] } {
-  let command = root
-  const path = [root.name]
-  // The first token is the executable itself; it names the root rather than a step below it.
-  for (const token of tokens.slice(1)) {
-    const child = command.subcommands[token.text]
+function parseCompletedTokens(root: CliCommand, tokens: readonly Token[]): ParseState {
+  const state: ParseState = {
+    command: root,
+    path: [root.name],
+    pending: null,
+    consumedOptions: new Set(),
+    invalid: false
+  }
+  const rest = tokens[0]?.text === root.name ? tokens.slice(1) : tokens
+
+  for (const token of rest) {
+    if (state.pending) {
+      state.pending.remaining -= 1
+      if (state.pending.remaining <= 0) state.pending = null
+      continue
+    }
+    const match = optionAt(state.command, token.text)
+    if (match) {
+      state.consumedOptions.add(match.option.name)
+      if (!match.option.is_flag) {
+        const required = Math.max(1, match.option.nargs || 1)
+        const suppliedInline = match.inlineValue !== undefined && match.inlineValue.length > 0 ? 1 : 0
+        if (required > suppliedInline) state.pending = { option: match.option, remaining: required - suppliedInline }
+      }
+      continue
+    }
+    if (token.text.startsWith('-')) {
+      state.invalid = true
+      continue
+    }
+    const child = state.command.subcommands[token.text]
     if (child) {
-      command = child
-      path.push(child.name)
+      state.command = child
+      state.path.push(child.name)
+      state.consumedOptions = new Set()
     }
   }
-  return { command, path }
+  return state
+}
+
+function typeDetail(option: CliOption): string {
+  const valueType = option.type
+  let description = ''
+  if (typeof valueType === 'string') description = valueType
+  else if (valueType) {
+    description = valueType.type
+    if (valueType.min != null || valueType.max != null) {
+      description += ` ${valueType.min ?? '−∞'}…${valueType.max ?? '∞'}`
+    }
+  }
+  return [option.help ?? '', description].filter(Boolean).join(' · ')
+}
+
+function item(
+  commandPath: readonly string[],
+  label: string,
+  kind: CompletionItemKind,
+  detail: string,
+  insertText = label
+): CompletionItem {
+  return {
+    id: `${commandPath.join('/')}:${kind}:${insertText}`,
+    label,
+    insertText,
+    kind,
+    detail,
+    appendSpace: true
+  }
+}
+
+function choiceValues(option: CliOption): string[] {
+  if (option.choices) return option.choices
+  if (typeof option.type === 'object' && option.type?.choices) return option.type.choices
+  return []
+}
+
+function quoteCandidate(value: string, quote: Token['quote']): string {
+  if (quote) return `${quote}${value.replaceAll(quote, `\\${quote}`)}${quote}`
+  if (!/[\s"'\\]/.test(value)) return value
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+function valueItems(
+  state: ParseState,
+  option: CliOption,
+  prefix: string,
+  token: Token | undefined,
+  dynamic: readonly DynamicCompletionCandidate[]
+): CompletionItem[] {
+  const declared = choiceValues(option)
+    .filter((choice) => choice.startsWith(prefix))
+    .map((choice) => item(state.path, choice, 'choice', typeDetail(option)))
+  const candidates = dynamic
+    .filter((candidate) => candidate.optionNames.includes(option.name))
+    .filter((candidate) => candidate.label.startsWith(prefix) || candidate.insertText.startsWith(prefix))
+    .map((candidate) =>
+      item(
+        state.path,
+        candidate.label,
+        candidate.kind,
+        candidate.detail,
+        quoteCandidate(candidate.insertText, token?.quote ?? null)
+      )
+    )
+  return [...declared, ...candidates]
 }
 
 /**
- * Completions for `line` at `cursor`.
- *
- * Pure: no process, no filesystem, no clock. Given the same schema and the same line it always
- * answers the same way, which is what makes the level-sensitivity testable rather than anecdotal.
+ * Resolve completions at an arbitrary cursor. The replacement range covers only the active value
+ * (including only the value side of `--option=value`) so text after the cursor is preserved.
  */
-export function resolveCompletions(schema: CliCommand, line: string, cursor: number): CompletionResult {
-  const clampedCursor = Math.max(0, Math.min(cursor, line.length))
-  const head = line.slice(0, clampedCursor)
-  const tokens = tokenize(head)
-  const endsMidToken = clampedCursor > 0 && !/\s/.test(line[clampedCursor - 1])
-  const currentToken = endsMidToken ? tokens.at(-1) : undefined
-  const prefix = currentToken?.text ?? ''
-  const replaceFrom = currentToken?.start ?? clampedCursor
-  // The word under construction is not yet a command path element.
-  const pathTokens = currentToken ? tokens.slice(0, -1) : tokens
-  const { command, path } = resolveCommandPath(schema, pathTokens)
-
-  // Nothing typed yet, or still typing the executable: offering the tree's options would be noise.
-  if (pathTokens.length === 0) {
+export function resolveCompletions(
+  schema: CliCommand,
+  line: string,
+  cursor: number,
+  dynamic: readonly DynamicCompletionCandidate[] = []
+): CompletionResult {
+  const clamped = Math.max(0, Math.min(cursor, line.length))
+  if (unsupportedShellSyntax(line.slice(0, clamped))) {
     return {
       commandPath: [schema.name],
-      replaceFrom,
-      completions: schema.name.startsWith(prefix)
-        ? [{ value: schema.name, kind: 'subcommand', detail: schema.description ?? '' }]
+      replaceRange: emptyRange(clamped),
+      items: [],
+      diagnostic: {
+        code: 'unsupported_shell_syntax',
+        message: 'Completion is unavailable for shell operators.'
+      }
+    }
+  }
+
+  const tokens = tokenize(line.slice(0, clamped))
+  const current = clamped > 0 && !/\s/.test(line[clamped - 1]) ? tokens.at(-1) : undefined
+  if (current && !current.closed) {
+    return {
+      commandPath: [schema.name],
+      replaceRange: { start: current.start, end: clamped },
+      items: [],
+      diagnostic: { code: 'invalid_prefix', message: 'Close the quote or escape before completing.' }
+    }
+  }
+  const completed = current ? tokens.slice(0, -1) : tokens
+  const state = parseCompletedTokens(schema, completed)
+  const prefix = current?.text ?? ''
+  let replaceRange = current ? { start: current.start, end: clamped } : emptyRange(clamped)
+
+  if (state.invalid) {
+    return {
+      commandPath: state.path,
+      replaceRange,
+      items: [],
+      diagnostic: { code: 'invalid_prefix', message: 'The command prefix is not valid at this level.' }
+    }
+  }
+
+  if (completed.length === 0) {
+    const executablePrefix = prefix === 'chem' ? 'chem' : prefix
+    return {
+      commandPath: [schema.name],
+      replaceRange,
+      items: schema.name.startsWith(executablePrefix)
+        ? [item([schema.name], schema.name, 'command', schema.description ?? '')]
         : []
     }
   }
 
-  const previous = pathTokens.at(-1)?.text
-  if (previous?.startsWith('-')) {
-    // A value slot: if the option it belongs to is a choice, the choices are the only right answers.
-    const awaiting = command.options.find((option) => option.opts.includes(previous) && !option.is_flag)
-    if (awaiting?.choices) {
-      return {
-        commandPath: path,
-        replaceFrom,
-        completions: awaiting.choices
-          .filter((choice) => choice.startsWith(prefix))
-          .map((choice) => ({ value: choice, kind: 'choice' as const, detail: awaiting.help ?? '' }))
-      }
+  if (state.pending) {
+    return {
+      commandPath: state.path,
+      replaceRange,
+      items: valueItems(state, state.pending.option, prefix, current, dynamic)
     }
-    if (awaiting) return { commandPath: path, replaceFrom, completions: [] }
   }
 
-  const completions = prefix.startsWith('-')
-    ? optionCompletions(command, prefix)
-    : [...subcommandCompletions(command, prefix), ...(prefix === '' ? optionCompletions(command, '-') : [])]
+  if (current) {
+    const inline = optionAt(state.command, current.text)
+    if (inline?.inlineValue !== undefined && !inline.option.is_flag) {
+      const valueStart = current.start + (inline.valueStart ?? 0)
+      replaceRange = { start: valueStart, end: clamped }
+      return {
+        commandPath: state.path,
+        replaceRange,
+        items: valueItems(state, inline.option, inline.inlineValue, current, dynamic)
+      }
+    }
+  }
 
-  return { commandPath: path, replaceFrom, completions }
-}
+  const optionItems = state.command.options.flatMap((option) => {
+    if (!option.multiple && state.consumedOptions.has(option.name)) return []
+    return option.opts
+      .filter((flag) => flag.startsWith(prefix || '-'))
+      .map((flag) => item(state.path, flag, 'option', typeDetail(option)))
+  })
+  const commandItems = Object.values(state.command.subcommands)
+    .filter((command) => command.name.startsWith(prefix))
+    .map((command) => item(state.path, command.name, 'command', command.description ?? ''))
 
-/**
- * What a token means at the point it appears — the answer to "what does `-m` mean here".
- *
- * Returns `null` when the token is not an option of the node it lands on, which is itself the useful
- * answer: the researcher is looking at a flag that does not exist at this level.
- */
-export function explainToken(schema: CliCommand, line: string, cursor: number): Completion | null {
-  const tokens = tokenize(line)
-  const token = tokens.find(
-    (candidate) => cursor >= candidate.start && cursor <= candidate.start + candidate.text.length
-  )
-  if (!token?.text.startsWith('-')) return null
-  const before = tokens.slice(0, tokens.indexOf(token))
-  const { command } = resolveCommandPath(schema, before)
-  const option = command.options.find((candidate) => candidate.opts.includes(token.text))
-  if (!option) return null
-  const long = longForm(option)
   return {
-    value: token.text,
-    kind: 'option',
-    detail: option.help ?? '',
-    ...(long && long !== token.text ? { expandsTo: long } : {})
+    commandPath: state.path,
+    replaceRange,
+    items: prefix.startsWith('-') ? optionItems : [...commandItems, ...(prefix === '' ? optionItems : [])]
   }
 }

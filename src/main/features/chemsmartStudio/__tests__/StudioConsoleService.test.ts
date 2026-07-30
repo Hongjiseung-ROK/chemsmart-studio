@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
+import { createHash } from 'node:crypto'
 
 import { BaseService } from '@main/core/lifecycle'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   appGetPath: vi.fn(),
   broadcast: vi.fn(),
+  readdir: vi.fn(),
   readFile: vi.fn(),
   spawn: vi.fn(),
   terminate: vi.fn()
@@ -21,7 +23,7 @@ vi.mock('@application', () => ({
     getPath: mocks.appGetPath
   }
 }))
-vi.mock('node:fs/promises', () => ({ readFile: mocks.readFile }))
+vi.mock('node:fs/promises', () => ({ readFile: mocks.readFile, readdir: mocks.readdir }))
 vi.mock('@main/utils/processRunner', () => ({ crossPlatformSpawn: mocks.spawn }))
 vi.mock('../OwnedProcessTree', () => ({
   OwnedProcessTree: class {
@@ -53,6 +55,7 @@ describe('StudioConsoleService', () => {
     mocks.spawn.mockReturnValue(child)
     mocks.terminate.mockResolvedValue(undefined)
     mocks.readFile.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }))
+    mocks.readdir.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }))
     mocks.appGetPath.mockImplementation((key: string, file?: string) => (file ? `/runtime/${file}` : `/paths/${key}`))
   })
 
@@ -199,19 +202,27 @@ describe('StudioConsoleService', () => {
 
     await expect(service.complete('chemsmart run ', 14)).resolves.toEqual({
       commandPath: [],
-      replaceFrom: 14,
-      completions: []
+      replaceRange: { start: 14, end: 14 },
+      items: []
     })
   })
 
   it('resolves completions from the dumped schema', async () => {
+    const body = {
+      description: 'ChemSmart command line.',
+      name: 'chemsmart',
+      options: [],
+      subcommands: {
+        run: { description: 'Run a job locally.', name: 'run', options: [], subcommands: {} }
+      }
+    }
+    const schemaHash = createHash('sha256').update(JSON.stringify(body)).digest('hex')
     mocks.readFile.mockResolvedValue(
       JSON.stringify({
-        name: 'chemsmart',
-        description: 'ChemSmart command line.',
-        options: [],
-        subcommands: {
-          run: { name: 'run', description: 'Run a job locally.', options: [], subcommands: {} }
+        ...body,
+        _meta: {
+          chemsmart_commit: 'c1b6bf8b95539451bae4ba57c0c04762c7ba38ab',
+          schema_hash: schemaHash
         }
       })
     )
@@ -219,13 +230,23 @@ describe('StudioConsoleService', () => {
 
     const result = await service.complete('chemsmart r', 11)
 
-    expect(result.completions).toEqual([{ value: 'run', kind: 'subcommand', detail: 'Run a job locally.' }])
+    expect(mocks.spawn).not.toHaveBeenCalled()
+    expect(result.items).toEqual([
+      {
+        id: 'chemsmart:command:run',
+        label: 'run',
+        insertText: 'run',
+        kind: 'command',
+        detail: 'Run a job locally.',
+        appendSpace: true
+      }
+    ])
   })
 
   it('treats an unreadable schema dump as no completions rather than failing the console', async () => {
     mocks.readFile.mockResolvedValue('{"not":"a command tree"}')
     const service = new StudioConsoleService()
 
-    await expect(service.complete('chemsmart ', 10)).resolves.toMatchObject({ completions: [] })
+    await expect(service.complete('chemsmart ', 10)).resolves.toMatchObject({ items: [] })
   })
 })

@@ -42,7 +42,7 @@ describe('CommandConsole', () => {
     cacheMocks.history = []
     ipcMocks.request.mockImplementation(async (route: string) => {
       if (route === 'chemsmart_studio.console.complete') {
-        return { commandPath: ['chemsmart'], replaceFrom: 0, completions: [] }
+        return { commandPath: ['chemsmart'], replaceRange: { start: 0, end: 0 }, items: [] }
       }
       if (route === 'chemsmart_studio.console.run') return { runId: RUN_ID }
       if (route === 'chemsmart_studio.console.cancel') return { cancelled: true }
@@ -113,9 +113,16 @@ describe('CommandConsole', () => {
       if (route === 'chemsmart_studio.console.complete') {
         return {
           commandPath: ['chemsmart', 'run', 'gaussian'],
-          replaceFrom: 23,
-          completions: [
-            { value: '-m', kind: 'option', detail: 'Multiplicity of the molecule.', expandsTo: '--multiplicity' }
+          replaceRange: { start: 23, end: 25 },
+          items: [
+            {
+              id: 'multiplicity',
+              label: '--multiplicity',
+              insertText: '--multiplicity',
+              kind: 'option',
+              detail: 'Multiplicity of the molecule.',
+              appendSpace: true
+            }
           ]
         }
       }
@@ -136,8 +143,17 @@ describe('CommandConsole', () => {
       if (route === 'chemsmart_studio.console.complete') {
         return {
           commandPath: ['chemsmart', 'run'],
-          replaceFrom: 14,
-          completions: [{ value: 'gaussian', kind: 'subcommand', detail: 'Run a Gaussian calculation.' }]
+          replaceRange: { start: 14, end: 15 },
+          items: [
+            {
+              id: 'gaussian',
+              label: 'gaussian',
+              insertText: 'gaussian',
+              kind: 'command',
+              detail: 'Run a Gaussian calculation.',
+              appendSpace: true
+            }
+          ]
         }
       }
       throw new Error(`Unexpected route: ${route}`)
@@ -149,6 +165,35 @@ describe('CommandConsole', () => {
     await user.click(await screen.findByRole('button', { name: /gaussian/ }))
 
     expect(input).toHaveValue('chemsmart run gaussian ')
+  })
+
+  it('navigates candidates with arrows and applies the selected item with Tab', async () => {
+    const user = userEvent.setup()
+    ipcMocks.request.mockImplementation(async (route: string) => {
+      if (route === 'chemsmart_studio.console.complete') {
+        return {
+          commandPath: ['chemsmart', 'run', 'xtb'],
+          replaceRange: { start: 18, end: 18 },
+          items: ['sp', 'opt', 'hess'].map((label) => ({
+            id: label,
+            label,
+            insertText: label,
+            kind: 'command',
+            detail: `${label} command`,
+            appendSpace: true
+          }))
+        }
+      }
+      throw new Error(`Unexpected route: ${route}`)
+    })
+    render(<CommandConsole />)
+
+    const input = screen.getByTestId('console-input')
+    await user.type(input, 'chemsmart run xtb ')
+    await screen.findByTestId('console-completions')
+    await user.keyboard('{ArrowDown}{Tab}')
+
+    expect(input).toHaveValue('chemsmart run xtb opt ')
   })
 
   it('recalls a previous command with the up arrow', async () => {

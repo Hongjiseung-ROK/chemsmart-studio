@@ -88,6 +88,8 @@ extraResources:
     to: "chemsmart-studio/bridge/.venv"
   - from: "build/chemsmart-bridge/runtime-manifest.json"
     to: "chemsmart-studio/bridge/runtime-manifest.json"
+  - from: "build/chemsmart-cli/cli-schema.json"
+    to: "chemsmart-studio/completion/cli-schema.json"
   - from: "services/chemsmart_bridge/src"
     to: "chemsmart-studio/bridge/src"
   - from: "services/chemsmart_bridge/pyproject.toml"

@@ -36,6 +36,7 @@ import {
   type StudioAgentCapabilityManifest,
   type StudioAgentCapabilityManifestRequest,
   type StudioAgentComposerIntent,
+  type StudioAgentActionCue,
   type StudioAgentLiveEvent,
   type StudioAgentTraceEvent,
   type StudioAgentTurnEvent,
@@ -528,15 +529,26 @@ export const chemsmartStudioRequestSchemas = {
     input: z.strictObject({ line: z.string().max(8192), cursor: z.number().int().nonnegative().max(8192) }),
     output: z.strictObject({
       commandPath: z.array(z.string().min(1)),
-      replaceFrom: z.number().int().nonnegative(),
-      completions: z.array(
+      replaceRange: z.strictObject({
+        start: z.number().int().nonnegative(),
+        end: z.number().int().nonnegative()
+      }),
+      items: z.array(
         z.strictObject({
-          value: z.string().min(1),
-          kind: z.enum(['subcommand', 'option', 'choice']),
+          id: z.string().min(1),
+          label: z.string().min(1),
+          insertText: z.string().min(1),
+          kind: z.enum(['command', 'option', 'choice', 'argument', 'file', 'project', 'server']),
           detail: z.string(),
-          expandsTo: z.string().min(1).optional()
+          appendSpace: z.boolean()
         })
-      )
+      ),
+      diagnostic: z
+        .strictObject({
+          code: z.enum(['unsupported_shell_syntax', 'invalid_prefix', 'value_required']),
+          message: z.string().min(1)
+        })
+        .optional()
     })
   }),
   /**
@@ -595,6 +607,7 @@ export type ChemSmartStudioEventSchemas = {
   'chemsmart_studio.agent.trace': StudioAgentTraceEvent
   'chemsmart_studio.agent.turn_event': StudioAgentTurnEvent
   'chemsmart_studio.agent.live_event': ChemSmartStudioAgentLiveEvent
+  'chemsmart_studio.agent.action_cue': StudioAgentActionCue
   'chemsmart_studio.control.changed': {
     sessionId: string
     snapshotRevision: number

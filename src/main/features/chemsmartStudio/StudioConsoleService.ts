@@ -1,14 +1,15 @@
-import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { application } from '@application'
+import { CHEMSMART_COMMIT } from '@chemsmart/studio-protocol'
 import { loggerService } from '@logger'
 import { BaseService, type Disposable, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { crossPlatformSpawn } from '@main/utils/processRunner'
 import type { ChemSmartStudioConsoleCompletions, ChemSmartStudioConsoleRun } from '@shared/ipc/schemas/chemsmartStudio'
 
-import { type CliSchemaDocument, resolveCompletions } from './cliCompletion'
+import { type CliSchemaDocument, type DynamicCompletionCandidate, resolveCompletions } from './cliCompletion'
 import { OwnedProcessTree } from './OwnedProcessTree'
 
 const logger = loggerService.withContext('StudioConsoleService')
@@ -25,15 +26,47 @@ const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 const TERMINATE_GRACEFUL_MS = 5_000
 const TERMINATE_FORCED_MS = 5_000
 const MAX_COMMAND_LENGTH = 8_192
-/** Written by `chemsmart agent _dump-cli-schema --out <path>`. */
-const CLI_SCHEMA_FILE = 'cli-schema.json'
+const MAX_CONTEXT_ENTRIES = 256
+const COMPLETABLE_EXTENSIONS = new Set(['.xyz', '.cjson', '.sdf', '.gjf', '.com', '.inp', '.out', '.log', '.yaml'])
 
 function isCliCommand(value: unknown): value is CliSchemaDocument {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Partial<CliSchemaDocument>
   return (
-    typeof candidate.name === 'string' && Array.isArray(candidate.options) && typeof candidate.subcommands === 'object'
+    typeof candidate.name === 'string' &&
+    Array.isArray(candidate.options) &&
+    typeof candidate.subcommands === 'object' &&
+    candidate._meta?.chemsmart_commit === CHEMSMART_COMMIT &&
+    typeof candidate._meta.schema_hash === 'string'
   )
+}
+
+function stableJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJson)
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, stableJson(entry)])
+    )
+  }
+  return value
+}
+
+function cliSchemaHash(schema: CliSchemaDocument): string {
+  const body: Record<string, unknown> = { ...schema }
+  delete body._meta
+  return createHash('sha256')
+    .update(JSON.stringify(stableJson(body)))
+    .digest('hex')
+}
+
+function isManifestFresh(schema: CliSchemaDocument): boolean {
+  return schema._meta?.schema_hash === cliSchemaHash(schema)
+}
+
+function safeCandidateName(name: string): boolean {
+  return name.length > 0 && name.length <= 128 && !name.includes('/') && !name.includes('\\')
 }
 
 interface ActiveRun {
@@ -127,17 +160,17 @@ export class StudioConsoleService extends BaseService {
    */
   async complete(line: string, cursor: number): Promise<ChemSmartStudioConsoleCompletions> {
     const schema = await this.loadCliSchema()
-    if (!schema) return { commandPath: [], replaceFrom: cursor, completions: [] }
-    return resolveCompletions(schema, line, cursor)
+    if (!schema) return { commandPath: [], replaceRange: { start: cursor, end: cursor }, items: [] }
+    return resolveCompletions(schema, line, cursor, await this.discoverCompletionCandidates())
   }
 
   private async loadCliSchema(): Promise<CliSchemaDocument | null> {
     if (this.cliSchema !== undefined) return this.cliSchema
-    const schemaPath = application.getPath('feature.chemsmart_studio.runtime', CLI_SCHEMA_FILE)
+    const schemaPath = application.getPath('feature.chemsmart_studio.cli_schema.file')
     try {
       const raw = await readFile(schemaPath, 'utf8')
       const parsed: unknown = JSON.parse(raw)
-      this.cliSchema = isCliCommand(parsed) ? parsed : null
+      this.cliSchema = isCliCommand(parsed) && isManifestFresh(parsed) ? parsed : null
       if (!this.cliSchema) logger.warn('The chemsmart CLI schema dump is not a command tree')
     } catch (error) {
       // Absent is the ordinary case before the first dump, so this is not an error state.
@@ -147,6 +180,87 @@ export class StudioConsoleService extends BaseService {
       this.cliSchema = null
     }
     return this.cliSchema
+  }
+
+  /**
+   * Human-only context from Studio-owned roots. Directory entries are never passed to the Agent,
+   * and symlinks are ignored so completion cannot become a path traversal oracle.
+   */
+  private async discoverCompletionCandidates(): Promise<DynamicCompletionCandidate[]> {
+    const projectsRoot = application.getPath('feature.chemsmart_studio.projects')
+    const workspace = application.getPath('feature.chemsmart_studio.workspace')
+    const candidates: DynamicCompletionCandidate[] = []
+
+    const addFiles = async (directory: string, relativeRoot: string, depth: number): Promise<void> => {
+      if (depth < 0 || candidates.length >= MAX_CONTEXT_ENTRIES) return
+      let entries
+      try {
+        entries = await readdir(directory, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+        if (candidates.length >= MAX_CONTEXT_ENTRIES || entry.isSymbolicLink() || !safeCandidateName(entry.name))
+          continue
+        const absolute = path.join(directory, entry.name)
+        if (entry.isDirectory()) {
+          await addFiles(absolute, relativeRoot, depth - 1)
+          continue
+        }
+        if (!entry.isFile() || !COMPLETABLE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue
+        const relative = path.relative(relativeRoot, absolute)
+        if (relative.startsWith('..') || path.isAbsolute(relative)) continue
+        candidates.push({
+          label: relative,
+          insertText: relative,
+          kind: 'file',
+          detail: 'Studio project artifact',
+          optionNames: ['filename', 'file', 'input', 'structure', 'geometry']
+        })
+      }
+    }
+
+    await addFiles(projectsRoot, projectsRoot, 3)
+    for (const program of ['gaussian', 'orca', 'xtb'] as const) {
+      const directory = path.join(workspace, '.chemsmart', program)
+      let entries
+      try {
+        entries = await readdir(directory, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      for (const entry of entries) {
+        if (!entry.isFile() || entry.isSymbolicLink() || path.extname(entry.name) !== '.yaml') continue
+        const label = path.basename(entry.name, '.yaml')
+        if (!safeCandidateName(label)) continue
+        candidates.push({
+          label,
+          insertText: label,
+          kind: 'project',
+          detail: `${program.toUpperCase()} project`,
+          optionNames: ['project']
+        })
+      }
+    }
+    const serverDirectory = path.join(workspace, '.chemsmart', 'server')
+    try {
+      const entries = await readdir(serverDirectory, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isFile() || entry.isSymbolicLink() || path.extname(entry.name) !== '.yaml') continue
+        const label = path.basename(entry.name, '.yaml')
+        if (!safeCandidateName(label)) continue
+        candidates.push({
+          label,
+          insertText: label,
+          kind: 'server',
+          detail: 'Configured server',
+          optionNames: ['server']
+        })
+      }
+    } catch {
+      // No configured servers is an ordinary state.
+    }
+    return candidates.slice(0, MAX_CONTEXT_ENTRIES)
   }
 
   /** Cancels the running command. An unknown or already-finished run id is a no-op, not an error. */

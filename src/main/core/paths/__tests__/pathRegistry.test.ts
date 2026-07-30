@@ -181,6 +181,10 @@ describe('pathRegistry.shouldAutoEnsure', () => {
       expect(shouldAutoEnsure('app.extra_resources')).toBe(false)
     })
 
+    it('does not create the packaged ChemSmart completion manifest path', () => {
+      expect(shouldAutoEnsure('feature.chemsmart_studio.cli_schema.file')).toBe(false)
+    })
+
     it('returns false for app.root.resources (bundled asar-internal resources root)', () => {
       expect(shouldAutoEnsure('app.root.resources')).toBe(false)
     })

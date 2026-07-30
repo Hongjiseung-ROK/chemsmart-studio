@@ -154,6 +154,9 @@ export function buildPathRegistry() {
     'feature.chemsmart_studio.agent_threads': path.join(appUserDataData, 'ChemSmartStudio', 'AgentThreads'),
     'feature.chemsmart_studio.calculations': path.join(appUserDataData, 'ChemSmartStudio', 'Calculations'),
     'feature.chemsmart_studio.runtime': chemsmartStudioRuntime,
+    'feature.chemsmart_studio.cli_schema.file': app.isPackaged
+      ? path.join(appExtraResources, 'chemsmart-studio', 'completion', 'cli-schema.json')
+      : path.join(app.getAppPath(), 'build', 'chemsmart-cli', 'cli-schema.json'),
     'feature.chemsmart_studio.bridge.project': app.isPackaged
       ? path.join(appExtraResources, 'chemsmart-studio', 'bridge')
       : path.join(app.getAppPath(), 'services', 'chemsmart_bridge'),
@@ -255,6 +258,7 @@ const NO_ENSURE = [
   'feature.provider_registry.data',
   'feature.agents.builtin',
   'feature.agents.skills.builtin',
+  'feature.chemsmart_studio.cli_schema.file',
   'feature.chemsmart_studio.bridge.project',
   'feature.chemsmart_studio.bridge.python_file'
 ] as const satisfies readonly NoEnsureEntry[]

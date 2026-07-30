@@ -198,6 +198,9 @@ exports.default = async function (context) {
   require('./download-binaries').verifyBundledBinaries(platform, arch)
   if (platform === 'darwin' && arch === 'arm64') {
     execFileSync(process.execPath, [path.join(__dirname, 'prepare-chemsmart-bridge.js')], { stdio: 'inherit' })
+    execFileSync(process.execPath, [path.join(__dirname, 'prepare-chemsmart-cli-schema.js'), '--portable'], {
+      stdio: 'inherit'
+    })
   }
 
   const downloadPackages = async () => {
