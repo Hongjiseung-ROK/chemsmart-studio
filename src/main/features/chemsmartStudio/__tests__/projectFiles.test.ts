@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/
 import os from 'node:os'
 import path from 'node:path'
 
-import type { MoleculeDocument, ProjectManifest } from '@chemsmart/studio-protocol'
+import type { HistoricalProjectManifestV1, MoleculeDocument } from '@chemsmart/studio-protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { normalizeProjectPath, projectDisplayName, validateImportFile, validateProjectBundle } from '../projectFiles'
@@ -23,7 +23,7 @@ async function createProject(
   const project = path.join(root, name)
   await mkdir(path.join(project, 'receipts'), { recursive: true })
   const document = moleculeDocument()
-  const manifest: ProjectManifest = {
+  const manifest: HistoricalProjectManifestV1 = {
     schemaVersion: '1.0.0',
     protocolVersion: '1.0.0',
     documentId: document.documentId,

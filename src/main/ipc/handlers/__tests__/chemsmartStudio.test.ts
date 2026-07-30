@@ -24,8 +24,7 @@ const agent = {
   synthesizeCommand: vi.fn(),
   inspectCommand: vi.fn(),
   runTurn: vi.fn(),
-  controlTurn: vi.fn(),
-  replayStudioUi: vi.fn()
+  controlTurn: vi.fn()
 }
 const control = {
   getSnapshot: vi.fn(),
@@ -232,29 +231,13 @@ describe('chemsmartStudioHandlers', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN_SENDER' })
   })
 
-  it('binds turns and activity replay to a managed sender without exposing process lifecycle routes', async () => {
-    agent.replayStudioUi.mockResolvedValueOnce({ replayed: 2, nextSequence: 3 })
-
-    await expect(
-      chemsmartStudioHandlers['chemsmart_studio.agent.replay_studio_ui'](
-        { sessionId: 'session-1', afterSequence: 0 },
-        ctx
-      )
-    ).resolves.toEqual({ replayed: 2, nextSequence: 3 })
-    expect(agent.replayStudioUi).toHaveBeenCalledWith('session-1', 0, 'main-window')
+  it('binds turns to a managed sender without exposing process lifecycle or legacy UI replay routes', async () => {
     expect(chemsmartStudioHandlers).not.toHaveProperty('chemsmart_studio.agent.start')
     expect(chemsmartStudioHandlers).not.toHaveProperty('chemsmart_studio.agent.stop')
+    expect(chemsmartStudioHandlers).not.toHaveProperty('chemsmart_studio.agent.replay_studio_ui')
     await expect(
       chemsmartStudioHandlers['chemsmart_studio.agent.run_turn'](
         { sessionId: 'session-1', modelId: 'provider::model', request: 'Inspect.' },
-        { senderId: null }
-      )
-    ).rejects.toMatchObject({
-      code: 'FORBIDDEN_SENDER'
-    })
-    await expect(
-      chemsmartStudioHandlers['chemsmart_studio.agent.replay_studio_ui'](
-        { sessionId: 'session-1', afterSequence: 0 },
         { senderId: null }
       )
     ).rejects.toMatchObject({

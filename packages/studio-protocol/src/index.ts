@@ -1,4 +1,3 @@
-export type * from './generated'
 export type {
   HistoricalRunDisposition,
   HistoricalRunV1,
@@ -9,10 +8,9 @@ export {
   isHistoricalProjectManifestV1,
   normalizeHistoricalProjectManifest
 } from './compatibility-v1'
+export type * from './generated'
 export {
   CHEMSMART_COMMIT,
-  PROTOCOL_VERSION,
-  SCHEMA_SHA256,
   commandInspectionRuntimeSchema,
   commandSynthesisRuntimeSchema,
   controlledCalculationRuntimeSchema,
@@ -25,9 +23,11 @@ export {
   optimizationRuntimeSchema,
   optimizationTrajectoryRuntimeSchema,
   previewReceiptRuntimeSchema,
-  protocolHelloRuntimeSchema,
   projectWorkspaceRuntimeSchema,
+  PROTOCOL_VERSION,
+  protocolHelloRuntimeSchema,
   researchProjectSessionRuntimeSchema,
+  SCHEMA_SHA256,
   stagePlacementIntentRuntimeSchema,
   studioAgentActionCueRuntimeSchema,
   studioAgentLiveEventRuntimeSchema,

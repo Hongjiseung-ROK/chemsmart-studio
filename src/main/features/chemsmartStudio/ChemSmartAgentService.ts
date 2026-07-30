@@ -25,19 +25,18 @@ import {
   type ProjectWorkspaceListResult,
   type ProjectWorkspaceReadRequest,
   type ProjectWorkspaceReadResult,
-  PROTOCOL_VERSION,
   projectWorkspaceRuntimeSchema,
-  SCHEMA_SHA256,
   type ProjectWorkspaceValidateRequest,
   type ProjectWorkspaceValidateResult,
+  PROTOCOL_VERSION,
+  SCHEMA_SHA256,
   type StudioAgentAnswer,
   type StudioAgentArtifact,
   type StudioAgentComposerIntent,
   type StudioAgentReportResultInput,
   type StudioAgentTraceEvent,
   type StudioAgentTurnOutcome,
-  studioAgentWorkbenchRuntimeSchema,
-  type StudioUiEvent
+  studioAgentWorkbenchRuntimeSchema
 } from '@chemsmart/studio-protocol'
 import { modelService } from '@data/services/ModelService'
 import { loggerService } from '@logger'
@@ -69,7 +68,6 @@ import { validateImportFile } from './projectFiles'
 import { StudioAgentLiveChannel } from './StudioAgentLiveChannel'
 import { StudioAgentTraceChannel } from './StudioAgentTraceChannel'
 import { generateStudioModelResponse, type StudioModelStreamObserver } from './StudioModelAdapter'
-import { type StudioUiDelivery, StudioUiEventChannel } from './StudioUiEventChannel'
 
 const logger = loggerService.withContext('ChemSmartAgentService')
 const protocolHello = {
@@ -272,11 +270,6 @@ export class ChemSmartAgentService extends BaseService {
   private readonly agentTrace = new StudioAgentTraceChannel((event) =>
     application.get('IpcApiService').broadcast('chemsmart_studio.agent.trace', event)
   )
-  private readonly studioUiEvents = new StudioUiEventChannel(
-    (event) => application.get('IpcApiService').broadcast('chemsmart_studio.studio_ui.event', event),
-    (event) => this.applyTransientFocus(event)
-  )
-
   getStatus(): ChemSmartStudioProcessStatus {
     return this.process?.getStatus() ?? { state: 'stopped', pid: null, lastError: null }
   }
@@ -707,37 +700,6 @@ export class ChemSmartAgentService extends BaseService {
     }
   }
 
-  async replayStudioUi(
-    sessionId: string,
-    afterSequence: number,
-    senderId: WindowId,
-    restoreLiveSequence = false
-  ): Promise<{ replayed: number; nextSequence: number }> {
-    application.get('StudioControlService').claimSessionControl(sessionId, senderId)
-    return this.replayStudioUiInternal(sessionId, afterSequence, restoreLiveSequence)
-  }
-
-  private async replayStudioUiInternal(
-    sessionId: string,
-    afterSequence: number,
-    restoreLiveSequence = false
-  ): Promise<{ replayed: number; nextSequence: number }> {
-    if (!this.process || this.process.getStatus().state !== 'running') await this.startAgent()
-    const replayId = `replay-${randomUUID()}`
-    this.studioUiEvents.startReplay(replayId, sessionId, afterSequence, restoreLiveSequence)
-    try {
-      const result = await this.process!.request('studio_ui.replay', {
-        sessionId,
-        replayId,
-        afterSequence
-      })
-      return await this.studioUiEvents.finishReplay(replayId, result)
-    } catch (error) {
-      this.studioUiEvents.abortReplay(replayId)
-      throw error
-    }
-  }
-
   private async handleSidecarRequest(method: string, params: unknown): Promise<unknown> {
     switch (method) {
       case 'model.generate':
@@ -773,10 +735,6 @@ export class ChemSmartAgentService extends BaseService {
         }
         return event
       }
-      case 'studio_ui.event':
-        return this.studioUiEvents.enqueueLive(this.authorizedCallbackPayload(params, 'agent_turn'))
-      case 'studio_ui.replay_event':
-        return this.studioUiEvents.enqueueReplay(params)
       default:
         throw new JsonRpcFault(-32601, `Method not found: ${method}`)
     }
@@ -923,9 +881,7 @@ export class ChemSmartAgentService extends BaseService {
     ) {
       throw new JsonRpcFault(-32602, 'Command preflight does not match a trusted non-executing synthesis')
     }
-    await application
-      .get('CalculationRuntimeService')
-      .registerCommandPreflight(value.sessionId as string, synthesis, artifact)
+    await application.get('CalculationRuntimeService').registerCommandPreflight(value.sessionId, synthesis, artifact)
     return { accepted: true }
   }
 
@@ -1229,36 +1185,6 @@ export class ChemSmartAgentService extends BaseService {
     const request = params as ControlledCalculationHostRequest
     application.get('StudioControlService').recordAgentToolCompletion(request.sessionId, request.request.tool)
     return result
-  }
-
-  private async applyTransientFocus(event: StudioUiEvent): Promise<StudioUiDelivery> {
-    try {
-      await application.get('MoleculeWorkspaceService').applyTransientFocus(event)
-      return { accepted: true, eventId: event.eventId, sequence: event.sequence }
-    } catch (error) {
-      const candidate = error as { code?: unknown; message?: unknown; data?: { studioCode?: unknown } }
-      const code = candidate.data?.studioCode
-      if (code === 'REVISION_CONFLICT') {
-        return {
-          accepted: false,
-          eventId: event.eventId,
-          sequence: event.sequence,
-          error: {
-            code: 'REVISION_CONFLICT',
-            message: typeof candidate.message === 'string' ? candidate.message : 'Molecule focus revision is stale'
-          }
-        }
-      }
-      return {
-        accepted: false,
-        eventId: event.eventId,
-        sequence: event.sequence,
-        error: {
-          code: candidate.code === -32002 ? 'RPC_TIMEOUT' : 'EDITOR_UNAVAILABLE',
-          message: typeof candidate.message === 'string' ? candidate.message : 'Molecule editor is unavailable'
-        }
-      }
-    }
   }
 
   private objectParams(params: unknown): Record<string, unknown> {

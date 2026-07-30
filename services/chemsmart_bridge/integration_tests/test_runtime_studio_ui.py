@@ -27,6 +27,8 @@ from chemsmart_studio_bridge.runtime import (
     studio_permission_policy,
 )
 
+OPERATION_ID = "00000000-0000-4000-8000-000000000001"
+
 
 class RecordingPeer:
     def __init__(
@@ -153,6 +155,28 @@ def final_response(message: str) -> dict[str, Any]:
         "usage": {"prompt_tokens": 8, "completion_tokens": 4},
     }
 
+def studio_result_response(summary: str) -> dict[str, Any]:
+    return tool_call_response(
+        "report_studio_result",
+        {
+            "answer": {
+                "answerId": "answer-fixture",
+                "heading": "Studio result",
+                "summary": summary,
+                "sections": [
+                    {
+                        "kind": "finding",
+                        "heading": "Finding",
+                        "summary": summary,
+                    }
+                ],
+                "extensions": {},
+            },
+            "artifacts": [],
+        },
+        call_id="call-report-result",
+    )
+
 
 class StudioUiRuntimeIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -163,8 +187,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         self.runtime.bind_peer(self.peer)  # type: ignore[arg-type]
 
     def registry(self):
-        emitter = self.runtime._studio_ui_emitter("session-1")
-        return self.runtime._studio_registry("session-1", emitter)
+        return self.runtime._studio_registry("session-1")
 
     @staticmethod
     def approval_request(
@@ -388,10 +411,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             Path(self.temporary_directory.name) / "wrong-response"
         )
         runtime.bind_peer(WrongResponsePeer())  # type: ignore[arg-type]
-        registry = runtime._studio_registry(
-            "session-wrong-response",
-            runtime._studio_ui_emitter("session-wrong-response"),
-        )
+        registry = runtime._studio_registry("session-wrong-response")
 
         result = registry.call("get_studio_context", {})
 
@@ -514,25 +534,26 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
 
     def test_structured_result_replaces_model_authored_ui_events(self) -> None:
         registry = self.registry()
-        result = registry.call(
-            "report_studio_result",
-            {
-                "answer": {
-                    "answerId": "answer-1",
-                    "heading": "Molecule inspection",
-                    "summary": "The visible molecule is ready for review.",
-                    "sections": [
-                        {
-                            "kind": "finding",
-                            "heading": "Finding",
-                            "summary": "The molecule has a valid immutable binding.",
-                        }
-                    ],
-                    "extensions": {},
+        with self.runtime._operation_scope("session-1", OPERATION_ID):
+            result = registry.call(
+                "report_studio_result",
+                {
+                    "answer": {
+                        "answerId": "answer-1",
+                        "heading": "Molecule inspection",
+                        "summary": "The visible molecule is ready for review.",
+                        "sections": [
+                            {
+                                "kind": "finding",
+                                "heading": "Finding",
+                                "summary": "The molecule has a valid immutable binding.",
+                            }
+                        ],
+                        "extensions": {},
+                    },
+                    "artifacts": [],
                 },
-                "artifacts": [],
-            },
-        )
+            )
 
         self.assertTrue(result["accepted"])
         methods = [method for method, _params in self.peer.requests]
@@ -555,10 +576,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 self.assertEqual(
                     runtime._approve(
                         "session-approval-fault",
-                        runtime._studio_registry(
-                            "session-approval-fault",
-                            runtime._studio_ui_emitter("session-approval-fault"),
-                        ),
+                        runtime._studio_registry("session-approval-fault"),
                         self.approval_request(),
                     ),
                     ApprovalDecision.DENY,
@@ -572,10 +590,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             Path(self.temporary_directory.name) / "bound-approval"
         )
         runtime.bind_peer(peer)  # type: ignore[arg-type]
-        registry = runtime._studio_registry(
-            "session-bound-approval",
-            runtime._studio_ui_emitter("session-bound-approval"),
-        )
+        registry = runtime._studio_registry("session-bound-approval")
         arguments = {
             "command": "chemsmart run gaussian sp water",
             "test": True,
@@ -647,7 +662,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 peer = RecordingPeer(
                     responses=[
                         tool_call_response(tool, arguments),
-                        final_response("The risky action was denied."),
+                        studio_result_response("The invalid action was not performed."),
                     ]
                 )
                 runtime = StudioAgentRuntime(
@@ -660,6 +675,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                     {
                         "sessionId": f"session-invalid-approval-{index}",
                         "modelId": "provider::model",
+                        "operationId": OPERATION_ID,
                         "request": "Attempt a risky action.",
                     },
                 )
@@ -709,12 +725,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 Path(self.temporary_directory.name) / "denied-generic-execution"
             )
             runtime.bind_peer(peer)  # type: ignore[arg-type]
-            registry = runtime._studio_registry(
-                "session-denied-generic-execution",
-                runtime._studio_ui_emitter(
-                    "session-denied-generic-execution"
-                ),
-            )
+            registry = runtime._studio_registry("session-denied-generic-execution")
             session = AgentSession(
                 provider=provider,
                 registry=registry,
@@ -757,7 +768,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                         "expected_revision": 7,
                     },
                 ),
-                final_response("The approved optimization was queued."),
+                studio_result_response("The unsupported optimization was not started."),
             ],
             approval_decisions=["allow_once"],
         )
@@ -771,6 +782,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "sessionId": "session-optimization",
                 "modelId": "provider::model",
+                "operationId": OPERATION_ID,
                 "request": "Start the optimization.",
             },
         )
@@ -817,10 +829,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             Path(self.temporary_directory.name) / "one-shot-tools"
         )
         runtime.bind_peer(peer)  # type: ignore[arg-type]
-        registry = runtime._studio_registry(
-            "session-one-shot-tools",
-            runtime._studio_ui_emitter("session-one-shot-tools"),
-        )
+        registry = runtime._studio_registry("session-one-shot-tools")
 
         for tool, arguments in arguments_by_tool.items():
             with self.subTest(tool=tool):
@@ -840,7 +849,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                     "commit_molecule_preview",
                     {"preview_id": "preview-1", "expected_revision": 0},
                 ),
-                final_response("The preview was added to the draft."),
+                studio_result_response("The preview was added to the draft."),
             ],
         )
         runtime = StudioAgentRuntime(
@@ -853,6 +862,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "sessionId": "session-draft-commit",
                 "modelId": "provider::model",
+                "operationId": OPERATION_ID,
                 "request": "Commit the preview.",
                 "capability": "act",
             },
@@ -883,7 +893,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                     {"preview_id": "preview-2", "expected_revision": 1},
                     "call-commit-2",
                 ),
-                final_response("Both previews were added to the draft."),
+                studio_result_response("Both previews were added to the draft."),
             ],
         )
         runtime = StudioAgentRuntime(
@@ -896,6 +906,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "sessionId": "session-draft-commits",
                 "modelId": "provider::model",
+                "operationId": OPERATION_ID,
                 "request": "Commit both previews.",
                 "capability": "act",
             },
@@ -906,7 +917,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(methods.count("molecule.request"), 2)
         self.assertEqual(
             [outcome["status"] for outcome in result["tool_outcomes"]],
-            ["ok", "ok"],
+            ["ok", "ok", "ok"],
         )
 
     def test_studio_runtime_runs_sidecar_turn_through_model_callback(self) -> None:
@@ -941,6 +952,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "sessionId": "session-sidecar",
                 "modelId": "provider::model",
+                "operationId": OPERATION_ID,
                 "request": "Run it now and report status.",
             },
         )
@@ -1006,7 +1018,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "sessionId": "session-private-reasoning",
                 "modelId": "provider::model",
-                "operationId": "00000000-0000-4000-8000-000000000001",
+                "operationId": OPERATION_ID,
                 "request": "Inspect without exposing private reasoning.",
             },
         )
@@ -1029,7 +1041,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
         peer = RecordingPeer(
             responses=[
                 tool_call_response("get_studio_context", {}),
-                final_response("The committed ethanol context is current."),
+                studio_result_response("The committed ethanol context is current."),
             ]
         )
         runtime = StudioAgentRuntime(
@@ -1042,6 +1054,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "sessionId": "session-controlled-context",
                 "modelId": "provider::model",
+                "operationId": OPERATION_ID,
                 "request": "Inspect the current Studio context.",
             },
         )
@@ -1058,6 +1071,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 "model.generate",
                 "calculation.request",
                 "model.generate",
+                "agent.report_result",
             ],
         )
         calculation_request = next(
@@ -1070,6 +1084,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "type": "controlled_calculation_host_request",
                 "sessionId": "session-controlled-context",
+                "operationId": OPERATION_ID,
                 "request": {
                     "type": "studio_agent_tool_request",
                     "tool": "get_studio_context",
@@ -1115,7 +1130,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                     "start_prepared_optimization",
                     arguments,
                 ),
-                final_response("The approved deterministic run was reserved."),
+                studio_result_response("The approved deterministic run was reserved."),
             ],
             approval_decisions=["allow_session"],
             calculation_responses=[reservation],
@@ -1130,6 +1145,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
             {
                 "sessionId": "session-controlled-start",
                 "modelId": "provider::model",
+                "operationId": OPERATION_ID,
                 "request": "Start the validated controlled plan.",
                 "capability": "act",
             },
@@ -1146,6 +1162,7 @@ class StudioUiRuntimeIntegrationTest(unittest.TestCase):
                 "approval.request",
                 "calculation.request",
                 "model.generate",
+                "agent.report_result",
             ],
         )
         self.assertFalse(runtime._studio_approval_grants)

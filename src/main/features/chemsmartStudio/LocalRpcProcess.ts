@@ -4,8 +4,8 @@ import { chmod, lstat, mkdir, rm } from 'node:fs/promises'
 import net from 'node:net'
 import path from 'node:path'
 
-import { loggerService } from '@logger'
 import type { StudioProtocolHello } from '@chemsmart/studio-protocol'
+import { loggerService } from '@logger'
 import type { ChemSmartStudioProcessStatus } from '@shared/ipc/schemas/chemsmartStudio'
 
 import { JsonRpcPeer } from './JsonRpcPeer'

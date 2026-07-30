@@ -19,9 +19,7 @@ import {
   type StageGestureIntent,
   type StudioDraftEntry,
   type StudioDraftSnapshot,
-  type StudioMoleculeRequest,
-  type StudioUiEvent,
-  studioUiEventRuntimeSchema
+  type StudioMoleculeRequest
 } from '@chemsmart/studio-protocol'
 import { BaseService, DependsOn, Emitter, type Event, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { t } from '@main/i18n'
@@ -48,19 +46,6 @@ type MoleculeRequestParams<Method extends StudioMoleculeRequest['method']> = Ext
 
 /** Re-exported from the authority that now produces it, so existing importers keep working. */
 export type { MoleculeDiscardReceipt } from './MoleculeDocumentService'
-
-const fromRuntimeSchema = (schema: object): z.ZodType =>
-  z.fromJSONSchema(schema as Parameters<typeof z.fromJSONSchema>[0])
-
-const withoutJsonSchemaConditionals = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(withoutJsonSchemaConditionals)
-  if (value === null || typeof value !== 'object') return value
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => key !== 'if' && key !== 'then' && key !== 'else')
-      .map(([key, child]) => [key, withoutJsonSchemaConditionals(child)])
-  )
-}
 
 const runtimeValidator = new CfWorkerJsonSchemaValidator({ draft: '2020-12', shortcircuit: false })
 const runtimeRootSchema = <Output>(runtimeSchema: object): z.ZodType<Output> => {
@@ -114,20 +99,12 @@ const replayFrameResponseSchema = replayDefinitionSchema<OptimizationReplayFrame
   optimizationReplayRuntimeSchema,
   'frameResponse'
 )
-const studioUiEventSchema = fromRuntimeSchema(withoutJsonSchemaConditionals(studioUiEventRuntimeSchema) as object)
-
 const stableIdSchema = z
   .string()
   .min(1)
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/)
 const revisionSchema = z.number().int().nonnegative()
-const transientFocusResponseSchema = z.strictObject({
-  accepted: z.literal(true),
-  documentId: stableIdSchema,
-  revision: revisionSchema,
-  transient: z.literal(true)
-})
 const selectionParamsSchema = z.strictObject({
   documentId: stableIdSchema,
   expectedRevision: revisionSchema,
@@ -333,37 +310,6 @@ export class MoleculeWorkspaceService extends BaseService {
       const project = await this.projects.copyProject(source.projectPath, target.filePath)
       return this.switchProject(project, true)
     })
-  }
-
-  async applyTransientFocus(event: StudioUiEvent): Promise<unknown> {
-    const verifiedEvent = this.parseBoundary<StudioUiEvent>(studioUiEventSchema, event, 'Studio UI event')
-    if (
-      verifiedEvent.kind !== 'molecule_focus' ||
-      verifiedEvent.payload.documentId === undefined ||
-      verifiedEvent.payload.revision === undefined ||
-      ((verifiedEvent.payload.atomIds?.length ?? 0) === 0 && (verifiedEvent.payload.bondIds?.length ?? 0) === 0)
-    ) {
-      this.throwSchemaInvalid('Studio UI molecule focus event')
-    }
-    const params = {
-      documentId: verifiedEvent.payload.documentId,
-      expectedRevision: verifiedEvent.payload.revision,
-      atomIds: verifiedEvent.payload.atomIds ?? [],
-      bondIds: verifiedEvent.payload.bondIds ?? []
-    }
-    if (params.atomIds.length > 0) {
-      this.documents.setSelection(params.documentId, params.expectedRevision, params.atomIds)
-    }
-    return this.parseBoundary(
-      transientFocusResponseSchema,
-      {
-        accepted: true,
-        documentId: params.documentId,
-        revision: params.expectedRevision,
-        transient: true
-      },
-      'transient focus response'
-    )
   }
 
   async getMoleculeDocument(): Promise<MoleculeDocument> {

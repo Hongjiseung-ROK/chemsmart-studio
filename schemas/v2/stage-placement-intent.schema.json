@@ -4,14 +4,7 @@
   "title": "StagePlacementIntent",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "documentId",
-    "expectedRevision",
-    "geometryHash",
-    "atomicNumber",
-    "bondOrder",
-    "coordinationGeometry"
-  ],
+  "required": ["documentId", "expectedRevision", "geometryHash", "atomicNumber", "bondOrder", "coordinationGeometry"],
   "properties": {
     "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
     "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
@@ -20,14 +13,7 @@
     "atomicNumber": { "type": "integer", "minimum": 1, "maximum": 118 },
     "bondOrder": { "enum": [1, 2, 3] },
     "coordinationGeometry": {
-      "enum": [
-        "linear",
-        "trigonal_planar",
-        "tetrahedral",
-        "trigonal_bipyramidal",
-        "square_planar",
-        "octahedral"
-      ]
+      "enum": ["linear", "trigonal_planar", "tetrahedral", "trigonal_bipyramidal", "square_planar", "octahedral"]
     },
     "siteIndex": { "type": "integer", "minimum": 0, "maximum": 5 }
   }

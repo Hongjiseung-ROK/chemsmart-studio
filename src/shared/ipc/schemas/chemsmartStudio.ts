@@ -36,6 +36,7 @@ import {
   type StudioAgentCapabilityManifest,
   type StudioAgentCapabilityManifestRequest,
   type StudioAgentComposerIntent,
+  type StudioAgentLiveEvent,
   type StudioAgentTraceEvent,
   type StudioAgentTurnEvent,
   type StudioAgentTurnPage,
@@ -44,8 +45,7 @@ import {
   studioControlRuntimeSchema,
   type StudioControlSnapshot,
   studioDraftRuntimeSchema,
-  type StudioDraftSnapshot,
-  type StudioUiEvent
+  type StudioDraftSnapshot
 } from '@chemsmart/studio-protocol'
 import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker'
@@ -371,16 +371,6 @@ export const chemsmartStudioRequestSchemas = {
     }),
     output: z.strictObject({ accepted: z.literal(true) })
   }),
-  'chemsmart_studio.agent.replay_studio_ui': defineRoute({
-    input: z.object({
-      sessionId: stableIdSchema,
-      afterSequence: z.number().int().min(-1)
-    }),
-    output: z.object({
-      replayed: z.number().int().nonnegative(),
-      nextSequence: z.number().int().nonnegative()
-    })
-  }),
   'chemsmart_studio.molecule.document': defineRoute({
     input: z.strictObject({ sessionId: stableIdSchema }),
     output: moleculeDocumentSchema
@@ -598,22 +588,13 @@ export type ChemSmartStudioWorkspaceRoots = z.infer<
  * Transient v2 Agent prose. Protocol generation replaces this narrow alias with
  * `StudioAgentLiveEvent`; it never participates in replay or durable transcript storage.
  */
-export type ChemSmartStudioAgentLiveEvent = {
-  threadId: string
-  turnId: string
-  blockId: string
-  sequence: number
-  kind: 'text_started' | 'text_delta' | 'text_completed' | 'public_summary'
-  text?: string
-  transient: true
-}
+export type ChemSmartStudioAgentLiveEvent = StudioAgentLiveEvent
 
 export type ChemSmartStudioEventSchemas = {
   'chemsmart_studio.agent.state_changed': ChemSmartStudioProcessStatus
   'chemsmart_studio.agent.trace': StudioAgentTraceEvent
   'chemsmart_studio.agent.turn_event': StudioAgentTurnEvent
   'chemsmart_studio.agent.live_event': ChemSmartStudioAgentLiveEvent
-  'chemsmart_studio.studio_ui.event': StudioUiEvent
   'chemsmart_studio.control.changed': {
     sessionId: string
     snapshotRevision: number

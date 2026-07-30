@@ -170,8 +170,6 @@ class HostProviderBoundaryTest(unittest.TestCase):
                         "activeRun": None,
                         "extensions": {},
                     }
-                if method == "studio_ui.event":
-                    return {"accepted": True}
                 raise AssertionError(method)
 
             peer = Mock()
@@ -208,8 +206,6 @@ class HostProviderBoundaryTest(unittest.TestCase):
                     "get_studio_context",
                     {},
                 )
-                runtime._publish_studio_ui_event({"sessionId": "session-1"})
-
             self.assertEqual(
                 [method for method, _params in requests],
                 [
@@ -217,7 +213,6 @@ class HostProviderBoundaryTest(unittest.TestCase):
                     "approval.request",
                     "molecule.request",
                     "calculation.request",
-                    "studio_ui.event",
                 ],
             )
             self.assertTrue(

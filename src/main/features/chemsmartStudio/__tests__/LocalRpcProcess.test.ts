@@ -2,9 +2,8 @@ import { mkdtemp, readdir, readFile, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { afterEach, describe, expect, it } from 'vitest'
-
 import { CHEMSMART_COMMIT, PROTOCOL_VERSION, SCHEMA_SHA256, type StudioProtocolHello } from '@chemsmart/studio-protocol'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { LocalRpcProcess } from '../LocalRpcProcess'
 

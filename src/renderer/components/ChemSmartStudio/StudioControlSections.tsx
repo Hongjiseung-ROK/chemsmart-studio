@@ -763,11 +763,9 @@ function OptimizationReplaySection({
               {records.map((candidate) => (
                 <SelectItem key={candidate.run.runId} value={candidate.run.runId}>
                   {candidate.run.runId} ·{' '}
-                  {candidate.run.engine === 'avogadro'
-                    ? t('chemsmart_studio.optimization.engine_name.unsupported_legacy')
-                    : candidate.run.engine === 'xtb'
-                      ? t('chemsmart_studio.optimization.engine_name.xtb')
-                      : candidate.run.engine}{' '}
+                  {candidate.run.engine === 'xtb'
+                    ? t('chemsmart_studio.optimization.engine_name.xtb')
+                    : candidate.run.engine}{' '}
                   · {candidate.run.method}
                 </SelectItem>
               ))}

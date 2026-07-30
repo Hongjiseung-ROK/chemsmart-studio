@@ -16,6 +16,8 @@ import pytest
 
 from chemsmart_studio_bridge.rpc import JsonRpcPeer, RpcFault
 
+OPERATION_ID = "00000000-0000-4000-8000-000000000001"
+
 
 def tool_call_response(message: str) -> dict[str, Any]:
     return {
@@ -177,7 +179,7 @@ class SidecarProcess:
         raise AssertionError("sidecar did not open its socket within 10 seconds")
 
 
-def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) -> None:
+def test_sidecar_restart_recovers_session_without_replaying_transient_ui(tmp_path: Path) -> None:
     session_id = "session-restart"
     with tempfile.TemporaryDirectory(
         prefix="cs-sidecar-", dir="/tmp"
@@ -194,6 +196,7 @@ def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) 
                 {
                     "sessionId": session_id,
                     "modelId": "provider::model",
+                    "operationId": OPERATION_ID,
                     "request": "Run it now and report status.",
                 },
             )
@@ -212,15 +215,15 @@ def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) 
             [final_response("Second turn complete.")],
         )
         try:
-            replay = second.request(
-                "studio_ui.replay",
-                {
-                    "sessionId": session_id,
-                    "replayId": "restart-replay",
-                    "afterSequence": -1,
-                },
-            )
-            assert replay == {"replayed": 0, "nextSequence": 0}
+            with pytest.raises(RpcFault, match="Method not found: studio_ui.replay"):
+                second.request(
+                    "studio_ui.replay",
+                    {
+                        "sessionId": session_id,
+                        "replayId": "restart-replay",
+                        "afterSequence": -1,
+                    },
+                )
             assert second.replay_events == []
 
             second_result = second.request(
@@ -228,6 +231,7 @@ def test_sidecar_restart_recovers_persisted_sequence_and_replay(tmp_path: Path) 
                 {
                     "sessionId": session_id,
                     "modelId": "provider::model",
+                    "operationId": OPERATION_ID,
                     "request": "Run it now and report status again.",
                 },
             )
@@ -286,6 +290,7 @@ def test_sidecar_binds_new_session_before_first_model_call_and_allows_explicit_r
                     {
                         "sessionId": session_id,
                         "modelId": "provider::model",
+                        "operationId": OPERATION_ID,
                         "request": "Inspect the current molecule.",
                     },
                 )
@@ -306,6 +311,7 @@ def test_sidecar_binds_new_session_before_first_model_call_and_allows_explicit_r
                 {
                     "sessionId": session_id,
                     "modelId": "provider::model",
+                    "operationId": OPERATION_ID,
                     "request": "Retry the interrupted request.",
                 },
             )
@@ -345,6 +351,7 @@ def test_sidecar_restart_rejects_corrupt_session_binding_before_model_call(
                     {
                         "sessionId": session_id,
                         "modelId": "provider::model",
+                        "operationId": OPERATION_ID,
                         "request": "Continue the previous task.",
                     },
                 )
@@ -381,6 +388,7 @@ def test_sidecar_restart_rejects_dangling_session_binding_before_model_call(
                     {
                         "sessionId": session_id,
                         "modelId": "provider::model",
+                        "operationId": OPERATION_ID,
                         "request": "Continue the previous task.",
                     },
                 )
