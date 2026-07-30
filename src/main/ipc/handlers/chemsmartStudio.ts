@@ -110,6 +110,20 @@ export const chemsmartStudioHandlers: IpcHandlersFor<typeof chemsmartStudioReque
     publishDraftChanged(sessionId, snapshot)
     return snapshot
   },
+  'chemsmart_studio.molecule.placement_preview': async ({ sessionId, intent }, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    return workspaceOperation(() =>
+      application.get('StudioControlService').previewHumanPlacement(sessionId, senderId, intent)
+    )
+  },
+  'chemsmart_studio.molecule.placement_apply': async ({ sessionId, intent }, { senderId }) => {
+    if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
+    const result = await workspaceOperation(() =>
+      application.get('StudioControlService').applyHumanPlacement(sessionId, senderId, intent)
+    )
+    publishDraftChanged(sessionId, result.snapshot)
+    return result
+  },
   'chemsmart_studio.molecule.draft_undo': async ({ sessionId }, { senderId }) => {
     if (!senderId) throw new IpcError('FORBIDDEN_SENDER', 'A managed Studio window is required')
     const snapshot = await workspaceOperation(() =>

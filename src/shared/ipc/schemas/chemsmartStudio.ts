@@ -33,6 +33,10 @@ import {
   type ResearchRenameThreadRequest,
   type ResearchSelectThreadRequest,
   type StageGestureIntent,
+  type StagePlacementIntent,
+  stagePlacementIntentRuntimeSchema,
+  type StagePlacementPreview,
+  type StudioAgentActionCue,
   type StudioAgentCapabilityManifest,
   type StudioAgentCapabilityManifestRequest,
   type StudioAgentComposerIntent,
@@ -126,6 +130,11 @@ const studioDraftSnapshotSchema = runtimeRootSchema<StudioDraftSnapshot>(studioD
 const stageGestureIntentSchema = runtimeDefinitionSchema<StageGestureIntent>(
   studioDraftRuntimeSchema,
   'stageGestureIntent'
+)
+const stagePlacementIntentSchema = runtimeRootSchema<StagePlacementIntent>(stagePlacementIntentRuntimeSchema)
+const stagePlacementPreviewSchema = runtimeDefinitionSchema<StagePlacementPreview>(
+  stagePlacementIntentRuntimeSchema,
+  'placementPreview'
 )
 const moleculeDisplayBindingSchema = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('committed') }),
@@ -410,6 +419,23 @@ export const chemsmartStudioRequestSchemas = {
       gesture: stageGestureIntentSchema.optional()
     }),
     output: studioDraftSnapshotSchema
+  }),
+  'chemsmart_studio.molecule.placement_preview': defineRoute({
+    input: z.strictObject({
+      sessionId: stableIdSchema,
+      intent: stagePlacementIntentSchema
+    }),
+    output: stagePlacementPreviewSchema
+  }),
+  'chemsmart_studio.molecule.placement_apply': defineRoute({
+    input: z.strictObject({
+      sessionId: stableIdSchema,
+      intent: stagePlacementIntentSchema
+    }),
+    output: z.strictObject({
+      snapshot: studioDraftSnapshotSchema,
+      insertedAtomId: stableIdSchema
+    })
   }),
   'chemsmart_studio.molecule.draft_undo': defineRoute({
     input: z.strictObject({ sessionId: stableIdSchema }),

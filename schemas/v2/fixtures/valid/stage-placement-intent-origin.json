@@ -1,0 +1,10 @@
+{
+  "documentId": "document-empty",
+  "expectedRevision": 0,
+  "geometryHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "origin": [1.25, -0.5, 0],
+  "atomicNumber": 6,
+  "bondOrder": 1,
+  "coordinationGeometry": "trigonal_planar",
+  "siteIndex": 2
+}

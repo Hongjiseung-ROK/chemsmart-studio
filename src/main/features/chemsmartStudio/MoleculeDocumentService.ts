@@ -8,6 +8,8 @@ import type {
   MoleculePatch,
   PreviewReceipt,
   StageGestureIntent,
+  StagePlacementIntent,
+  StagePlacementPreview,
   StudioDraftEntry,
   StudioDraftSnapshot,
   StudioPreviewSummary
@@ -31,6 +33,7 @@ import {
   toDocument,
   trustedMoleculeStateHash
 } from './moleculeDocumentState'
+import { buildStagePlacementPreview } from './moleculePlacement'
 
 const logger = loggerService.withContext('MoleculeDocumentService')
 
@@ -401,6 +404,82 @@ export class MoleculeDocumentService extends BaseService {
     await this.persistDraft(next)
     this.draft = next
     return this.toDraftSnapshot(next)
+  }
+
+  previewStagePlacement(intent: StagePlacementIntent): StagePlacementPreview {
+    this.assertEditable()
+    if (this.preview) throw fail('APPROVAL_REQUIRED', 'Commit or discard the active agent preview')
+    const visible = this.draft?.history[this.draft.cursor] ?? this.committed
+    const visibleGeometryHash = geometryHash(visible)
+    if (
+      intent.documentId !== this.committed.documentId ||
+      intent.expectedRevision !== this.revision ||
+      intent.geometryHash !== visibleGeometryHash
+    ) {
+      throw fail('REVISION_CONFLICT', 'Placement does not target the visible molecule geometry')
+    }
+    try {
+      return buildStagePlacementPreview(toDocument(visible, this.revision), visibleGeometryHash, intent)
+    } catch (error) {
+      throw fail('SCHEMA_INVALID', error instanceof Error ? error.message : 'Placement intent is invalid')
+    }
+  }
+
+  async applyStagePlacement(
+    intent: StagePlacementIntent
+  ): Promise<{ snapshot: StudioDraftSnapshot; insertedAtomId: string }> {
+    const preview = this.previewStagePlacement(intent)
+    if (preview.status !== 'ready') {
+      throw fail('SCHEMA_INVALID', preview.status)
+    }
+    const selectedSiteIndex = intent.siteIndex ?? preview.selectedSiteIndex
+    const candidate = preview.candidates.find((item) => item.siteIndex === selectedSiteIndex && item.safe)
+    if (!candidate) throw fail('SCHEMA_INVALID', 'Placement site is not available')
+
+    const insertedAtomId = `atom-${randomUUID()}`
+    const operations: MoleculeOperation[] = [
+      {
+        op: 'add_atoms',
+        atoms: [
+          {
+            id: insertedAtomId,
+            atomicNumber: intent.atomicNumber,
+            position: candidate.position,
+            formalCharge: 0,
+            extensions: {}
+          }
+        ]
+      }
+    ]
+    if (intent.anchorAtomId) {
+      operations.push({
+        op: 'add_bonds',
+        bonds: [
+          {
+            id: `bond-${randomUUID()}`,
+            atomIds: [intent.anchorAtomId, insertedAtomId],
+            order: intent.bondOrder,
+            extensions: {}
+          }
+        ]
+      })
+    }
+    const snapshot = await this.applyDraftPatch({
+      actor: 'human',
+      expectedRevision: intent.expectedRevision,
+      mode: 'build',
+      operations,
+      gesture: {
+        gestureId: `gesture-${randomUUID()}`,
+        kind: 'insert_atom',
+        atomicNumber: intent.atomicNumber,
+        ...(intent.anchorAtomId ? { anchorAtomId: intent.anchorAtomId, bondOrder: intent.bondOrder } : {}),
+        position: candidate.position,
+        createdAt: new Date().toISOString(),
+        extensions: {}
+      }
+    })
+    return { snapshot, insertedAtomId }
   }
 
   async undoDraft(): Promise<StudioDraftSnapshot | null> {

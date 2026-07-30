@@ -10,11 +10,60 @@
     "expectedRevision": { "$ref": "common.schema.json#/$defs/revision" },
     "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
     "anchorAtomId": { "$ref": "common.schema.json#/$defs/stableId" },
+    "origin": { "$ref": "common.schema.json#/$defs/vector3" },
     "atomicNumber": { "type": "integer", "minimum": 1, "maximum": 118 },
     "bondOrder": { "enum": [1, 2, 3] },
     "coordinationGeometry": {
       "enum": ["linear", "trigonal_planar", "tetrahedral", "trigonal_bipyramidal", "square_planar", "octahedral"]
     },
     "siteIndex": { "type": "integer", "minimum": 0, "maximum": 5 }
+  },
+  "$defs": {
+    "placementCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["siteIndex", "position", "bondLength", "minimumClearance", "occupied", "safe"],
+      "properties": {
+        "siteIndex": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "position": { "$ref": "common.schema.json#/$defs/vector3" },
+        "bondLength": { "type": "number", "exclusiveMinimum": 0 },
+        "minimumClearance": { "type": "number" },
+        "occupied": { "type": "boolean" },
+        "safe": { "type": "boolean" }
+      }
+    },
+    "placementPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "documentId",
+        "revision",
+        "geometryHash",
+        "atomicNumber",
+        "bondOrder",
+        "coordinationGeometry",
+        "candidates",
+        "status"
+      ],
+      "properties": {
+        "documentId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "geometryHash": { "$ref": "common.schema.json#/$defs/geometryHash" },
+        "anchorAtomId": { "$ref": "common.schema.json#/$defs/stableId" },
+        "atomicNumber": { "type": "integer", "minimum": 1, "maximum": 118 },
+        "bondOrder": { "enum": [1, 2, 3] },
+        "coordinationGeometry": {
+          "enum": ["linear", "trigonal_planar", "tetrahedral", "trigonal_bipyramidal", "square_planar", "octahedral"]
+        },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/placementCandidate" },
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "selectedSiteIndex": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "status": { "enum": ["ready", "coordination_full", "steric_collision"] }
+      }
+    }
   }
 }
