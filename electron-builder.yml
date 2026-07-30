@@ -121,20 +121,26 @@ electronDownload:
 beforePack: scripts/before-pack.js
 releaseInfo:
   releaseNotes: |
-    ChemSmart Studio 0.1.2 Internal Stable for Zhang Lab.
+    ChemSmart Studio 0.1.4 Internal Stable for Zhang Lab.
 
     - Apple Silicon only.
     - Distributed as an ad-hoc-signed application ZIP.
     - Not notarized; use Finder's Open command on first launch.
     - Updates are installed manually from this private repository.
-    - Replaces the legacy inspector with a focused ChemSmart Agent workspace.
-    - Adds project-scoped conversations and keyboard discovery for molecule,
-      calculation, dry-run, decision, and result context.
-    - Presents public reasoning summaries, trusted tool activity, exact approval
-      cards, and scientific results as structured, reviewable UI.
-    - Grounds inspection and xTB preflight in the visible molecule without
-      requiring a project YAML.
+    - Streams ChemSmart Agent answers as they are generated and groups trusted
+      tool activity into compact, reviewable scientific work items.
+    - Activates Protocol v2 for the Studio runtime while retaining narrow,
+      read-only compatibility with historical project data.
+    - Adds collision-aware coordination placement guides, clearer molecular
+      editing tools, and visible constraint and Agent action overlays.
+    - Adds Click-grounded Console completion with semantic command guidance,
+      safe preflight notices, and direct molecule or project-YAML opening.
+    - Adds a lossless, read-only Gaussian and ORCA project-YAML renderer plus
+      approval-bound Agent YAML previews.
+    - Fixes Agent and Console panels that could not be reopened after closing.
+    - Fixes stale Console completion results reappearing after input is erased
+      and presents completion as a compact overlay that does not resize Console.
     - Keeps provider reasoning, filesystem paths, credentials, and private
       training data out of Agent history and the application bundle.
-    - P6 protocol-v2 activation and P7 integrated acceptance remain open, so
-      this internal build is not a public production-ready release.
+    - This remains a private Zhang Lab internal build and is not notarized for
+      public macOS distribution.
