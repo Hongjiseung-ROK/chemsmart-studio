@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from chemsmart.agent.permissions import ApprovalDecision
+from chemsmart.agent.project_yaml import extract_project_protocol
 from chemsmart.agent.provider_adapter import ToolRequest
 from chemsmart.agent.registry import ToolRegistry, build_tool_spec
 from chemsmart_studio_bridge.rpc import RpcFault
@@ -33,6 +34,65 @@ class RecordingPeer:
 
 
 class HostProviderBoundaryTest(unittest.TestCase):
+    def test_project_yaml_render_registers_one_path_free_gaussian_candidate(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            requests: list[tuple[str, dict]] = []
+            peer = Mock()
+
+            def host_response(method: str, params: dict, **_kwargs: object) -> dict:
+                requests.append((method, params))
+                return {
+                    "previewId": "yaml-preview-1",
+                    "program": "gaussian",
+                    "status": "pending",
+                }
+
+            peer.request.side_effect = host_response
+            runtime = StudioAgentRuntime(Path(directory)).bind_peer(peer)
+            registry = runtime._studio_registry("session-1")
+            protocol = extract_project_protocol(
+                "Use Gaussian B3LYP/def2-SVP for a gas-phase optimization.",
+                project_name="water",
+                program="gaussian",
+            )
+
+            with runtime._operation_scope("session-1", OPERATION_ID):
+                result = registry.call(
+                    "render_project_yaml",
+                    {
+                        "protocol": protocol,
+                        "project": "water",
+                        "program": "gaussian",
+                    },
+                )
+
+            self.assertEqual(result["previewId"], "yaml-preview-1")
+            candidate_requests = [
+                params for method, params in requests if method == "project.register_candidate"
+            ]
+            self.assertEqual(len(candidate_requests), 1)
+            callback = candidate_requests[0]
+            self.assertEqual(callback["operationId"], OPERATION_ID)
+            self.assertEqual(callback["document"]["projectName"], "water")
+            self.assertNotIn(str(Path(directory)), repr(callback))
+
+            with runtime._operation_scope("session-1", OPERATION_ID):
+                invalid = registry.call(
+                    "render_project_yaml",
+                    {
+                        "protocol": protocol,
+                        "project": "water",
+                        "program": "xtb",
+                    },
+                )
+            self.assertFalse(invalid["ok"])
+            self.assertEqual(
+                len([method for method, _params in requests if method == "project.register_candidate"]),
+                1,
+            )
+
     def test_registered_preflight_is_attached_to_the_matching_turn_result(
         self,
     ) -> None:

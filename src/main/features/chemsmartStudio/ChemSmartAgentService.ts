@@ -19,6 +19,7 @@ import {
   type MoleculeImportRequest,
   type MoleculeImportResult,
   moleculeImportRuntimeSchema,
+  type ProjectWorkspaceCandidateSummary,
   type ProjectWorkspaceCritiqueRequest,
   type ProjectWorkspaceCritiqueResult,
   type ProjectWorkspaceDocumentRequest,
@@ -27,6 +28,7 @@ import {
   type ProjectWorkspaceListResult,
   type ProjectWorkspaceReadRequest,
   type ProjectWorkspaceReadResult,
+  type ProjectWorkspaceRegisterCandidateRequest,
   projectWorkspaceRuntimeSchema,
   type ProjectWorkspaceValidateRequest,
   type ProjectWorkspaceValidateResult,
@@ -119,6 +121,14 @@ const projectValidateResultValidator = definitionValidator<ProjectWorkspaceValid
 const projectCritiqueResultValidator = definitionValidator<ProjectWorkspaceCritiqueResult>(
   projectWorkspaceRuntimeSchema,
   'critiqueResult'
+)
+const projectRegisterCandidateRequestValidator = definitionValidator<ProjectWorkspaceRegisterCandidateRequest>(
+  projectWorkspaceRuntimeSchema,
+  'registerCandidateRequest'
+)
+const projectCandidateSummaryValidator = definitionValidator<ProjectWorkspaceCandidateSummary>(
+  projectWorkspaceRuntimeSchema,
+  'candidateSummary'
 )
 const moleculeImportRequestValidator = definitionValidator<MoleculeImportRequest>(
   moleculeImportRuntimeSchema,
@@ -263,7 +273,7 @@ function terminalOutcome(value: unknown): StudioAgentTurnOutcome {
 }
 
 @Injectable('ChemSmartAgentService')
-@DependsOn(['MoleculeProjectStore', 'StudioControlService', 'CalculationRuntimeService'])
+@DependsOn(['MoleculeProjectStore', 'StudioControlService', 'CalculationRuntimeService', 'ProjectYamlService'])
 @ServicePhase(Phase.WhenReady)
 export class ChemSmartAgentService extends BaseService {
   private process: LocalRpcProcess | null = null
@@ -742,6 +752,8 @@ export class ChemSmartAgentService extends BaseService {
         return this.registerCommandPreflight(params)
       case 'agent.materialize_input':
         return this.materializeCurrentMoleculeInput(params)
+      case 'project.register_candidate':
+        return this.registerProjectYamlCandidate(params)
       case 'agent.trace': {
         const value = this.objectParams(params)
         const operation = this.authorizedOperation(value, 'agent_turn')
@@ -848,6 +860,64 @@ export class ChemSmartAgentService extends BaseService {
     })
     operation.resultReported = true
     return { accepted: true }
+  }
+
+  private async registerProjectYamlCandidate(params: unknown): Promise<ProjectWorkspaceCandidateSummary> {
+    const value = this.objectParams(params)
+    const operation = this.authorizedOperation(value, 'agent_turn')
+    if (operation.capability !== 'plan' || !operation.turnId) {
+      throw new JsonRpcFault(-32003, 'Project YAML rendering requires a plan turn')
+    }
+    const request = { ...value }
+    delete request.operationId
+    delete request.sessionId
+    const validation = projectRegisterCandidateRequestValidator(request)
+    if (!validation.valid || containsAbsoluteFilesystemPath(request)) {
+      throw new JsonRpcFault(-32602, 'Project YAML candidate is schema-invalid or contains a filesystem path')
+    }
+    const sessionId = value.sessionId
+    if (typeof sessionId !== 'string') {
+      throw new JsonRpcFault(-32602, 'Project YAML candidate session is missing')
+    }
+    const candidate = await application
+      .get('ProjectYamlService')
+      .registerCandidate(sessionId, request as unknown as ProjectWorkspaceRegisterCandidateRequest)
+    if (!projectCandidateSummaryValidator(candidate).valid || containsAbsoluteFilesystemPath(candidate)) {
+      throw new JsonRpcFault(-32603, 'Project YAML candidate registration returned an invalid summary')
+    }
+
+    const document = application.get('MoleculeDocumentService').getDocument()
+    const artifact: StudioAgentArtifact = {
+      artifactId: candidate.previewId,
+      kind: 'verification',
+      heading: `${candidate.program.toUpperCase()} project YAML`,
+      summary: `Review ${candidate.projectName}: ${candidate.changedSections.length} section(s) changed.`,
+      documentId: document.documentId,
+      revision: document.revision,
+      geometryHash: moleculeGeometryHash(document),
+      charge: document.properties.charge ?? 0,
+      multiplicity: document.properties.multiplicity ?? 1,
+      planId: candidate.previewId,
+      ruleIds: candidate.issueRuleIds,
+      verdict: candidate.verdict === 'ok' ? 'passed' : candidate.verdict === 'warn' ? 'warning' : 'failed',
+      extensions: {
+        'chemsmart.project-yaml': {
+          previewId: candidate.previewId,
+          projectName: candidate.projectName,
+          program: candidate.program
+        }
+      }
+    }
+    if (!studioAgentArtifactValidator(artifact).valid || containsAbsoluteFilesystemPath(artifact)) {
+      throw new JsonRpcFault(-32603, 'Project YAML artifact projection is invalid')
+    }
+    await application.get('StudioAgentProjectionService').appendTurnEvent(sessionId, operation.turnId, {
+      kind: 'artifact_published',
+      status: 'succeeded',
+      summary: artifact.summary,
+      artifact
+    })
+    return candidate
   }
 
   private async narrateValidatedResult(

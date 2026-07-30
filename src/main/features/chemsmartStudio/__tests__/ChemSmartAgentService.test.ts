@@ -32,6 +32,7 @@ const {
   projectionTerminalizeMock,
   projectionValidateComposerIntentMock,
   recordAgentToolCompletionMock,
+  registerProjectYamlCandidateMock,
   registerCommandPreflightMock,
   getCommandPreflightForApprovalMock,
   resolveCommandPreflightMock,
@@ -67,6 +68,7 @@ const {
   projectionTerminalizeMock: vi.fn(),
   projectionValidateComposerIntentMock: vi.fn(),
   recordAgentToolCompletionMock: vi.fn(),
+  registerProjectYamlCandidateMock: vi.fn(),
   registerCommandPreflightMock: vi.fn(),
   getCommandPreflightForApprovalMock: vi.fn(),
   resolveCommandPreflightMock: vi.fn(),
@@ -313,6 +315,9 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
           getMoleculeDraft: vi.fn().mockReturnValue(null)
         }
       }
+      if (name === 'ProjectYamlService') {
+        return { registerCandidate: registerProjectYamlCandidateMock }
+      }
       throw new Error(`Unexpected application.get(${name})`)
     })
     ensureDefaultProjectMock.mockResolvedValue({ projectPath: '/projects/Untitled.cmsproj' })
@@ -336,7 +341,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
   async function invokeBoundAgentCallback(
     method: string,
     payload: Record<string, unknown>,
-    capability: 'inspect' | 'act' = 'inspect'
+    capability: 'inspect' | 'plan' | 'act' = 'inspect'
   ): Promise<unknown> {
     let callbackResult: unknown
     localProcessRequestMock.mockImplementation(async (rpcMethod: string, params: unknown) => {
@@ -358,7 +363,16 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
             requiresExecutionApproval: true,
             extensions: {}
           }
-        : null,
+        : capability === 'plan'
+          ? {
+              intentId: 'intent-plan-1',
+              kind: 'plan',
+              capability: 'plan',
+              contextRefs: [],
+              requiresExecutionApproval: false,
+              extensions: {}
+            }
+          : null,
       'window-1'
     )
     return callbackResult
@@ -441,7 +455,7 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
       sessionId: 'session-1',
       requestId: 'request-1',
       tool: 'start_molecule_optimization',
-      arguments: { engine: 'avogadro', method: 'UFF', settings: { maxSteps: 20, extensions: {} } }
+      arguments: { engine: 'xtb', method: 'GFN2-xTB', settings: { maxSteps: 20, extensions: {} } }
     }
     const response = { decision: 'allow_once' as const }
     requestApprovalMock.mockResolvedValue(response)
@@ -452,6 +466,66 @@ describe('ChemSmartAgentService trusted sidecar boundary', () => {
     expect(requestApprovalMock.mock.calls[0][0]).toEqual(payload)
     expect(forwardMoleculeRequestMock).not.toHaveBeenCalled()
     expect(broadcastMock).not.toHaveBeenCalled()
+  })
+
+  it('registers a path-free Project YAML artifact only inside a plan turn', async () => {
+    const yamlText = 'gas:\n  functional: b3lyp\n  basis: def2svp\n'
+    const candidateDigest = createHash('sha256').update(yamlText).digest('hex')
+    const candidate = {
+      schemaVersion: '2' as const,
+      previewId: 'yaml-preview-1',
+      projectName: 'water',
+      program: 'gaussian' as const,
+      baseDigest: null,
+      candidateDigest,
+      expectedRevision: visibleMolecule.revision,
+      overwrite: false,
+      changedSections: ['gas'],
+      verdict: 'ok' as const,
+      issueRuleIds: [],
+      status: 'pending' as const,
+      createdAt: '2026-07-30T00:00:00Z',
+      expiresAt: '2026-07-30T00:05:00Z',
+      extensions: {}
+    }
+    registerProjectYamlCandidateMock.mockResolvedValue(candidate)
+
+    const result = await invokeBoundAgentCallback(
+      'project.register_candidate',
+      {
+        sessionId: 'session-1',
+        document: {
+          schemaVersion: '2',
+          projectName: 'water',
+          program: 'gaussian',
+          digest: candidateDigest,
+          yamlText,
+          sections: [],
+          validation: {
+            verdict: 'ok',
+            issues: [],
+            message: 'Project YAML passed validation.',
+            extensions: {}
+          },
+          unknownNodes: [],
+          extensions: {}
+        },
+        unsupportedFeatures: [],
+        extensions: {}
+      },
+      'plan'
+    )
+
+    expect(result).toEqual(candidate)
+    expect(projectionAppendTurnEventMock).toHaveBeenCalledWith(
+      'session-1',
+      'turn-1',
+      expect.objectContaining({
+        kind: 'artifact_published',
+        artifact: expect.objectContaining({ artifactId: candidate.previewId, planId: candidate.previewId })
+      })
+    )
+    expect(JSON.stringify(projectionAppendTurnEventMock.mock.calls)).not.toContain('/projects/')
   })
 
   it('binds command approval and consumption to the active act turn', async () => {
